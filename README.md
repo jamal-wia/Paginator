@@ -49,14 +49,14 @@ class MainViewModel : ViewModel() {
     private val paginator = Paginator { SampleRepository.loadPage(it.toInt()) }
     
     init {
+        // асинхронная загрузка сразу нескольких страничек (зарание)
         viewModelScope.launch {
-            // асинхронная загрузка сразу нескольких страничек (зарание)
             val async1 = async { paginator.loadPageState(1u) } // опционально
             val async2 = async { paginator.loadPageState(2u) } // опционально
             val async3 = async { paginator.loadPageState(3u) } // опционально
-            paginator.pages[1u] = async1.await() // опционально
-            paginator.pages[2u] = async2.await() // опционально
-            paginator.pages[3u] = async3.await() // опционально
+            paginator.setPageState(page = 1u, async1.await()) // опционально
+            paginator.setPageState(page = 2u, async2.await()) // опционально
+            paginator.setPageState(page = 3u, async3.await()) // опционально
             paginator.jumpForward() // "прыжок" на "закладку" (первую страницу)
         }
     }
