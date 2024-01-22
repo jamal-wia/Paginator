@@ -19,7 +19,7 @@ class MainViewModel : ViewModel() {
     private val _state = MutableStateFlow(DataState(emptyList()))
 
     val state = _state.asStateFlow()
-    private val paginator = Paginator { SampleRepository.loadPage(it.toInt()) }
+    private val paginator = Paginator(source = { SampleRepository.loadPage(it.toInt()) })
 
     init {
         paginator.snapshot
@@ -37,9 +37,9 @@ class MainViewModel : ViewModel() {
             val async1 = async { paginator.loadPageState(1u) }
             val async2 = async { paginator.loadPageState(2u) }
             val async3 = async { paginator.loadPageState(3u) }
-            paginator.pages[1u] = async1.await()
-            paginator.pages[2u] = async2.await()
-            paginator.pages[3u] = async3.await()
+            paginator.setPageState(page = 1u, async1.await())
+            paginator.setPageState(page = 2u, async2.await())
+            paginator.setPageState(page = 3u, async3.await())
             paginator.jumpForward()
         }
     }
@@ -60,4 +60,5 @@ class MainViewModel : ViewModel() {
             return MainViewModel() as T
         }
     }
+
 }
