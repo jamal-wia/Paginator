@@ -17,7 +17,7 @@ repositories {
 ```
 
 ``` Gradle
-implementation("com.github.jamal-wia:Paginator:1.0.1")
+implementation("com.github.jamal-wia:Paginator:1.1.0")
 ```
 
 ## **Быстрый старт в 3 шага**
@@ -36,8 +36,6 @@ class MainViewModel : ViewModel() {
 
 }
 ```
-
-Так же есть методы: `registerDialogFragment` `registerActivity`
 
 ### Шаг 2
 
