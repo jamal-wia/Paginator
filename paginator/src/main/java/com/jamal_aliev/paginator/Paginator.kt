@@ -125,14 +125,19 @@ class Paginator<T>(
         initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
         initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
     ) {
-        val pageOfBookmark = bookmark.page
-        if (pageOfBookmark < 1u) return
-        currentPage = pageOfBookmark
+        check(bookmark.page > 0u)
+        currentPage = bookmark.page
+
+        if (pages[bookmark.page]?.isDataState() == true) {
+            _snapshot.update { scan() }
+            return
+        }
 
         loadPageState(
-            page = pageOfBookmark,
+            page = bookmark.page,
+            forceLoading = true,
             loading = { page ->
-                val progressState = initProgressState?.invoke() ?: ProgressState()
+                val progressState = initProgressState?.invoke() ?: ProgressState(page = page)
                 pages[page] = progressState
                 _snapshot.update { scan() }
             },
@@ -140,7 +145,7 @@ class Paginator<T>(
             initDataState = initDataState,
             initErrorState = initErrorState
         ).also { finalPageState ->
-            pages[pageOfBookmark] = finalPageState
+            pages[bookmark.page] = finalPageState
             _snapshot.update { scan() }
         }
     }
@@ -170,17 +175,18 @@ class Paginator<T>(
         initEmptyState: (() -> PageState.EmptyState<T>)? = null,
         initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
         initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
-    ) {
+    ): UInt {
         val nextPage = getMaxPageFrom(currentPage, predicate = { it.isDataState() }) + 1u
-        if (nextPage < 1u) return
-        val lastSnapshot = _snapshot.value
+        check(nextPage > 0u)
+        if (pages[nextPage]?.isProgressState() == true)
+            return nextPage
 
         loadPageState(
             page = nextPage,
             loading = { page ->
-                val progressState = initProgressState?.invoke() ?: ProgressState()
+                val progressState = initProgressState?.invoke() ?: ProgressState(page = page)
                 pages[page] = progressState
-                _snapshot.update { lastSnapshot + progressState }
+                _snapshot.update { scan(getMinPageFrom(nextPage)..nextPage) }
             },
             initEmptyState = initEmptyState,
             initDataState = initDataState,
@@ -188,8 +194,10 @@ class Paginator<T>(
         ).also { finalPageState ->
             if (finalPageState.isDataState()) currentPage = nextPage
             pages[nextPage] = finalPageState
-            _snapshot.update { lastSnapshot + finalPageState }
+            _snapshot.update { scan(getMinPageFrom(nextPage)..nextPage) }
         }
+
+        return nextPage
     }
 
     /**
@@ -217,17 +225,18 @@ class Paginator<T>(
         initEmptyState: (() -> PageState.EmptyState<T>)? = null,
         initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
         initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
-    ) {
+    ): UInt {
         val previousPage = getMinPageFrom(currentPage, predicate = { it.isDataState() }) - 1u
-        if (previousPage < 1u) return
-        val lastSnapshot = _snapshot.value
+        check(previousPage > 0u)
+        if (pages[previousPage]?.isProgressState() == true)
+            return previousPage
 
         loadPageState(
             page = previousPage,
             loading = { page ->
-                val progressState = initProgressState?.invoke() ?: ProgressState()
+                val progressState = initProgressState?.invoke() ?: ProgressState(page = page)
                 pages[page] = progressState
-                _snapshot.update { listOf(progressState) + lastSnapshot }
+                _snapshot.update { scan(previousPage..getMaxPageFrom(previousPage)) }
             },
             initEmptyState = initEmptyState,
             initDataState = initDataState,
@@ -235,8 +244,10 @@ class Paginator<T>(
         ).also { finalPageState ->
             if (finalPageState.isDataState()) currentPage = previousPage
             pages[previousPage] = finalPageState
-            _snapshot.update { listOf(finalPageState) + lastSnapshot }
+            _snapshot.update { scan(previousPage..getMaxPageFrom(previousPage)) }
         }
+
+        return previousPage
     }
 
     /**
@@ -266,12 +277,12 @@ class Paginator<T>(
         coroutineScope {
             pages.forEach { (k, v) ->
                 pages[k] = initProgressState?.invoke(v.data)
-                    ?: ProgressState(v.data)
+                    ?: ProgressState(page = k, data = v.data)
             }
             _snapshot.update {
                 it.map { pageState ->
                     initProgressState?.invoke(pageState.data)
-                        ?: ProgressState(pageState.data)
+                        ?: ProgressState(page = pageState.page, data = pageState.data)
                 }
             }
             pages.keys.toList()
@@ -330,10 +341,10 @@ class Paginator<T>(
                 return cachedState
             loading?.invoke(page)
             val data = source.invoke(page)
-            if (data.isEmpty()) initEmptyState?.invoke() ?: EmptyState()
-            else initDataState?.invoke(data) ?: DataState(data)
+            if (data.isEmpty()) initEmptyState?.invoke() ?: EmptyState(page = page)
+            else initDataState?.invoke(data) ?: DataState(page = page, data = data)
         } catch (e: Exception) {
-            initErrorState?.invoke(e) ?: ErrorState(e)
+            initErrorState?.invoke(e) ?: ErrorState(e, page = page)
         }
     }
 
@@ -367,13 +378,17 @@ class Paginator<T>(
         val removed = pages.remove(page)
         if (removed != null) {
             pages[page] = initEmptyState?.invoke()
-                ?: EmptyState()
+                ?: EmptyState(page = page)
         }
         return removed
     }
 
-    fun setPageState(page: UInt, state: PageState<T>) {
-        pages[page] = state
+    fun setPageState(
+        state: PageState<T>,
+        silently: Boolean = false
+    ) {
+        pages[state.page] = state
+        if (!silently) _snapshot.update { scan() }
     }
 
     /**
@@ -471,7 +486,7 @@ class Paginator<T>(
             }
         }
 
-        pages[page] = pageState.copy(updatedData)
+        pages[page] = pageState.copy(data = updatedData)
 
         if (!silently) {
             val rangeSnapshot = getMinPageFrom(currentPage)..getMaxPageFrom(currentPage)
@@ -799,17 +814,17 @@ class Paginator<T>(
         _snapshot.update { emptyList() }
     }
 
-    fun ProgressState(data: List<T> = emptyList()) =
-        PageState.ProgressState(data)
+    fun ProgressState(page: UInt, data: List<T> = emptyList()) =
+        PageState.ProgressState(page, data)
 
-    fun DataState(data: List<T> = emptyList()) =
-        if (data.isEmpty()) EmptyState() else PageState.DataState(data)
+    fun DataState(page: UInt, data: List<T> = emptyList()) =
+        if (data.isEmpty()) EmptyState(page = page) else PageState.DataState(page, data)
 
-    fun EmptyState(data: List<T> = emptyList()) =
-        PageState.EmptyState(data)
+    fun EmptyState(page: UInt, data: List<T> = emptyList()) =
+        PageState.EmptyState(page, data)
 
-    fun ErrorState(e: Exception, data: List<T> = emptyList()) =
-        PageState.ErrorState(e, data)
+    fun ErrorState(e: Exception, page: UInt, data: List<T> = emptyList()) =
+        PageState.ErrorState(e, page, data)
 
     override fun toString() = "Paginator(pages=$pages, bookmarks=$bookmarks)"
 
@@ -817,35 +832,45 @@ class Paginator<T>(
 
     override fun equals(other: Any?) = (other as? Paginator<*>)?.pages === this.pages
 
-    sealed class PageState<E>(open val data: List<E>) {
+    sealed class PageState<E>(
+        open val page: UInt,
+        open val data: List<E>
+    ) {
 
         open class ProgressState<T>(
-            override val data: List<T>
-        ) : PageState<T>(data)
+            override val page: UInt,
+            override val data: List<T>,
+        ) : PageState<T>(page, data)
 
         open class DataState<T>(
-            override val data: List<T>
-        ) : PageState<T>(data)
+            override val page: UInt,
+            override val data: List<T>,
+        ) : PageState<T>(page, data)
 
         open class EmptyState<T>(
-            override val data: List<T>
-        ) : PageState<T>(data)
+            override val page: UInt,
+            override val data: List<T>,
+        ) : PageState<T>(page, data)
 
         open class ErrorState<T>(
             val e: Exception,
-            override val data: List<T>
-        ) : PageState<T>(data)
+            override val page: UInt,
+            override val data: List<T>,
+        ) : PageState<T>(page, data)
 
         fun isProgressState() = this is ProgressState<E>
-        fun isEmptyState() = this is DataState<E>
-        fun isDataState() = this is EmptyState<E>
+        fun isEmptyState() = this is EmptyState<E>
+        fun isDataState() = this is DataState<E>
         fun isErrorState() = this is ErrorState<E>
 
-        fun copy(data: List<E> = this.data): PageState<E> = when (this) {
-            is ProgressState -> ProgressState(data)
-            is DataState -> if (data.isEmpty()) EmptyState(data) else DataState(data)
-            is EmptyState -> EmptyState(data)
-            is ErrorState -> ErrorState(this.e, data)
+        fun copy(
+            page: UInt = this.page,
+            data: List<E> = this.data
+        ): PageState<E> = when (this) {
+            is ProgressState -> ProgressState(page, data)
+            is DataState -> if (data.isEmpty()) EmptyState(page, data) else DataState(page, data)
+            is EmptyState -> EmptyState(page, data)
+            is ErrorState -> ErrorState(this.e, page, data)
         }
 
         override fun toString() = "${this::class.simpleName}(data=${this.data})"
