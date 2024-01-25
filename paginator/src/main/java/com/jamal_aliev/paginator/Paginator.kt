@@ -19,7 +19,7 @@ class Paginator<T>(
     private var currentPage = 0u
     private val pages = hashMapOf<UInt, PageState<T>>()
 
-    private val bookmarks = mutableListOf(Bookmark(value = 1u))
+    val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkUInt(page = 1u))
     private val bookmarkIterator = bookmarks.listIterator()
 
     private val _snapshot = MutableStateFlow(emptyList<PageState<T>>())
@@ -125,7 +125,7 @@ class Paginator<T>(
         initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
         initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
     ) {
-        val pageOfBookmark = bookmark.value
+        val pageOfBookmark = bookmark.page
         if (pageOfBookmark < 1u) return
         currentPage = pageOfBookmark
 
@@ -792,5 +792,9 @@ class Paginator<T>(
     }
 
     @JvmInline
-    value class Bookmark(val value: UInt)
+    value class BookmarkUInt(override val page: UInt) : Bookmark
+
+    interface Bookmark {
+        val page: UInt
+    }
 }
