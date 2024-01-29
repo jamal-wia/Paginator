@@ -7,14 +7,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.math.max
 
-class Paginator<T>(
-    val source: suspend (page: UInt) -> List<T>,
-    val pageCapacity: Int = 20,
-) {
+class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
 
-    init {
-        check(pageCapacity > 0)
-    }
+    val pageCapacity: Int = 20
 
     private var currentPage = 0u
     private val pages = hashMapOf<UInt, PageState<T>>()
@@ -50,8 +45,10 @@ class Paginator<T>(
         initEmptyState: (() -> PageState.EmptyState<T>)? = null,
         initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
         initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
-    ) {
-        val bookmark = if (bookmarkIterator.hasNext()) bookmarkIterator.next() else return
+    ): Bookmark? {
+        val bookmark =
+            if (bookmarkIterator.hasNext()) bookmarkIterator.next()
+            else return null
         return jump(
             bookmark = bookmark,
             initProgressState = initProgressState,
@@ -86,8 +83,10 @@ class Paginator<T>(
         initEmptyState: (() -> PageState.EmptyState<T>)? = null,
         initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
         initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
-    ) {
-        val bookmark = if (bookmarkIterator.hasPrevious()) bookmarkIterator.previous() else return
+    ): Bookmark? {
+        val bookmark =
+            if (bookmarkIterator.hasPrevious()) bookmarkIterator.previous()
+            else return null
         return jump(
             bookmark = bookmark,
             initProgressState = initProgressState,
@@ -124,13 +123,13 @@ class Paginator<T>(
         initEmptyState: (() -> PageState.EmptyState<T>)? = null,
         initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
         initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
-    ) {
+    ): Bookmark {
         check(bookmark.page > 0u)
         currentPage = bookmark.page
 
         if (pages[bookmark.page]?.isDataState() == true) {
             _snapshot.update { scan() }
-            return
+            return bookmark
         }
 
         loadPageState(
@@ -148,6 +147,8 @@ class Paginator<T>(
             pages[bookmark.page] = finalPageState
             _snapshot.update { scan() }
         }
+
+        return bookmark
     }
 
     /**
@@ -186,7 +187,7 @@ class Paginator<T>(
             loading = { page ->
                 val progressState = initProgressState?.invoke() ?: ProgressState(page = page)
                 pages[page] = progressState
-                _snapshot.update { scan(getMinPageFrom(nextPage)..nextPage) }
+                _snapshot.update { scan() }
             },
             initEmptyState = initEmptyState,
             initDataState = initDataState,
@@ -194,7 +195,7 @@ class Paginator<T>(
         ).also { finalPageState ->
             if (finalPageState.isDataState()) currentPage = nextPage
             pages[nextPage] = finalPageState
-            _snapshot.update { scan(getMinPageFrom(nextPage)..nextPage) }
+            _snapshot.update { scan() }
         }
 
         return nextPage
@@ -236,7 +237,7 @@ class Paginator<T>(
             loading = { page ->
                 val progressState = initProgressState?.invoke() ?: ProgressState(page = page)
                 pages[page] = progressState
-                _snapshot.update { scan(previousPage..getMaxPageFrom(previousPage)) }
+                _snapshot.update { scan() }
             },
             initEmptyState = initEmptyState,
             initDataState = initDataState,
@@ -244,7 +245,7 @@ class Paginator<T>(
         ).also { finalPageState ->
             if (finalPageState.isDataState()) currentPage = previousPage
             pages[previousPage] = finalPageState
-            _snapshot.update { scan(previousPage..getMaxPageFrom(previousPage)) }
+            _snapshot.update { scan() }
         }
 
         return previousPage
@@ -587,6 +588,41 @@ class Paginator<T>(
         }
     }
 
+    fun setElement(
+        element: T,
+        silently: Boolean = false,
+        predicate: (T) -> Boolean
+    ) {
+        for (page in pages.keys.toList()) {
+            val pageState = pages.getValue(page)
+            for ((index, e) in pageState.data.withIndex()) {
+                if (predicate(e)) {
+                    setElement(element, page, index, silently)
+                }
+            }
+        }
+    }
+
+    fun setElement(
+        element: T,
+        page: UInt,
+        index: Int,
+        silently: Boolean = false
+    ) {
+        val pageState = pages.getValue(page)
+        pages[page] = pageState.copy(
+            data = pageState.data.toMutableList()
+                .also { it[index] = element }
+        )
+
+        if (!silently) {
+            val rangeSnapshot = getMinPageFrom(currentPage)..getMaxPageFrom(currentPage)
+            if (page in rangeSnapshot) {
+                _snapshot.update { scan(rangeSnapshot) }
+            }
+        }
+    }
+
     /**
      * Функция `indexOfFirst` предназначена для поиска первого элемента, который удовлетворяет определенному условию в коллекции `pages`.
      *
@@ -886,7 +922,9 @@ class Paginator<T>(
     }
 
     @JvmInline
-    value class BookmarkUInt(override val page: UInt) : Bookmark
+    value class BookmarkUInt(
+        override val page: UInt
+    ) : Bookmark
 
     interface Bookmark {
         val page: UInt
