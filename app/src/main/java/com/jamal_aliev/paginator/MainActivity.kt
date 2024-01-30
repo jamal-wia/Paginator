@@ -63,14 +63,14 @@ class MainActivity : ComponentActivity() {
         LazyColumn(state = lazyListState) {
             state.data.forEach { pageState ->
                 when (pageState) {
-                    is Paginator.PageState.DataState -> {
+                    is Paginator.PageState.Success -> {
                         items(pageState.data.size) {
                             StrItem(data = pageState.data[it])
                         }
                     }
 
-                    is Paginator.PageState.EmptyState -> TODO()
-                    is Paginator.PageState.ErrorState -> {
+                    is Paginator.PageState.Empty -> TODO()
+                    is Paginator.PageState.Error -> {
                         item {
                             Text(text = pageState.e.message.toString())
                             Button(onClick = { viewModel.refreshPage(pageState) }) {
@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    is Paginator.PageState.ProgressState -> {
+                    is Paginator.PageState.Progress -> {
                         item {
                             CircularProgressIndicator()
                         }

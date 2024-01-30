@@ -63,7 +63,7 @@ class MainViewModel : ViewModel() {
         super.onCleared()
     }
 
-    fun refreshPage(pageState: Paginator.PageState.ErrorState<String>) {
+    fun refreshPage(pageState: Paginator.PageState.Error<String>) {
         if (paginatorJob != null) return
         paginatorJob = viewModelScope.launch {
             delay(timeMillis = 1L)
