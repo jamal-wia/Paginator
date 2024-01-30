@@ -1,5 +1,9 @@
 package com.jamal_aliev.paginator
 
+import com.jamal_aliev.paginator.Paginator.PageState.Empty
+import com.jamal_aliev.paginator.Paginator.PageState.Error
+import com.jamal_aliev.paginator.Paginator.PageState.Progress
+import com.jamal_aliev.paginator.Paginator.PageState.Success
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -9,7 +13,8 @@ import kotlin.math.max
 
 class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
 
-    val pageCapacity: Int = 20
+    var capacity: Int = 20
+        private set
 
     private var currentPage = 0u
     private val pages = hashMapOf<UInt, PageState<T>>()
@@ -26,7 +31,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * Входные параметры:
      * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
      * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initDataState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
+     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
      * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
      *
      * Выходные параметры:
@@ -37,14 +42,14 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Если следующей закладки не существует (т.е., все закладки уже были просмотрены), функция не делает ничего.
      * - Если состояние страницы, указанной в закладке, не кэшировано, функция загружает состояние страницы из источника данных.
      * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initDataState`, или `DataState`, если `initDataState` равно `null`.
+     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
      * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
     suspend fun jumpForward(
-        initProgressState: (() -> PageState.ProgressState<T>)? = null,
-        initEmptyState: (() -> PageState.EmptyState<T>)? = null,
-        initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
-        initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
+        initProgressState: (() -> Progress<T>)? = null,
+        initEmptyState: (() -> Empty<T>)? = null,
+        initSuccessState: ((List<T>) -> Success<T>)? = null,
+        initErrorState: ((Exception) -> Error<T>)? = null
     ): Bookmark? {
         val bookmark =
             if (bookmarkIterator.hasNext()) bookmarkIterator.next()
@@ -53,7 +58,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             bookmark = bookmark,
             initProgressState = initProgressState,
             initEmptyState = initEmptyState,
-            initDataState = initDataState,
+            initSuccessState = initSuccessState,
             initErrorState = initErrorState,
         )
     }
@@ -64,7 +69,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * Входные параметры:
      * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
      * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initDataState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
+     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
      * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
      *
      * Выходные параметры:
@@ -75,14 +80,14 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Если предыдущей закладки не существует (т.е., все закладки уже были просмотрены), функция не делает ничего.
      * - Если состояние страницы, указанной в закладке, не кэшировано, функция загружает состояние страницы из источника данных.
      * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initDataState`, или `DataState`, если `initDataState` равно `null`.
+     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
      * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
     suspend fun jumpBack(
-        initProgressState: (() -> PageState.ProgressState<T>)? = null,
-        initEmptyState: (() -> PageState.EmptyState<T>)? = null,
-        initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
-        initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
+        initProgressState: (() -> Progress<T>)? = null,
+        initEmptyState: (() -> Empty<T>)? = null,
+        initSuccessState: ((List<T>) -> Success<T>)? = null,
+        initErrorState: ((Exception) -> Error<T>)? = null
     ): Bookmark? {
         val bookmark =
             if (bookmarkIterator.hasPrevious()) bookmarkIterator.previous()
@@ -91,7 +96,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             bookmark = bookmark,
             initProgressState = initProgressState,
             initEmptyState = initEmptyState,
-            initDataState = initDataState,
+            initSuccessState = initSuccessState,
             initErrorState = initErrorState,
         )
     }
@@ -103,7 +108,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - `bookmark`: закладка типа `Bookmark`, указывающая на страницу, к которой нужно перейти.
      * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
      * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initDataState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
+     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
      * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
      *
      * Выходные параметры:
@@ -114,20 +119,20 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Если страницы, указанной в закладке, не существует (т.е., значение закладки меньше 1), функция не делает ничего.
      * - Если состояние страницы, указанной в закладке, не кэшировано, функция загружает состояние страницы из источника данных.
      * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initDataState`, или `DataState`, если `initDataState` равно `null`.
+     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
      * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
     suspend fun jump(
         bookmark: Bookmark,
-        initProgressState: (() -> PageState.ProgressState<T>)? = null,
-        initEmptyState: (() -> PageState.EmptyState<T>)? = null,
-        initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
-        initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
+        initProgressState: (() -> Progress<T>)? = null,
+        initEmptyState: (() -> Empty<T>)? = null,
+        initSuccessState: ((List<T>) -> Success<T>)? = null,
+        initErrorState: ((Exception) -> Error<T>)? = null
     ): Bookmark {
         check(bookmark.page > 0u)
         currentPage = bookmark.page
 
-        if (pages[bookmark.page]?.isDataState() == true) {
+        if ((pages[bookmark.page] as? Success)?.data?.size == capacity) {
             _snapshot.update { scan() }
             return bookmark
         }
@@ -141,7 +146,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
                 _snapshot.update { scan() }
             },
             initEmptyState = initEmptyState,
-            initDataState = initDataState,
+            initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { finalPageState ->
             pages[bookmark.page] = finalPageState
@@ -157,7 +162,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * Входные параметры:
      * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
      * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initDataState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
+     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
      * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
      *
      * Выходные параметры:
@@ -168,18 +173,20 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Если следующей страницы не существует (т.е., `currentPage` равно последней странице), функция не делает ничего.
      * - Если состояние следующей страницы не кэшировано, функция загружает состояние страницы из источника данных.
      * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initDataState`, или `DataState`, если `initDataState` равно `null`.
+     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
      * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
     suspend fun nextPage(
-        initProgressState: (() -> PageState.ProgressState<T>)? = null,
-        initEmptyState: (() -> PageState.EmptyState<T>)? = null,
-        initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
-        initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
+        initProgressState: (() -> Progress<T>)? = null,
+        initEmptyState: (() -> Empty<T>)? = null,
+        initSuccessState: ((List<T>) -> Success<T>)? = null,
+        initErrorState: ((Exception) -> Error<T>)? = null
     ): UInt {
-        val nextPage = getMaxPageFrom(currentPage, predicate = { it.isDataState() }) + 1u
+        val nextPage = getMaxPageFrom(currentPage) { pageState ->
+            (pageState as? Success)?.data?.size == capacity
+        } + 1u
         check(nextPage > 0u)
-        if (pages[nextPage]?.isProgressState() == true)
+        if (pages[nextPage].isProgressState())
             return nextPage
 
         loadPageState(
@@ -190,10 +197,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
                 _snapshot.update { scan() }
             },
             initEmptyState = initEmptyState,
-            initDataState = initDataState,
+            initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { finalPageState ->
-            if (finalPageState.isDataState()) currentPage = nextPage
+            if (finalPageState.isSuccessState()) currentPage = nextPage
             pages[nextPage] = finalPageState
             _snapshot.update { scan() }
         }
@@ -207,7 +214,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * Входные параметры:
      * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
      * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initDataState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
+     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
      * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
      *
      * Выходные параметры:
@@ -218,18 +225,20 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Если предыдущей страницы не существует (т.е., `currentPage` равно 1), функция не делает ничего.
      * - Если состояние предыдущей страницы не кэшировано, функция загружает состояние страницы из источника данных.
      * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initDataState`, или `DataState`, если `initDataState` равно `null`.
+     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
      * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
     suspend fun previousPage(
-        initProgressState: (() -> PageState.ProgressState<T>)? = null,
-        initEmptyState: (() -> PageState.EmptyState<T>)? = null,
-        initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
-        initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
+        initProgressState: (() -> Progress<T>)? = null,
+        initEmptyState: (() -> Empty<T>)? = null,
+        initSuccessState: ((List<T>) -> Success<T>)? = null,
+        initErrorState: ((Exception) -> Error<T>)? = null
     ): UInt {
-        val previousPage = getMinPageFrom(currentPage, predicate = { it.isDataState() }) - 1u
+        val previousPage = getMinPageFrom(currentPage) { pageState ->
+            (pageState as? Success)?.data?.size == capacity
+        } - 1u
         check(previousPage > 0u)
-        if (pages[previousPage]?.isProgressState() == true)
+        if (pages[previousPage].isProgressState())
             return previousPage
 
         loadPageState(
@@ -240,10 +249,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
                 _snapshot.update { scan() }
             },
             initEmptyState = initEmptyState,
-            initDataState = initDataState,
+            initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { finalPageState ->
-            if (finalPageState.isDataState()) currentPage = previousPage
+            if (finalPageState.isSuccessState()) currentPage = previousPage
             pages[previousPage] = finalPageState
             _snapshot.update { scan() }
         }
@@ -257,7 +266,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * Входные параметры:
      * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
      * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initDataState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
+     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
      * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
      *
      * Выходные параметры:
@@ -266,14 +275,14 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * Особенности и ограничения:
      * - Функция обновляет состояния всех страниц в `pages`, загружая их из источника данных.
      * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initDataState`, или `DataState`, если `initDataState` равно `null`.
+     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
      * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
     suspend fun refresh(
-        initProgressState: ((data: List<T>) -> PageState.ProgressState<T>)? = null,
-        initEmptyState: (() -> PageState.EmptyState<T>)? = null,
-        initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
-        initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
+        initProgressState: ((data: List<T>) -> Progress<T>)? = null,
+        initEmptyState: (() -> Empty<T>)? = null,
+        initSuccessState: ((List<T>) -> Success<T>)? = null,
+        initErrorState: ((Exception) -> Error<T>)? = null
     ) {
         coroutineScope {
             pages.forEach { (k, v) ->
@@ -293,7 +302,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
                             page = page,
                             forceLoading = true,
                             initEmptyState = initEmptyState,
-                            initDataState = initDataState,
+                            initSuccessState = initSuccessState,
                             initErrorState = initErrorState
                         )
                     }
@@ -314,7 +323,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - `loading`: функция, которая вызывается перед загрузкой состояния страницы из источника данных. По умолчанию `null`.
      * - `source`: функция, возвращающая список элементов типа `T` для указанной страницы. По умолчанию используется источник данных этого объекта.
      * - `initEmptyState`: функция, возвращающая пустое состояние страницы, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initDataState`: функция, возвращающая состояние данных страницы, если источник данных вернул непустой список. По умолчанию `null`.
+     * - `initSuccessState`: функция, возвращающая состояние данных страницы, если источник данных вернул непустой список. По умолчанию `null`.
      * - `initErrorState`: функция, возвращающая состояние ошибки, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
      *
      * Выходные параметры:
@@ -324,7 +333,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Если `forceLoading` равно `false` и состояние страницы уже кэшировано, функция возвращает кэшированное состояние.
      * - Если `forceLoading` равно `true` или состояние страницы не кэшировано, функция загружает состояние страницы из источника данных.
      * - Если источник данных вернул пустой список, функция возвращает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список, функция возвращает состояние данных, созданное с помощью `initDataState`, или `DataState`, если `initDataState` равно `null`.
+     * - Если источник данных вернул непустой список, функция возвращает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
      * - Если при загрузке состояния страницы произошла ошибка, функция возвращает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
     suspend fun loadPageState(
@@ -332,18 +341,18 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         forceLoading: Boolean = false,
         loading: ((page: UInt) -> Unit)? = null,
         source: suspend (page: UInt) -> List<T> = this.source,
-        initEmptyState: (() -> PageState.EmptyState<T>)? = null,
-        initDataState: ((List<T>) -> PageState.DataState<T>)? = null,
-        initErrorState: ((Exception) -> PageState.ErrorState<T>)? = null
+        initEmptyState: (() -> Empty<T>)? = null,
+        initSuccessState: ((List<T>) -> Success<T>)? = null,
+        initErrorState: ((Exception) -> Error<T>)? = null
     ): PageState<T> {
         return try {
             val cachedState = if (forceLoading) null else pages[page]
-            if (cachedState is PageState.DataState<*>)
+            if (cachedState is Success<*> && cachedState.data.size == capacity)
                 return cachedState
             loading?.invoke(page)
             val data = source.invoke(page)
             if (data.isEmpty()) initEmptyState?.invoke() ?: EmptyState(page = page)
-            else initDataState?.invoke(data) ?: DataState(page = page, data = data)
+            else initSuccessState?.invoke(data) ?: SuccessState(page = page, data = data)
         } catch (e: Exception) {
             initErrorState?.invoke(e) ?: ErrorState(e, page = page)
         }
@@ -471,19 +480,22 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         val updatedData = pageState.data.toMutableList()
             .also { removed = it.removeAt(index) }
 
-        if (updatedData.size < pageCapacity) {
+        if (updatedData.size < capacity) {
             val nextPageState = pages[page + 1u]
             if (nextPageState != null
                 && nextPageState::class == pageState::class
-                && nextPageState.data.isNotEmpty()
             ) {
-                updatedData.add(
-                    removeElement(
-                        page = page + 1u,
-                        index = 0,
-                        silently = true
+                while (updatedData.size < capacity
+                    && nextPageState.data.isNotEmpty()
+                ) {
+                    updatedData.add(
+                        removeElement(
+                            page = page + 1u,
+                            index = 0,
+                            silently = true
+                        )
                     )
-                )
+                }
             }
         }
 
@@ -551,32 +563,57 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         silently: Boolean = false,
         initPageState: (() -> PageState<T>)? = null
     ) {
+        return addAllElements(
+            elements = listOf(element),
+            page = page,
+            index = index,
+            silently = silently,
+            initPageState = initPageState
+        )
+    }
+
+    fun addAllElements(
+        elements: List<T>,
+        page: UInt,
+        index: Int,
+        silently: Boolean = false,
+        initPageState: (() -> PageState<T>)? = null
+    ) {
         val pageState = (initPageState?.invoke() ?: pages[page])
             ?: throw IndexOutOfBoundsException(
                 "page-$page was not created"
             )
 
         val updatedData = pageState.data.toMutableList()
-            .also { it.add(index, element) }
-        val extraElement =
-            if (updatedData.size > pageCapacity)
-                updatedData.removeLast()
-            else null
+            .also { it.addAll(index, elements) }
+        val extraElements =
+            if (updatedData.size > capacity) {
+                val initialCapacity = updatedData.size - capacity
+                ArrayList<T>(initialCapacity)
+                    .apply {
+                        repeat(initialCapacity) { add(updatedData.removeLast()) }
+                        reverse()
+                    }
+            } else null
 
         pages[page] = pageState.copy(data = updatedData)
 
-        if (extraElement != null) {
+        if (!extraElements.isNullOrEmpty()) {
             val nextPageState = pages[page + 1u]
             if ((nextPageState != null && nextPageState::class == pageState::class)
                 || (nextPageState == null && initPageState != null)
             ) {
-                addElement(
-                    element = extraElement,
+                addAllElements(
+                    elements = extraElements,
                     page = page + 1u,
                     index = 0,
                     silently = true,
                     initPageState = initPageState
                 )
+            } else {
+                val rangePageInvalidated = (page + 1u)..pages.keys.last()
+                for (invalid in rangePageInvalidated) pages.remove(invalid)
+                currentPage = page
             }
         }
 
@@ -587,6 +624,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             }
         }
     }
+
 
     fun setElement(
         element: T,
@@ -833,6 +871,41 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return min
     }
 
+    fun resize(
+        capacity: Int,
+        resize: Boolean = true,
+        silently: Boolean = false,
+        initPageState: (() -> PageState<T>)? = null
+    ) {
+        if (this.capacity == capacity) return
+        check(capacity > 0)
+        this.capacity = capacity
+
+        if (resize) {
+            val startSuccessChain = pages.keys.toList()
+                .find { pages[it].isSuccessState() }
+            if (startSuccessChain != null) {
+                addElement(
+                    element = removeElement(
+                        page = startSuccessChain,
+                        index = 0,
+                        silently = true
+                    ),
+                    page = startSuccessChain,
+                    index = 0,
+                    silently = true,
+                    initPageState = initPageState
+                )
+
+                currentPage = startSuccessChain
+            }
+        }
+
+        if (!silently) {
+            _snapshot.update { scan() }
+        }
+    }
+
     /**
      * Функция `release` предназначена для сброса состояния объекта, в котором она вызывается. Эта функция не принимает входных параметров и не возвращает результатов.
      *
@@ -851,16 +924,16 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     fun ProgressState(page: UInt, data: List<T> = emptyList()) =
-        PageState.ProgressState(page, data)
+        Progress(page, data)
 
-    fun DataState(page: UInt, data: List<T> = emptyList()) =
-        if (data.isEmpty()) EmptyState(page = page) else PageState.DataState(page, data)
+    fun SuccessState(page: UInt, data: List<T> = emptyList()) =
+        if (data.isEmpty()) EmptyState(page = page) else Success(page, data)
 
     fun EmptyState(page: UInt, data: List<T> = emptyList()) =
-        PageState.EmptyState(page, data)
+        Empty(page, data)
 
     fun ErrorState(e: Exception, page: UInt, data: List<T> = emptyList()) =
-        PageState.ErrorState(e, page, data)
+        Error(e, page, data)
 
     override fun toString() = "Paginator(pages=$pages, bookmarks=$bookmarks)"
 
@@ -868,45 +941,47 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
 
     override fun equals(other: Any?) = (other as? Paginator<*>)?.pages === this.pages
 
+    companion object {
+        fun PageState<*>?.isProgressState() = this is Progress<*>
+        fun PageState<*>?.isEmptyState() = this is Empty<*>
+        fun PageState<*>?.isSuccessState() = this is Success<*>
+        fun PageState<*>?.isErrorState() = this is Error<*>
+    }
+
     sealed class PageState<E>(
         open val page: UInt,
         open val data: List<E>
     ) {
 
-        open class ProgressState<T>(
+        open class Progress<T>(
             override val page: UInt,
             override val data: List<T>,
         ) : PageState<T>(page, data)
 
-        open class DataState<T>(
+        open class Success<T>(
             override val page: UInt,
             override val data: List<T>,
         ) : PageState<T>(page, data)
 
-        open class EmptyState<T>(
+        open class Empty<T>(
             override val page: UInt,
             override val data: List<T>,
         ) : PageState<T>(page, data)
 
-        open class ErrorState<T>(
+        open class Error<T>(
             val e: Exception,
             override val page: UInt,
             override val data: List<T>,
         ) : PageState<T>(page, data)
 
-        fun isProgressState() = this is ProgressState<E>
-        fun isEmptyState() = this is EmptyState<E>
-        fun isDataState() = this is DataState<E>
-        fun isErrorState() = this is ErrorState<E>
-
         fun copy(
             page: UInt = this.page,
             data: List<E> = this.data
         ): PageState<E> = when (this) {
-            is ProgressState -> ProgressState(page, data)
-            is DataState -> if (data.isEmpty()) EmptyState(page, data) else DataState(page, data)
-            is EmptyState -> EmptyState(page, data)
-            is ErrorState -> ErrorState(this.e, page, data)
+            is Progress -> Progress(page, data)
+            is Success -> if (data.isEmpty()) Empty(page, data) else Success(page, data)
+            is Empty -> Empty(page, data)
+            is Error -> Error(e, page, data)
         }
 
         override fun toString() = "${this::class.simpleName}(data=${this.data})"
