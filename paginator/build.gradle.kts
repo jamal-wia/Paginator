@@ -53,7 +53,7 @@ afterEvaluate {
             create("release", MavenPublication::class) {
                 from(components["release"])
                 groupId = "com.github.jamal-wia"
-                artifactId = "navigationcontroller"
+                artifactId = "paginator"
                 version = "2.0.0"
             }
         }
