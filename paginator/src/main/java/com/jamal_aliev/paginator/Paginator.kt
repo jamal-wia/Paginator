@@ -51,9 +51,9 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         initSuccessState: ((List<T>) -> Success<T>)? = null,
         initErrorState: ((Exception) -> Error<T>)? = null
     ): Bookmark? {
-        val bookmark =
-            if (bookmarkIterator.hasNext()) bookmarkIterator.next()
-            else return null
+        val bookmark = bookmarkIterator
+            .takeIf { it.hasNext() }
+            ?.next() ?: return null
         return jump(
             bookmark = bookmark,
             initProgressState = initProgressState,
@@ -89,9 +89,9 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         initSuccessState: ((List<T>) -> Success<T>)? = null,
         initErrorState: ((Exception) -> Error<T>)? = null
     ): Bookmark? {
-        val bookmark =
-            if (bookmarkIterator.hasPrevious()) bookmarkIterator.previous()
-            else return null
+        val bookmark = bookmarkIterator
+            .takeIf { it.hasPrevious() }
+            ?.previous() ?: return null
         return jump(
             bookmark = bookmark,
             initProgressState = initProgressState,
@@ -182,7 +182,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         initSuccessState: ((List<T>) -> Success<T>)? = null,
         initErrorState: ((Exception) -> Error<T>)? = null
     ): UInt {
-        val nextPage = getMaxPageFrom(currentPage) { pageState ->
+        val nextPage = findPageAfter(currentPage) { pageState ->
             (pageState as? Success)?.data?.size == capacity
         } + 1u
         check(nextPage > 0u)
@@ -234,7 +234,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         initSuccessState: ((List<T>) -> Success<T>)? = null,
         initErrorState: ((Exception) -> Error<T>)? = null
     ): UInt {
-        val previousPage = getMinPageFrom(currentPage) { pageState ->
+        val previousPage = findPageBefore(currentPage) { pageState ->
             (pageState as? Success)?.data?.size == capacity
         } - 1u
         check(previousPage > 0u)
@@ -358,14 +358,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         }
     }
 
-    fun removeBookmark(bookmark: Bookmark): Boolean {
-        return bookmarks.remove(bookmark)
-    }
-
-    fun addBookmark(bookmark: Bookmark): Boolean {
-        return bookmarks.add(bookmark)
-    }
-
     /**
      * Функция `removePageState` предназначена для удаления состояния страницы из коллекции `pages`.
      *
@@ -399,6 +391,14 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     ) {
         pages[state.page] = state
         if (!silently) _snapshot.update { scan() }
+    }
+
+    fun removeBookmark(bookmark: Bookmark): Boolean {
+        return bookmarks.remove(bookmark)
+    }
+
+    fun addBookmark(bookmark: Bookmark): Boolean {
+        return bookmarks.add(bookmark)
     }
 
     /**
@@ -502,7 +502,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         pages[page] = pageState.copy(data = updatedData)
 
         if (!silently) {
-            val rangeSnapshot = getMinPageFrom(currentPage)..getMaxPageFrom(currentPage)
+            val rangeSnapshot = findPageBefore(currentPage)..findPageAfter(currentPage)
             if (page in rangeSnapshot) {
                 _snapshot.update { scan(rangeSnapshot) }
             }
@@ -618,7 +618,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         }
 
         if (!silently) {
-            val rangeSnapshot = getMinPageFrom(currentPage)..getMaxPageFrom(currentPage)
+            val rangeSnapshot = findPageBefore(currentPage)..findPageAfter(currentPage)
             if (page in rangeSnapshot) {
                 _snapshot.update { scan(rangeSnapshot) }
             }
@@ -654,7 +654,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         )
 
         if (!silently) {
-            val rangeSnapshot = getMinPageFrom(currentPage)..getMaxPageFrom(currentPage)
+            val rangeSnapshot = findPageBefore(currentPage)..findPageAfter(currentPage)
             if (page in rangeSnapshot) {
                 _snapshot.update { scan(rangeSnapshot) }
             }
@@ -811,8 +811,8 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      */
     fun scan(
         range: UIntRange = kotlin.run {
-            val min = getMinPageFrom(currentPage)
-            val max = getMaxPageFrom(currentPage)
+            val min = findPageBefore(currentPage)
+            val max = findPageAfter(currentPage)
             return@run min..max
         }
     ): List<PageState<T>> {
@@ -835,7 +835,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * Особенности использования:
      * - Функция может вернуть ту же самую страницу, если нет других страниц, удовлетворяющих предикату.
      */
-    fun getMaxPageFrom(
+    fun findPageAfter(
         page: UInt,
         predicate: (PageState<T>) -> Boolean = { true }
     ): UInt {
@@ -858,7 +858,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * Особенности использования:
      * - Функция может вернуть ту же самую страницу, если нет других страниц, удовлетворяющих предикату.
      */
-    fun getMinPageFrom(
+    fun findPageBefore(
         page: UInt,
         predicate: (PageState<T>) -> Boolean = { true }
     ): UInt {
