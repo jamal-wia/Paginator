@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.jamal_aliev.paginator.MainViewState.DataState
+import com.jamal_aliev.paginator.MainViewState.ProgressState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -17,19 +19,18 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class MainViewModel : ViewModel() {
-    private val _state = MutableStateFlow(DataState(emptyList()))
 
+    private val _state: MutableStateFlow<MainViewState> = MutableStateFlow(ProgressState)
     val state = _state.asStateFlow()
-    private val paginator = Paginator(source = { SampleRepository.loadPage(it.toInt()) })
 
+    private val paginator = Paginator(source = { SampleRepository.loadPage(it.toInt()) })
 
     private var paginatorJob: Job? = null
 
     init {
         paginator.snapshot
-            .onEach { data ->
-                _state.update { DataState(data) }
-            }
+            .filter { it.isNotEmpty() }
+            .onEach { data -> _state.update { DataState(data) } }
             .flowOn(Dispatchers.Main)
             .launchIn(viewModelScope)
 

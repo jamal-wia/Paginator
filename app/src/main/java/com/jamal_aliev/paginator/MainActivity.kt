@@ -4,7 +4,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
@@ -17,7 +23,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jamal_aliev.paginator.MainViewState.DataState
@@ -37,9 +46,25 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val state by viewModel.state.collectAsStateWithLifecycle()
-                    DataState(state = state)
+
+                    when (state) {
+                        is DataState -> {
+                            DataState(state = state as DataState)
+                        }
+
+                        MainViewState.ProgressState -> {
+                            ProgressState()
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun ProgressState() {
+        Box(contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
     }
 
@@ -64,24 +89,82 @@ class MainActivity : ComponentActivity() {
             state.data.forEach { pageState ->
                 when (pageState) {
                     is Paginator.PageState.Success -> {
-                        items(pageState.data.size) {
-                            StrItem(data = pageState.data[it])
+                        items(pageState.data.size) { index ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                if (index == 0) {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(text = "PageSuccess #${pageState.page}")
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.Green),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    StrItem(data = pageState.data[index])
+                                }
+
+                                if (index == pageState.data.lastIndex) {
+                                    Text(text = "PageSuccess #${pageState.page}")
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                }
+                            }
                         }
                     }
 
                     is Paginator.PageState.Empty -> TODO()
+
                     is Paginator.PageState.Error -> {
                         item {
-                            Text(text = pageState.e.message.toString())
-                            Button(onClick = { viewModel.refreshPage(pageState) }) {
-                                Text(text = "Refreshing")
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(text = "PageError #${pageState.page}")
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.Red),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(text = pageState.e.message.toString())
+                                    Button(onClick = { viewModel.refreshPage(pageState) }) {
+                                        Text(text = "Refresh")
+                                    }
+                                }
+                                Text(text = "PageError #${pageState.page}")
+                                Spacer(modifier = Modifier.height(16.dp))
                             }
                         }
                     }
 
                     is Paginator.PageState.Progress -> {
                         item {
-                            CircularProgressIndicator()
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(text = "PageProgress #${pageState.page}")
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.Cyan),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+
+                                Text(text = "PageProgress #${pageState.page}")
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
                         }
                     }
                 }
@@ -92,7 +175,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun StrItem(data: String) {
         Text(
-            text = data,
+            text = "Item $data",
             fontSize = 26.sp
         )
     }
