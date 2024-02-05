@@ -6,9 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.jamal_aliev.paginator.MainViewState.DataState
 import com.jamal_aliev.paginator.MainViewState.ProgressState
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
@@ -25,8 +23,6 @@ class MainViewModel : ViewModel() {
 
     private val paginator = Paginator(source = { SampleRepository.loadPage(it.toInt()) })
 
-    private var paginatorJob: Job? = null
-
     init {
         paginator.snapshot
             .filter { it.isNotEmpty() }
@@ -34,8 +30,7 @@ class MainViewModel : ViewModel() {
             .flowOn(Dispatchers.Main)
             .launchIn(viewModelScope)
 
-        paginatorJob = viewModelScope.launch {
-            delay(timeMillis = 1L)
+        viewModelScope.launch {
             val async1 = async { paginator.loadPageState(1u, forceLoading = true) }
             val async2 = async { paginator.loadPageState(2u, forceLoading = true) }
             val async3 = async { paginator.loadPageState(3u, forceLoading = true) }
@@ -46,28 +41,18 @@ class MainViewModel : ViewModel() {
             paginator.setPageState(state = pageState2, silently = true)
             paginator.setPageState(state = pageState3, silently = true)
             paginator.jumpForward()
-            paginatorJob = null
         }
     }
+
 
     fun endReached() {
-        if (paginatorJob != null) return
-        paginatorJob = viewModelScope.launch {
-            delay(timeMillis = 1L)
+        viewModelScope.launch {
             paginator.nextPage()
-            paginatorJob = null
         }
-    }
-
-    override fun onCleared() {
-        paginator.release()
-        super.onCleared()
     }
 
     fun refreshPage(pageState: Paginator.PageState.Error<String>) {
-        if (paginatorJob != null) return
-        paginatorJob = viewModelScope.launch {
-            delay(timeMillis = 1L)
+        viewModelScope.launch {
             val newState = paginator.loadPageState(
                 page = pageState.page,
                 forceLoading = true,
@@ -76,8 +61,12 @@ class MainViewModel : ViewModel() {
                 }
             )
             paginator.setPageState(newState)
-            paginatorJob = null
         }
+    }
+
+    override fun onCleared() {
+        paginator.release()
+        super.onCleared()
     }
 
     class Factory : ViewModelProvider.Factory {
@@ -85,5 +74,4 @@ class MainViewModel : ViewModel() {
             return MainViewModel() as T
         }
     }
-
 }
