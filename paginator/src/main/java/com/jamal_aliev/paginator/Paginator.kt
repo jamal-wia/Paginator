@@ -13,7 +13,6 @@ import kotlin.math.max
 
 class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
 
-    // TODO Настроить нормальную логику ресайзинга
     var capacity: Int = 20
         private set
 
@@ -27,10 +26,22 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     private val _snapshot = MutableStateFlow(emptyList<PageState<T>>())
     val snapshot = _snapshot.asStateFlow()
 
-    var initProgressState: (() -> Progress<T>)? = null
-    var initEmptyState: (() -> Empty<T>)? = null
-    var initSuccessState: ((List<T>) -> Success<T>)? = null
-    var initErrorState: ((Exception) -> Error<T>)? = null
+    var initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = null
+    var initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = null
+    var initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = null
+    var initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = null
+
+    fun ProgressState(page: UInt, data: List<T> = emptyList()) =
+        Progress(page, data)
+
+    fun SuccessState(page: UInt, data: List<T> = emptyList()) =
+        if (data.isEmpty()) EmptyState(page, data) else Success(page, data)
+
+    fun EmptyState(page: UInt, data: List<T> = emptyList()) =
+        Empty(page, data)
+
+    fun ErrorState(exception: Exception, page: UInt, data: List<T> = emptyList()) =
+        Error(exception, page, data)
 
     /**
      * Функция `jumpForward` предназначена для перехода к странице, указанной в следующей закладке, в коллекции `pages`.
@@ -54,10 +65,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      */
     suspend fun jumpForward(
         recycling: Boolean = this.recyclingBookmark,
-        initProgressState: (() -> Progress<T>)? = this.initProgressState,
-        initEmptyState: (() -> Empty<T>)? = this.initEmptyState,
-        initSuccessState: ((List<T>) -> Success<T>)? = this.initSuccessState,
-        initErrorState: ((Exception) -> Error<T>)? = this.initErrorState
+        initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
+        initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
+        initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): Bookmark? {
         var bookmark = bookmarkIterator
             .takeIf { it.hasNext() }
@@ -106,10 +117,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      */
     suspend fun jumpBack(
         recycling: Boolean = this.recyclingBookmark,
-        initProgressState: (() -> Progress<T>)? = this.initProgressState,
-        initEmptyState: (() -> Empty<T>)? = this.initEmptyState,
-        initSuccessState: ((List<T>) -> Success<T>)? = this.initSuccessState,
-        initErrorState: ((Exception) -> Error<T>)? = this.initErrorState
+        initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
+        initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
+        initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): Bookmark? {
         var bookmark = bookmarkIterator
             .takeIf { it.hasPrevious() }
@@ -158,10 +169,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      */
     suspend fun jump(
         bookmark: Bookmark,
-        initProgressState: (() -> Progress<T>)? = this.initProgressState,
-        initEmptyState: (() -> Empty<T>)? = this.initEmptyState,
-        initSuccessState: ((List<T>) -> Success<T>)? = this.initSuccessState,
-        initErrorState: ((Exception) -> Error<T>)? = this.initErrorState
+        initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
+        initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
+        initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): Bookmark {
         check(bookmark.page > 0u)
         currentPage = bookmark.page
@@ -174,9 +185,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         loadPageState(
             page = bookmark.page,
             forceLoading = true,
-            loading = { page ->
-                val progressState = initProgressState?.invoke() ?: ProgressState(page = page)
-                pages[page] = progressState
+            loading = { page, pageState ->
+                pages[page] = initProgressState?.invoke(
+                    page, pageState?.data.orEmpty()
+                ) ?: ProgressState(page)
                 _snapshot.update { scan() }
             },
             initEmptyState = initEmptyState,
@@ -211,10 +223,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
     suspend fun nextPage(
-        initProgressState: (() -> Progress<T>)? = this.initProgressState,
-        initEmptyState: (() -> Empty<T>)? = this.initEmptyState,
-        initSuccessState: ((List<T>) -> Success<T>)? = this.initSuccessState,
-        initErrorState: ((Exception) -> Error<T>)? = this.initErrorState
+        initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
+        initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
+        initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): UInt {
         val nextPage = searchPageAfter(currentPage) { it.isValidSuccessState() } + 1u
         check(nextPage > 0u)
@@ -223,9 +235,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
 
         loadPageState(
             page = nextPage,
-            loading = { page ->
-                val progressState = initProgressState?.invoke() ?: ProgressState(page = page)
-                pages[page] = progressState
+            loading = { page, pageState ->
+                pages[page] = initProgressState?.invoke(
+                    page, pageState?.data.orEmpty()
+                ) ?: ProgressState(page)
                 _snapshot.update { scan() }
             },
             initEmptyState = initEmptyState,
@@ -261,10 +274,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
     suspend fun previousPage(
-        initProgressState: (() -> Progress<T>)? = this.initProgressState,
-        initEmptyState: (() -> Empty<T>)? = this.initEmptyState,
-        initSuccessState: ((List<T>) -> Success<T>)? = this.initSuccessState,
-        initErrorState: ((Exception) -> Error<T>)? = this.initErrorState
+        initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
+        initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
+        initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): UInt {
         val previousPage = searchPageBefore(currentPage) { it.isValidSuccessState() } - 1u
         check(previousPage > 0u)
@@ -273,9 +286,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
 
         loadPageState(
             page = previousPage,
-            loading = { page ->
-                val progressState = initProgressState?.invoke() ?: ProgressState(page = page)
-                pages[page] = progressState
+            loading = { page, pageState ->
+                pages[page] = initProgressState?.invoke(
+                    page, pageState?.data.orEmpty()
+                ) ?: ProgressState(page)
                 _snapshot.update { scan() }
             },
             initEmptyState = initEmptyState,
@@ -310,9 +324,9 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      */
     suspend fun refresh(
         initProgressState: ((data: List<T>) -> Progress<T>)? = null,
-        initEmptyState: (() -> Empty<T>)? = this.initEmptyState,
-        initSuccessState: ((List<T>) -> Success<T>)? = this.initSuccessState,
-        initErrorState: ((Exception) -> Error<T>)? = this.initErrorState
+        initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
+        initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ) {
         coroutineScope {
             pages.forEach { (k, v) ->
@@ -369,22 +383,21 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     suspend fun loadPageState(
         page: UInt,
         forceLoading: Boolean = false,
-        loading: ((page: UInt) -> Unit)? = null,
+        loading: ((page: UInt, pageState: PageState<T>?) -> Unit)? = null,
         source: suspend (page: UInt) -> List<T> = this.source,
-        initEmptyState: (() -> Empty<T>)? = this.initEmptyState,
-        initSuccessState: ((List<T>) -> Success<T>)? = this.initSuccessState,
-        initErrorState: ((Exception) -> Error<T>)? = this.initErrorState
+        initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
+        initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): PageState<T> {
         return try {
             val cachedState = if (forceLoading) null else pages[page]
-            if (cachedState is Success<*> && cachedState.data.size == capacity)
-                return cachedState
-            loading?.invoke(page)
+            if (cachedState.isValidSuccessState()) return cachedState!!
+            loading?.invoke(page, cachedState)
             val data = source.invoke(page)
-            if (data.isEmpty()) initEmptyState?.invoke() ?: EmptyState(page = page)
-            else initSuccessState?.invoke(data) ?: SuccessState(page = page, data = data)
-        } catch (e: Exception) {
-            initErrorState?.invoke(e) ?: ErrorState(e, page = page)
+            if (data.isEmpty()) initEmptyState?.invoke(page, data) ?: EmptyState(page)
+            else initSuccessState?.invoke(page, data) ?: SuccessState(page, data)
+        } catch (exception: Exception) {
+            initErrorState?.invoke(exception, page, emptyList()) ?: ErrorState(exception, page)
         }
     }
 
@@ -909,29 +922,31 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         capacity: Int,
         resize: Boolean = true,
         silently: Boolean = false,
-        initPageState: (() -> PageState<T>)? = null
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState
     ) {
         if (this.capacity == capacity) return
         check(capacity > 0)
         this.capacity = capacity
 
         if (resize) {
-            val startSuccessChain = pages.keys.toList()
-                .find { pages[it].isSuccessState() }
-            if (startSuccessChain != null) {
-                addElement(
-                    element = removeElement(
-                        page = startSuccessChain,
-                        index = 0,
-                        silently = true
-                    ),
-                    page = startSuccessChain,
-                    index = 0,
-                    silently = true,
-                    initPageState = initPageState
-                )
+            val firstSuccessPage = searchPageBefore(currentPage) { it.isSuccessState() }
+            val lastSuccessPage = searchPageAfter(currentPage) { it.isSuccessState() }
+            val successStatesRange = firstSuccessPage..lastSuccessPage
+            val successStates = successStatesRange.map { pages.getValue(it) }
+            val items = successStates.flatMap { it.data }.toMutableList()
 
-                currentPage = startSuccessChain
+            pages.clear()
+
+            var pageIndex = firstSuccessPage
+            while (items.isNotEmpty()) {
+                val successData = mutableListOf<T>()
+                while (items.isNotEmpty() && successData.size < capacity) {
+                    successData.add(items.removeFirst())
+                }
+
+                pages[pageIndex] = initSuccessState?.invoke(pageIndex, successData)
+                    ?: SuccessState(pageIndex, successData)
+                pageIndex++
             }
         }
 
@@ -958,18 +973,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         currentPage = 0u
         _snapshot.update { emptyList() }
     }
-
-    fun ProgressState(page: UInt, data: List<T> = emptyList()) =
-        Progress(page, data)
-
-    fun SuccessState(page: UInt, data: List<T> = emptyList()) =
-        if (data.isEmpty()) EmptyState(page = page) else Success(page, data)
-
-    fun EmptyState(page: UInt, data: List<T> = emptyList()) =
-        Empty(page, data)
-
-    fun ErrorState(e: Exception, page: UInt, data: List<T> = emptyList()) =
-        Error(e, page, data)
 
     override fun toString() = "Paginator(pages=$pages, bookmarks=$bookmarks)"
 
