@@ -9,6 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlin.math.max
 
 class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
@@ -17,7 +18,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         private set
 
     private var currentPage = 0u
-    private val pages = hashMapOf<UInt, PageState<T>>()
+    private val cache = hashMapOf<UInt, PageState<T>>()
 
     val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkUInt(page = 1u))
     var recyclingBookmark = false
@@ -177,7 +178,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         check(bookmark.page > 0u)
         currentPage = bookmark.page
 
-        if (pages[bookmark.page].isValidSuccessState()) {
+        if (cache[bookmark.page].isValidSuccessState()) {
             _snapshot.update { scan() }
             return bookmark
         }
@@ -186,7 +187,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             page = bookmark.page,
             forceLoading = true,
             loading = { page, pageState ->
-                pages[page] = initProgressState?.invoke(
+                cache[page] = initProgressState?.invoke(
                     page, pageState?.data.orEmpty()
                 ) ?: ProgressState(page)
                 _snapshot.update { scan() }
@@ -195,7 +196,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { finalPageState ->
-            pages[bookmark.page] = finalPageState
+            cache[bookmark.page] = finalPageState
             _snapshot.update { scan() }
         }
 
@@ -227,16 +228,29 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
         initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
         initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
-    ): UInt {
+    ): UInt = coroutineScope {
         val nextPage = searchPageAfter(currentPage) { it.isValidSuccessState() } + 1u
         check(nextPage > 0u)
-        if (pages[nextPage].isProgressState())
-            return nextPage
+        if (cache[nextPage].isProgressState())
+            return@coroutineScope nextPage
+
+        val refreshJob = if (cache[currentPage].isValidSuccessState()) null
+        else launch {
+            refresh(
+                pages = listOf(currentPage),
+                loadingSilently = true,
+                finalSilently = true,
+                initProgressState = initProgressState,
+                initEmptyState = initEmptyState,
+                initSuccessState = initSuccessState,
+                initErrorState = initErrorState
+            )
+        }
 
         loadPageState(
             page = nextPage,
             loading = { page, pageState ->
-                pages[page] = initProgressState?.invoke(
+                cache[page] = initProgressState?.invoke(
                     page, pageState?.data.orEmpty()
                 ) ?: ProgressState(page)
                 _snapshot.update { scan() }
@@ -246,11 +260,12 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             initErrorState = initErrorState
         ).also { finalPageState ->
             if (finalPageState.isSuccessState()) currentPage = nextPage
-            pages[nextPage] = finalPageState
+            cache[nextPage] = finalPageState
             _snapshot.update { scan() }
         }
 
-        return nextPage
+        refreshJob?.join()
+        return@coroutineScope nextPage
     }
 
     /**
@@ -278,16 +293,29 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
         initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
         initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
-    ): UInt {
+    ): UInt = coroutineScope {
         val previousPage = searchPageBefore(currentPage) { it.isValidSuccessState() } - 1u
         check(previousPage > 0u)
-        if (pages[previousPage].isProgressState())
-            return previousPage
+        if (cache[previousPage].isProgressState())
+            return@coroutineScope previousPage
+
+        val refreshJob = if (cache[currentPage].isValidSuccessState()) null
+        else launch {
+            refresh(
+                pages = listOf(currentPage),
+                loadingSilently = true,
+                finalSilently = true,
+                initProgressState = initProgressState,
+                initEmptyState = initEmptyState,
+                initSuccessState = initSuccessState,
+                initErrorState = initErrorState
+            )
+        }
 
         loadPageState(
             page = previousPage,
             loading = { page, pageState ->
-                pages[page] = initProgressState?.invoke(
+                cache[page] = initProgressState?.invoke(
                     page, pageState?.data.orEmpty()
                 ) ?: ProgressState(page)
                 _snapshot.update { scan() }
@@ -297,11 +325,49 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             initErrorState = initErrorState
         ).also { finalPageState ->
             if (finalPageState.isSuccessState()) currentPage = previousPage
-            pages[previousPage] = finalPageState
+            cache[previousPage] = finalPageState
             _snapshot.update { scan() }
         }
 
-        return previousPage
+        refreshJob?.join()
+        return@coroutineScope previousPage
+    }
+
+    suspend fun refresh(
+        pages: List<UInt>,
+        loadingSilently: Boolean = false,
+        finalSilently: Boolean = false,
+        initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
+        initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
+        initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
+    ): Unit = coroutineScope {
+        pages.forEach { page ->
+            cache[page] = initProgressState?.invoke(
+                page, cache[page]?.data.orEmpty()
+            ) ?: ProgressState(page)
+        }
+        if (!loadingSilently) {
+            _snapshot.update { scan() }
+        }
+
+        pages.map { page ->
+            async {
+                loadPageState(
+                    page = page,
+                    forceLoading = true,
+                    initEmptyState = initEmptyState,
+                    initSuccessState = initSuccessState,
+                    initErrorState = initErrorState
+                ).also { finalPageState ->
+                    cache[page] = finalPageState
+                }
+            }
+        }.forEach { it.await() }
+
+        if (!finalSilently) {
+            _snapshot.update { scan() }
+        }
     }
 
     /**
@@ -322,40 +388,23 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
      * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
      */
-    suspend fun refresh(
-        initProgressState: ((data: List<T>) -> Progress<T>)? = null,
+    suspend fun refreshAll(
+        loadingSilently: Boolean = false,
+        finalSilently: Boolean = false,
+        initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
         initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
         initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
         initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ) {
-        coroutineScope {
-            pages.forEach { (k, v) ->
-                pages[k] = initProgressState?.invoke(v.data)
-                    ?: ProgressState(page = k, data = v.data)
-            }
-            _snapshot.update {
-                it.map { pageState ->
-                    initProgressState?.invoke(pageState.data)
-                        ?: ProgressState(page = pageState.page, data = pageState.data)
-                }
-            }
-            pages.keys.toList()
-                .map { page ->
-                    page to async {
-                        loadPageState(
-                            page = page,
-                            forceLoading = true,
-                            initEmptyState = initEmptyState,
-                            initSuccessState = initSuccessState,
-                            initErrorState = initErrorState
-                        )
-                    }
-                }
-                .forEach { (page, async) ->
-                    pages[page] = async.await()
-                    _snapshot.update { scan() }
-                }
-        }
+        return refresh(
+            pages = cache.keys.toList(),
+            loadingSilently = loadingSilently,
+            finalSilently = finalSilently,
+            initProgressState = initProgressState,
+            initEmptyState = initEmptyState,
+            initSuccessState = initSuccessState,
+            initErrorState = initErrorState
+        )
     }
 
     /**
@@ -390,7 +439,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): PageState<T> {
         return try {
-            val cachedState = if (forceLoading) null else pages[page]
+            val cachedState = if (forceLoading) null else cache[page]
             if (cachedState.isValidSuccessState()) return cachedState!!
             loading?.invoke(page, cachedState)
             val data = source.invoke(page)
@@ -420,9 +469,9 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         page: UInt,
         initEmptyState: (() -> PageState<T>)? = null
     ): PageState<T>? {
-        val removed = pages.remove(page)
+        val removed = cache.remove(page)
         if (removed != null) {
-            pages[page] = initEmptyState?.invoke()
+            cache[page] = initEmptyState?.invoke()
                 ?: EmptyState(page = page)
         }
         return removed
@@ -432,7 +481,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         state: PageState<T>,
         silently: Boolean = false
     ) {
-        pages[state.page] = state
+        cache[state.page] = state
         if (!silently) _snapshot.update { scan() }
     }
 
@@ -459,8 +508,8 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только первый найденный.
      */
     fun removeElement(predicate: (T) -> Boolean): T? {
-        for (k in pages.keys.toList()) {
-            val v = pages.getValue(k)
+        for (k in cache.keys.toList()) {
+            val v = cache.getValue(k)
             for ((i, e) in v.data.withIndex()) {
                 if (predicate(e)) {
                     return removeElement(page = k, index = i)
@@ -486,7 +535,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов на странице, функция вернет только первый найденный.
      */
     fun removeElement(page: UInt, predicate: (T) -> Boolean): T? {
-        val v = pages.getValue(page)
+        val v = cache.getValue(page)
         for ((i, e) in v.data.withIndex()) {
             if (predicate(e)) {
                 return removeElement(page = page, index = i)
@@ -517,14 +566,14 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         index: Int,
         silently: Boolean = false,
     ): T {
-        val pageState = pages.getValue(page)
+        val pageState = cache.getValue(page)
         val removed: T
 
         val updatedData = pageState.data.toMutableList()
             .also { removed = it.removeAt(index) }
 
         if (updatedData.size < capacity) {
-            val nextPageState = pages[page + 1u]
+            val nextPageState = cache[page + 1u]
             if (nextPageState != null
                 && nextPageState::class == pageState::class
             ) {
@@ -542,7 +591,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             }
         }
 
-        pages[page] = pageState.copy(data = updatedData)
+        cache[page] = pageState.copy(data = updatedData)
 
         if (!silently) {
             val rangeSnapshot = searchPageBefore(currentPage)..searchPageAfter(currentPage)
@@ -575,8 +624,8 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         silently: Boolean = false,
         initPageState: (() -> PageState<T>)? = null
     ): Boolean {
-        val lastPage = pages.keys.maxOrNull() ?: return false
-        val lastIndex = pages.getValue(lastPage).data.lastIndex
+        val lastPage = cache.keys.maxOrNull() ?: return false
+        val lastIndex = cache.getValue(lastPage).data.lastIndex
         addElement(element, lastPage, lastIndex, silently, initPageState)
         return true
     }
@@ -622,7 +671,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         silently: Boolean = false,
         initPageState: (() -> PageState<T>)? = null
     ) {
-        val pageState = (initPageState?.invoke() ?: pages[page])
+        val pageState = (initPageState?.invoke() ?: cache[page])
             ?: throw IndexOutOfBoundsException(
                 "page-$page was not created"
             )
@@ -639,10 +688,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
                     }
             } else null
 
-        pages[page] = pageState.copy(data = updatedData)
+        cache[page] = pageState.copy(data = updatedData)
 
         if (!extraElements.isNullOrEmpty()) {
-            val nextPageState = pages[page + 1u]
+            val nextPageState = cache[page + 1u]
             if ((nextPageState != null && nextPageState::class == pageState::class)
                 || (nextPageState == null && initPageState != null)
             ) {
@@ -654,8 +703,8 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
                     initPageState = initPageState
                 )
             } else {
-                val rangePageInvalidated = (page + 1u)..pages.keys.last()
-                for (invalid in rangePageInvalidated) pages.remove(invalid)
+                val rangePageInvalidated = (page + 1u)..cache.keys.last()
+                for (invalid in rangePageInvalidated) cache.remove(invalid)
                 currentPage = page
             }
         }
@@ -674,8 +723,8 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         silently: Boolean = false,
         predicate: (T) -> Boolean
     ) {
-        for (page in pages.keys.toList()) {
-            val pageState = pages.getValue(page)
+        for (page in cache.keys.toList()) {
+            val pageState = cache.getValue(page)
             for ((index, e) in pageState.data.withIndex()) {
                 if (predicate(e)) {
                     setElement(element, page, index, silently)
@@ -690,8 +739,8 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         index: Int,
         silently: Boolean = false
     ) {
-        val pageState = pages.getValue(page)
-        pages[page] = pageState.copy(
+        val pageState = cache.getValue(page)
+        cache[page] = pageState.copy(
             data = pageState.data.toMutableList()
                 .also { it[index] = element }
         )
@@ -719,8 +768,8 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только первый найденный.
      */
     fun indexOfFirst(predicate: (T) -> Boolean): Pair<UInt, Int>? {
-        for (k in pages.keys.toList()) {
-            val v = pages.getValue(k)
+        for (k in cache.keys.toList()) {
+            val v = cache.getValue(k)
             for ((i, e) in v.data.withIndex()) {
                 if (predicate(e)) {
                     return k to i
@@ -746,7 +795,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только первый найденный.
      */
     fun indexOfFirst(predicate: (T) -> Boolean, page: UInt): Pair<UInt, Int>? {
-        val pageState = pages.getValue(page)
+        val pageState = cache.getValue(page)
         for ((i, e) in pageState.data.withIndex()) {
             if (predicate(e)) {
                 return page to i
@@ -788,8 +837,8 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только последний найденный.
      */
     fun indexOfLast(predicate: (T) -> Boolean): Pair<UInt, Int>? {
-        for (k in pages.keys.toList().reversed()) {
-            val v = pages.getValue(k)
+        for (k in cache.keys.toList().reversed()) {
+            val v = cache.getValue(k)
             for ((i, e) in v.data.reversed().withIndex()) {
                 if (predicate(e)) {
                     return k to i
@@ -815,7 +864,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только последний найденный.
      */
     fun indexOfLast(predicate: (T) -> Boolean, page: UInt): Pair<UInt, Int>? {
-        val pageState = pages.getValue(page)
+        val pageState = cache.getValue(page)
         for ((i, e) in pageState.data.reversed().withIndex()) {
             if (predicate(e)) {
                 return page to i
@@ -866,7 +915,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         val capacity = max(range.last - range.first, 1u)
         val result = ArrayList<PageState<T>>(capacity.toInt())
         for (item in range) {
-            val page = pages[item] ?: break
+            val page = cache[item] ?: break
             result.add(page)
         }
         return result
@@ -888,7 +937,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     ): UInt {
         var max = page
         while (true) {
-            val pageState = pages[max + 1u]
+            val pageState = cache[max + 1u]
             if (pageState != null && predicate(pageState)) max++
             else break
         }
@@ -911,7 +960,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     ): UInt {
         var min = page
         while (true) {
-            val pageState = pages[min - 1u]
+            val pageState = cache[min - 1u]
             if (pageState != null && predicate(pageState)) min--
             else break
         }
@@ -932,10 +981,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             val firstSuccessPage = searchPageBefore(currentPage) { it.isSuccessState() }
             val lastSuccessPage = searchPageAfter(currentPage) { it.isSuccessState() }
             val successStatesRange = firstSuccessPage..lastSuccessPage
-            val successStates = successStatesRange.map { pages.getValue(it) }
+            val successStates = successStatesRange.map { cache.getValue(it) }
             val items = successStates.flatMap { it.data }.toMutableList()
 
-            pages.clear()
+            cache.clear()
 
             var pageIndex = firstSuccessPage
             while (items.isNotEmpty()) {
@@ -944,7 +993,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
                     successData.add(items.removeFirst())
                 }
 
-                pages[pageIndex] = initSuccessState?.invoke(pageIndex, successData)
+                cache[pageIndex] = initSuccessState?.invoke(pageIndex, successData)
                     ?: SuccessState(pageIndex, successData)
                 pageIndex++
             }
@@ -966,7 +1015,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
      * - После вызова этой функции все данные, связанные со страницами, закладками и текущей страницей, будут утеряны.
      */
     fun release() {
-        pages.clear()
+        cache.clear()
         bookmarks.clear()
         bookmarks.add(BookmarkUInt(page = 1u))
         bookmarkIterator = bookmarks.listIterator()
@@ -974,11 +1023,11 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         _snapshot.update { emptyList() }
     }
 
-    override fun toString() = "Paginator(pages=$pages, bookmarks=$bookmarks)"
+    override fun toString() = "Paginator(pages=$cache, bookmarks=$bookmarks)"
 
-    override fun hashCode() = pages.hashCode()
+    override fun hashCode() = cache.hashCode()
 
-    override fun equals(other: Any?) = (other as? Paginator<*>)?.pages === this.pages
+    override fun equals(other: Any?) = (other as? Paginator<*>)?.cache === this.cache
 
     companion object {
         fun PageState<*>?.isProgressState() = this is Progress<*>
@@ -1008,7 +1057,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         ) : PageState<T>(page, data)
 
         open class Error<T>(
-            val e: Exception,
+            val exception: Exception,
             override val page: UInt,
             override val data: List<T>,
         ) : PageState<T>(page, data)
@@ -1020,7 +1069,7 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             is Progress -> Progress(page, data)
             is Success -> if (data.isEmpty()) Empty(page, data) else Success(page, data)
             is Empty -> Empty(page, data)
-            is Error -> Error(e, page, data)
+            is Error -> Error(exception, page, data)
         }
 
         override fun toString() = "${this::class.simpleName}(data=${this.data})"
