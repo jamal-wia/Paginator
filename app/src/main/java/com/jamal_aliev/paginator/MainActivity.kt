@@ -132,7 +132,7 @@ class MainActivity : ComponentActivity() {
                                         .background(Color.Red),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Text(text = pageState.e.message.toString())
+                                    Text(text = pageState.exception.message.toString())
                                     Button(onClick = { viewModel.refreshPage(pageState) }) {
                                         Text(text = "Refresh")
                                     }
