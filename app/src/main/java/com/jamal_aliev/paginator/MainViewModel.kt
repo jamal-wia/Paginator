@@ -56,7 +56,7 @@ class MainViewModel : ViewModel() {
             val newState = paginator.loadPageState(
                 page = pageState.page,
                 forceLoading = true,
-                loading = { page ->
+                loading = { page, pageState ->
                     paginator.setPageState(paginator.ProgressState(page))
                 }
             )
