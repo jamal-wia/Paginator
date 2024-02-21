@@ -45,24 +45,17 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         Error(exception, page, data)
 
     /**
-     * Функция `jumpForward` предназначена для перехода к странице, указанной в следующей закладке, в коллекции `pages`.
+     * This suspend function is used to jump forward to a specific page in the pagination system based on the current bookmark iterator. It updates the current page, loads the state of the new page, and updates the snapshot of the paginator.
      *
-     * Входные параметры:
-     * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
-     * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
-     * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
+     * @param recycling A Boolean that determines whether to recycle the bookmark iterator when it has no next element. Default is the recyclingBookmark property of the Paginator class.
+     * @param initProgressState A function that initializes the state of a page in progress. It takes the page number and the data as parameters. Default is the initProgressState function defined in the Paginator class.
+     * @param initEmptyState A function that initializes the state of an empty page. It takes the page number and the data as parameters. Default is the initEmptyState function defined in the Paginator class.
+     * @param initSuccessState A function that initializes the state of a successful page. It takes the page number and the data as parameters. Default is the initSuccessState function defined in the Paginator class.
+     * @param initErrorState A function that initializes the state of an error page. It takes the exception, the page number, and the data as parameters. Default is the initErrorState function defined in the Paginator class.
      *
-     * Выходные параметры:
-     * - Функция не возвращает результатов, но изменяет состояние объекта, в котором вызывается.
+     * @return The bookmark of the page that was jumped to. If the bookmark iterator has no next element and recycling is false, it returns null.
      *
-     * Особенности и ограничения:
-     * - Функция обновляет `currentPage` на страницу, указанную в следующей закладке, если она существует, и ее состояние является состоянием данных.
-     * - Если следующей закладки не существует (т.е., все закладки уже были просмотрены), функция не делает ничего.
-     * - Если состояние страницы, указанной в закладке, не кэшировано, функция загружает состояние страницы из источника данных.
-     * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
-     * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
+     * Note: This function uses the cache of the Paginator class, so it can only jump to pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a coroutine scope that can handle main thread updates.
      */
     suspend fun jumpForward(
         recycling: Boolean = this.recyclingBookmark,
@@ -97,24 +90,17 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `jumpBack` предназначена для перехода к странице, указанной в предыдущей закладке, в коллекции `pages`.
+     * This suspend function is used to jump backward to a specific page in the pagination system based on the current bookmark iterator. It updates the current page, loads the state of the new page, and updates the snapshot of the paginator.
      *
-     * Входные параметры:
-     * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
-     * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
-     * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
+     * @param recycling A Boolean that determines whether to recycle the bookmark iterator when it has no previous element. Default is the recyclingBookmark property of the Paginator class.
+     * @param initProgressState A function that initializes the state of a page in progress. It takes the page number and the data as parameters. Default is the initProgressState function defined in the Paginator class.
+     * @param initEmptyState A function that initializes the state of an empty page. It takes the page number and the data as parameters. Default is the initEmptyState function defined in the Paginator class.
+     * @param initSuccessState A function that initializes the state of a successful page. It takes the page number and the data as parameters. Default is the initSuccessState function defined in the Paginator class.
+     * @param initErrorState A function that initializes the state of an error page. It takes the exception, the page number, and the data as parameters. Default is the initErrorState function defined in the Paginator class.
      *
-     * Выходные параметры:
-     * - Функция не возвращает результатов, но изменяет состояние объекта, в котором вызывается.
+     * @return The bookmark of the page that was jumped to. If the bookmark iterator has no previous element and recycling is false, it returns null.
      *
-     * Особенности и ограничения:
-     * - Функция обновляет `currentPage` на страницу, указанную в предыдущей закладке, если она существует, и ее состояние является состоянием данных.
-     * - Если предыдущей закладки не существует (т.е., все закладки уже были просмотрены), функция не делает ничего.
-     * - Если состояние страницы, указанной в закладке, не кэшировано, функция загружает состояние страницы из источника данных.
-     * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
-     * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
+     * Note: This function uses the cache of the Paginator class, so it can only jump to pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a coroutine scope that can handle main thread updates.
      */
     suspend fun jumpBack(
         recycling: Boolean = this.recyclingBookmark,
@@ -148,25 +134,17 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `jump` предназначена для перехода к странице, указанной в закладке, в коллекции `pages`.
+     * This suspend function is used to jump to a specific page in the pagination system. It updates the current page, loads the state of the new page, and updates the snapshot of the paginator.
      *
-     * Входные параметры:
-     * - `bookmark`: закладка типа `Bookmark`, указывающая на страницу, к которой нужно перейти.
-     * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
-     * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
-     * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
+     * @param bookmark The bookmark of the page to jump to. It must have a page number greater than 0.
+     * @param initProgressState A function that initializes the state of a page in progress. It takes the page number and the data as parameters. Default is the initProgressState function defined in the Paginator class.
+     * @param initEmptyState A function that initializes the state of an empty page. It takes the page number and the data as parameters. Default is the initEmptyState function defined in the Paginator class.
+     * @param initSuccessState A function that initializes the state of a successful page. It takes the page number and the data as parameters. Default is the initSuccessState function defined in the Paginator class.
+     * @param initErrorState A function that initializes the state of an error page. It takes the exception, the page number, and the data as parameters. Default is the initErrorState function defined in the Paginator class.
      *
-     * Выходные параметры:
-     * - Функция не возвращает результатов, но изменяет состояние объекта, в котором вызывается.
+     * @return The bookmark of the page that was jumped to.
      *
-     * Особенности и ограничения:
-     * - Функция обновляет `currentPage` на страницу, указанную в закладке, если она существует, и ее состояние является состоянием данных.
-     * - Если страницы, указанной в закладке, не существует (т.е., значение закладки меньше 1), функция не делает ничего.
-     * - Если состояние страницы, указанной в закладке, не кэшировано, функция загружает состояние страницы из источника данных.
-     * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
-     * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
+     * Note: This function uses the cache of the Paginator class, so it can only jump to pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a coroutine scope that can handle main thread updates.
      */
     suspend fun jump(
         bookmark: Bookmark,
@@ -204,24 +182,16 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `nextPage` предназначена для перехода к следующей странице в коллекции `pages`.
+     * This suspend function is used to navigate to the next page in the pagination system. It updates the current page, loads the state of the new page, and updates the snapshot of the paginator.
      *
-     * Входные параметры:
-     * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
-     * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
-     * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
+     * @param initProgressState A function that initializes the state of a page in progress. It takes the page number and the data as parameters. Default is the initProgressState function defined in the Paginator class.
+     * @param initEmptyState A function that initializes the state of an empty page. It takes the page number and the data as parameters. Default is the initEmptyState function defined in the Paginator class.
+     * @param initSuccessState A function that initializes the state of a successful page. It takes the page number and the data as parameters. Default is the initSuccessState function defined in the Paginator class.
+     * @param initErrorState A function that initializes the state of an error page. It takes the exception, the page number, and the data as parameters. Default is the initErrorState function defined in the Paginator class.
      *
-     * Выходные параметры:
-     * - Функция не возвращает результатов, но изменяет состояние объекта, в котором вызывается.
+     * @return The page number of the next page. If the next page is already in a progress state, it returns the page number without loading the page state.
      *
-     * Особенности и ограничения:
-     * - Функция обновляет `currentPage` на следующую страницу, если она существует, и ее состояние является состоянием данных.
-     * - Если следующей страницы не существует (т.е., `currentPage` равно последней странице), функция не делает ничего.
-     * - Если состояние следующей страницы не кэшировано, функция загружает состояние страницы из источника данных.
-     * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
-     * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
+     * Note: This function uses the cache of the Paginator class, so it can only navigate to pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a coroutine scope that can handle main thread updates. The function runs asynchronously for each page, so the order in which the pages are refreshed is not guaranteed.
      */
     suspend fun nextPage(
         initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
@@ -269,24 +239,16 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `previousPage` предназначена для перехода к предыдущей странице в коллекции `pages`.
+     * This suspend function is used to navigate to the previous page in the pagination system. It updates the current page, loads the state of the new page, and updates the snapshot of the paginator.
      *
-     * Входные параметры:
-     * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
-     * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
-     * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
+     * @param initProgressState A function that initializes the state of a page in progress. It takes the page number and the data as parameters. Default is the initProgressState function defined in the Paginator class.
+     * @param initEmptyState A function that initializes the state of an empty page. It takes the page number and the data as parameters. Default is the initEmptyState function defined in the Paginator class.
+     * @param initSuccessState A function that initializes the state of a successful page. It takes the page number and the data as parameters. Default is the initSuccessState function defined in the Paginator class.
+     * @param initErrorState A function that initializes the state of an error page. It takes the exception, the page number, and the data as parameters. Default is the initErrorState function defined in the Paginator class.
      *
-     * Выходные параметры:
-     * - Функция не возвращает результатов, но изменяет состояние объекта, в котором вызывается.
+     * @return The page number of the previous page. If the previous page is already in a progress state, it returns the page number without loading the page state.
      *
-     * Особенности и ограничения:
-     * - Функция обновляет `currentPage` на предыдущую страницу, если она существует, и ее состояние является состоянием данных.
-     * - Если предыдущей страницы не существует (т.е., `currentPage` равно 1), функция не делает ничего.
-     * - Если состояние предыдущей страницы не кэшировано, функция загружает состояние страницы из источника данных.
-     * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
-     * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
+     * Note: This function uses the cache of the Paginator class, so it can only navigate to pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a coroutine scope that can handle main thread updates. The function runs asynchronously for each page, so the order in which the pages are refreshed is not guaranteed. If the previous page is already in a progress state, it returns the page number without loading the page state. This can be useful for avoiding unnecessary network requests or database queries. However, it also means that the state of the previous page may not be up-to-date when the function returns. If you need the most up-to-date state of the previous page, you should force a refresh of the page state before calling this function.
      */
     suspend fun previousPage(
         initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
@@ -333,6 +295,19 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return@coroutineScope previousPage
     }
 
+    /**
+     * This suspend function is used to refresh a list of pages in the pagination system. It updates the state of each page, loads the new state of each page, and updates the snapshot of the paginator.
+     *
+     * @param pages A list of page numbers to refresh. Each page number must be a positive integer.
+     * @param loadingSilently A Boolean that determines whether to update the snapshot after setting the initial state of each page. If true, the snapshot is not updated. Default is false.
+     * @param finalSilently A Boolean that determines whether to update the snapshot after loading the final state of each page. If true, the snapshot is not updated. Default is false.
+     * @param initProgressState A function that initializes the state of a page in progress. It takes the page number and the data as parameters. Default is the initProgressState function defined in the Paginator class.
+     * @param initEmptyState A function that initializes the state of an empty page. It takes the page number and the data as parameters. Default is the initEmptyState function defined in the Paginator class.
+     * @param initSuccessState A function that initializes the state of a successful page. It takes the page number and the data as parameters. Default is the initSuccessState function defined in the Paginator class.
+     * @param initErrorState A function that initializes the state of an error page. It takes the exception, the page number, and the data as parameters. Default is the initErrorState function defined in the Paginator class.
+     *
+     * Note: This function uses the cache of the Paginator class, so it can only refresh pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a coroutine scope that can handle main thread updates. The function runs asynchronously for each page, so the order in which the pages are refreshed is not guaranteed.
+     */
     suspend fun refresh(
         pages: List<UInt>,
         loadingSilently: Boolean = false,
@@ -370,24 +345,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         }
     }
 
-    /**
-     * Функция `refresh` предназначена для обновления состояний всех страниц в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `initProgressState`: функция, возвращающая состояние прогресса страницы, вызывается перед загрузкой состояния страницы. По умолчанию `null`.
-     * - `initEmptyState`: функция, возвращающая пустое состояние страницы, вызывается, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initSuccessState`: функция, возвращающая состояние данных страницы, вызывается, если источник данных вернул непустой список. По умолчанию `null`.
-     * - `initErrorState`: функция, возвращающая состояние ошибки, вызывается, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
-     *
-     * Выходные параметры:
-     * - Функция не возвращает результатов, но изменяет состояние объекта, в котором вызывается.
-     *
-     * Особенности и ограничения:
-     * - Функция обновляет состояния всех страниц в `pages`, загружая их из источника данных.
-     * - Если источник данных вернул пустой список для страницы, функция устанавливает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список для страницы, функция устанавливает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
-     * - Если при загрузке состояния страницы произошла ошибка, функция устанавливает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
-     */
     suspend fun refreshAll(
         loadingSilently: Boolean = false,
         finalSilently: Boolean = false,
@@ -408,26 +365,19 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `loadPageState` предназначена для загрузки состояния страницы из источника данных или из кэша.
+     * This function is responsible for loading the state of a specific page. It can either return the cached state of the page or force a new load.
      *
-     * Входные параметры:
-     * - `page`: ключ страницы типа `UInt`, состояние которой нужно загрузить.
-     * - `forceLoading`: флаг типа `Boolean`, указывающий, следует ли принудительно загружать состояние страницы из источника данных, даже если оно уже кэшировано. По умолчанию `false`.
-     * - `loading`: функция, которая вызывается перед загрузкой состояния страницы из источника данных. По умолчанию `null`.
-     * - `source`: функция, возвращающая список элементов типа `T` для указанной страницы. По умолчанию используется источник данных этого объекта.
-     * - `initEmptyState`: функция, возвращающая пустое состояние страницы, если источник данных вернул пустой список. По умолчанию `null`.
-     * - `initSuccessState`: функция, возвращающая состояние данных страницы, если источник данных вернул непустой список. По умолчанию `null`.
-     * - `initErrorState`: функция, возвращающая состояние ошибки, если при загрузке состояния страницы произошла ошибка. По умолчанию `null`.
+     * @param page The page number to load. This is a UInt, so it must be a positive integer.
+     * @param forceLoading A Boolean that determines whether to force a new load or use the cached state. Default is false.
+     * @param loading A callback function that is invoked when the page is loading. It takes the page number and the current page state as parameters. Default is null.
+     * @param source A suspend function that fetches the data for a specific page. Default is the source function defined in the Paginator class.
+     * @param initEmptyState A function that initializes the state of an empty page. It takes the page number and the data as parameters. Default is the initEmptyState function defined in the Paginator class.
+     * @param initSuccessState A function that initializes the state of a successful page. It takes the page number and the data as parameters. Default is the initSuccessState function defined in the Paginator class.
+     * @param initErrorState A function that initializes the state of an error page. It takes the exception, the page number, and the data as parameters. Default is the initErrorState function defined in the Paginator class.
      *
-     * Выходные параметры:
-     * - Возвращает состояние страницы типа `PageState<T>`. Если состояние страницы успешно загружено из источника данных или кэша, возвращается соответствующее состояние данных. Если источник данных вернул пустой список, возвращается пустое состояние. Если при загрузке состояния страницы произошла ошибка, возвращается состояние ошибки.
+     * @return The state of the page. It can be one of the following: Progress, Success, Empty, or Error.
      *
-     * Особенности и ограничения:
-     * - Если `forceLoading` равно `false` и состояние страницы уже кэшировано, функция возвращает кэшированное состояние.
-     * - Если `forceLoading` равно `true` или состояние страницы не кэшировано, функция загружает состояние страницы из источника данных.
-     * - Если источник данных вернул пустой список, функция возвращает пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если источник данных вернул непустой список, функция возвращает состояние данных, созданное с помощью `initSuccessState`, или `DataState`, если `initSuccessState` равно `null`.
-     * - Если при загрузке состояния страницы произошла ошибка, функция возвращает состояние ошибки, созданное с помощью `initErrorState`, или `ErrorState`, если `initErrorState` равно `null`.
+     * @throws Exception If there's an error while fetching the data, an exception is thrown and caught within the function. The initErrorState function is then invoked to return an Error state.
      */
     suspend fun loadPageState(
         page: UInt,
@@ -451,22 +401,19 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `removePageState` предназначена для удаления состояния страницы из коллекции `pages`.
+     * This function is used to remove the state of a specific page from the cache of the Paginator class. If the state is successfully removed, it replaces the state with an empty state and updates the snapshot of the paginator.
      *
-     * Входные параметры:
-     * - `page`: ключ страницы типа `UInt`, состояние которой нужно удалить.
-     * - `initEmptyState`: функция, возвращающая `PageState<T>`, используется для инициализации нового пустого состояния страницы после удаления. По умолчанию `null`.
+     * @param page The page number of the state to remove. This is a UInt, so it must be a positive integer.
+     * @param silently A Boolean that determines whether to update the snapshot after removing the state. If true, the snapshot is not updated. Default is false.
+     * @param initEmptyState A function that initializes an empty state. It takes no parameters and returns a PageState. Default is a function that creates an EmptyState with the given page number.
      *
-     * Выходные параметры:
-     * - Возвращает удаленное состояние страницы типа `PageState<T>`, если такое состояние было найдено и удалено.
-     * - Если состояния страницы не найдено, функция возвращает `null`.
+     * @return The state that was removed. If no state was removed, it returns null.
      *
-     * Особенности и ограничения:
-     * - Если состояние страницы было успешно удалено, на его место устанавливается новое пустое состояние, созданное с помощью `initEmptyState`, или `EmptyState`, если `initEmptyState` равно `null`.
-     * - Если страницы, состояние которой нужно удалить, не существует, функция возвращает `null`.
+     * Note: This function uses the cache of the Paginator class, so it can only remove states that have been loaded and cached. Also, it replaces the removed state with an empty state, so the cache will always contain a state for the given page number after calling this function. However, the empty state may not accurately represent the actual state of the page, especially if the page contains data. Therefore, you should refresh the page state after calling this function to ensure that the cache contains the most up-to-date state. If the silently parameter is set to true, the snapshot of the paginator is not updated after removing the state. This can be useful for avoiding unnecessary UI updates in an Android app. However, it also means that the snapshot may not accurately represent the current state of the paginator after calling this function. If you need the most up-to-date snapshot, you should set the silently parameter to false or manually update the snapshot after calling this function.
      */
     fun removePageState(
         page: UInt,
+        silently: Boolean = false,
         initEmptyState: (() -> PageState<T>)? = null
     ): PageState<T>? {
         val removed = cache.remove(page)
@@ -474,9 +421,18 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
             cache[page] = initEmptyState?.invoke()
                 ?: EmptyState(page = page)
         }
+        if (!silently) _snapshot.update { scan() }
         return removed
     }
 
+    /**
+     * This function is used to set the state of a specific page in the cache of the Paginator class. After setting the state, it updates the snapshot of the paginator.
+     *
+     * @param state The new state to set for the page. This is a PageState object, so it must contain a valid page number and data.
+     * @param silently A Boolean that determines whether to update the snapshot after setting the state. If true, the snapshot is not updated. Default is false.
+     *
+     * Note: This function uses the cache of the Paginator class, so it can only set the state of pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a main thread that can handle UI updates. If the silently parameter is set to true, the snapshot of the paginator is not updated after setting the state. This can be useful for avoiding unnecessary UI updates in an Android app. However, it also means that the snapshot may not accurately represent the current state of the paginator after calling this function. If you need the most up-to-date snapshot, you should set the silently parameter to false or manually update the snapshot after calling this function.
+     */
     fun setPageState(
         state: PageState<T>,
         silently: Boolean = false
@@ -493,20 +449,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return bookmarks.add(bookmark)
     }
 
-    /**
-     * Функция `removeElement` предназначена для удаления первого элемента, который удовлетворяет определенному условию в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `predicate`: функция-предикат, которая принимает элемент типа `T` и возвращает `Boolean`. Эта функция определяет условие, которому должен удовлетворять удаляемый элемент.
-     *
-     * Выходные параметры:
-     * - Возвращает удаленный элемент типа `T`, если такой элемент был найден и удален.
-     * - Если такого элемента не найдено, функция возвращает `null`.
-     *
-     * Особенности и ограничения:
-     * - Функция проходит по всем страницам в `pages` и по всем элементам на каждой странице. Это может быть ресурсоемкой операцией для больших коллекций.
-     * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только первый найденный.
-     */
     fun removeElement(predicate: (T) -> Boolean): T? {
         for (k in cache.keys.toList()) {
             val v = cache.getValue(k)
@@ -519,21 +461,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return null
     }
 
-    /**
-     * Функция `removeElement` предназначена для удаления первого элемента, который удовлетворяет определенному условию на указанной странице в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `predicate`: функция-предикат, которая принимает элемент типа `T` и возвращает `Boolean`. Эта функция определяет условие, которому должен удовлетворять удаляемый элемент.
-     * - `page`: ключ страницы типа `UInt`, на которой нужно удалить элемент.
-     *
-     * Выходные параметры:
-     * - Возвращает удаленный элемент типа `T`, если такой элемент был найден и удален на указанной странице.
-     * - Если такого элемента не найдено на указанной странице, функция возвращает `null`.
-     *
-     * Особенности и ограничения:
-     * - Функция проходит только по указанной странице в `pages` и по всем элементам на этой странице. Это может быть ресурсоемкой операцией для больших коллекций.
-     * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов на странице, функция вернет только первый найденный.
-     */
     fun removeElement(page: UInt, predicate: (T) -> Boolean): T? {
         val v = cache.getValue(page)
         for ((i, e) in v.data.withIndex()) {
@@ -544,22 +471,19 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return null
     }
 
-
     /**
-     * Функция `removeElement` предназначена для удаления элемента с указанной страницы и позиции в коллекции `pages`.
+     * This function is used to remove a specific element from the data of a specific page in the cache of the Paginator class. If the removal causes the data of the page to fall below the capacity, it fills the page with elements from the next page. After removing the element, it optionally updates the snapshot of the paginator.
      *
-     * Входные параметры:
-     * - `page`: ключ страницы типа `UInt`, с которой нужно удалить элемент.
-     * - `index`: позиция типа `Int`, из которой нужно удалить элемент на указанной странице.
-     * - `silently`: флаг типа `Boolean`, указывающий, следует ли обновлять `_snapshot` после удаления элемента. По умолчанию `false`.
+     * @param page The page number of the data to remove the element from. This is a UInt, so it must be a positive integer.
+     * @param index The index of the element to remove in the data of the page. This is an Int, so it can be any valid index in the data.
+     * @param silently A Boolean that determines whether to update the snapshot after removing the element. If true, the snapshot is not updated. Default is false.
      *
-     * Выходные параметры:
-     * - Возвращает удаленный элемент типа `T`.
+     * @return The element that was removed.
      *
-     * Особенности и ограничения:
-     * - Если размер обновленных данных меньше `pageCapacity`, первый элемент со следующей страницы перемещается на текущую страницу.
-     * - Если `silently` равно `false`, `_snapshot` обновляется после удаления элемента.
-     * - Если страницы, с которой нужно удалить элемент, не существует, будет выброшено исключение `NoSuchElementException`.
+     * @throws NoSuchElementException If the page does not exist in the cache.
+     * @throws IndexOutOfBoundsException If the index is not a valid index in the data of the page.
+     *
+     * Note: This function uses the cache of the Paginator class, so it can only remove elements from pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a main thread that can handle UI updates. If the silently parameter is set to true, the snapshot of the paginator is not updated after removing the element. This can be useful for avoiding unnecessary UI updates in an Android app. However, it also means that the snapshot may not accurately represent the current state of the paginator after calling this function. If you need the most up-to-date snapshot, you should set the silently parameter to false or manually update the snapshot after calling this function.
      */
     fun removeElement(
         page: UInt,
@@ -603,22 +527,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return removed
     }
 
-    /**
-     * Функция `addElement` предназначена для добавления элемента в конец последней страницы в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `element`: элемент типа `T`, который нужно добавить.
-     * - `silently`: флаг типа `Boolean`, указывающий, следует ли обновлять `_snapshot` после добавления элемента. По умолчанию `false`.
-     * - `initPageState`: функция, возвращающая `PageState<T>`, используется для инициализации новой страницы, если она еще не создана. По умолчанию `null`.
-     *
-     * Выходные параметры:
-     * - Возвращает `true`, если элемент был успешно добавлен, и `false`, если не удалось добавить элемент (например, если нет страниц в `pages`).
-     *
-     * Особенности и ограничения:
-     * - Функция добавляет элемент в конец последней страницы в `pages`.
-     * - Если `silently` равно `false`, `_snapshot` обновляется после добавления элемента.
-     * - Если нет страниц в `pages`, функция возвращает `false`.
-     */
     fun addElement(
         element: T,
         silently: Boolean = false,
@@ -630,24 +538,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return true
     }
 
-    /**
-     * Функция `addElement` предназначена для добавления элемента на указанную страницу в определенной позиции в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `element`: элемент типа `T`, который нужно добавить.
-     * - `page`: ключ страницы типа `UInt`, на которую нужно добавить элемент.
-     * - `index`: позиция типа `Int`, в которую нужно добавить элемент на указанной странице.
-     * - `silently`: флаг типа `Boolean`, указывающий, следует ли обновлять `_snapshot` после добавления элемента. По умолчанию `false`.
-     * - `initPageState`: функция, возвращающая `PageState<T>`, используется для инициализации новой страницы, если она еще не создана. По умолчанию `null`.
-     *
-     * Выходные параметры:
-     * - Функция не возвращает результатов, но изменяет состояние объекта, в котором вызывается.
-     *
-     * Особенности и ограничения:
-     * - Если размер обновленных данных превышает `pageCapacity`, последний элемент удаляется и добавляется на следующую страницу.
-     * - Если `silently` равно `false`, `_snapshot` обновляется после добавления элемента.
-     * - Если страница, на которую нужно добавить элемент, не существует, и `initPageState` равно `null`, будет выброшено исключение `IndexOutOfBoundsException`.
-     */
     fun addElement(
         element: T,
         page: UInt,
@@ -664,6 +554,19 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         )
     }
 
+    /**
+     * This function is used to add a list of elements to the data of a specific page in the cache of the Paginator class. If the added elements exceed the capacity of the page, they are moved to the next page. After adding the elements, it optionally updates the snapshot of the paginator.
+     *
+     * @param elements The list of elements to add to the data of the page. This is a List of generic type T, so it can contain any type that is compatible with the data of the page.
+     * @param page The page number of the data to add the elements to. This is a UInt, so it must be a positive integer.
+     * @param index The index at which to add the elements in the data of the page. This is an Int, so it can be any valid index in the data.
+     * @param silently A Boolean that determines whether to update the snapshot after adding the elements. If true, the snapshot is not updated. Default is false.
+     * @param initPageState A function that initializes a page state. It takes no parameters and returns a PageState. Default is null, which means the current state of the page in the cache is used.
+     *
+     * @throws IndexOutOfBoundsException If the page does not exist in the cache and no initPageState function is provided.
+     *
+     * Note: This function uses the cache of the Paginator class, so it can only add elements to pages that have been loaded and cached or can be initialized with the initPageState function. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a main thread that can handle UI updates. If the silently parameter is set to true, the snapshot of the paginator is not updated after adding the elements. This can be useful for avoiding unnecessary UI updates in an Android app. However, it also means that the snapshot may not accurately represent the current state of the paginator after calling this function. If you need the most up-to-date snapshot, you should set the silently parameter to false or manually update the snapshot after calling this function.
+     */
     fun addAllElements(
         elements: List<T>,
         page: UInt,
@@ -733,6 +636,16 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         }
     }
 
+    /**
+     * This function is used to update a specific element in the data of a specific page in the cache of the Paginator class. After updating the element, it optionally updates the snapshot of the paginator.
+     *
+     * @param element The new element to set in the data of the page. This is a generic type T, so it can be any type that is compatible with the data of the page.
+     * @param page The page number of the data to update. This is a UInt, so it must be a positive integer.
+     * @param index The index of the element to update in the data of the page. This is an Int, so it can be any valid index in the data.
+     * @param silently A Boolean that determines whether to update the snapshot after updating the element. If true, the snapshot is not updated. Default is false.
+     *
+     * Note: This function uses the cache of the Paginator class, so it can only update elements of pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a main thread that can handle UI updates. If the silently parameter is set to true, the snapshot of the paginator is not updated after updating the element. This can be useful for avoiding unnecessary UI updates in an Android app. However, it also means that the snapshot may not accurately represent the current state of the paginator after calling this function. If you need the most up-to-date snapshot, you should set the silently parameter to false or manually update the snapshot after calling this function.
+     */
     fun setElement(
         element: T,
         page: UInt,
@@ -753,20 +666,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         }
     }
 
-    /**
-     * Функция `indexOfFirst` предназначена для поиска первого элемента, который удовлетворяет определенному условию в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `predicate`: функция-предикат, которая принимает элемент типа `T` и возвращает `Boolean`. Эта функция определяет условие, которому должен удовлетворять искомый элемент.
-     *
-     * Выходные параметры:
-     * - Возвращает пару `Pair<UInt, Int>`, где первый элемент - это ключ страницы, а второй элемент - это индекс элемента на странице, который удовлетворяет условию `predicate`.
-     * - Если такого элемента не найдено, функция возвращает `null`.
-     *
-     * Особенности и ограничения:
-     * - Функция проходит по всем страницам в `pages` и по всем элементам на каждой странице. Это может быть ресурсоемкой операцией для больших коллекций.
-     * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только первый найденный.
-     */
     fun indexOfFirst(predicate: (T) -> Boolean): Pair<UInt, Int>? {
         for (k in cache.keys.toList()) {
             val v = cache.getValue(k)
@@ -779,21 +678,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return null
     }
 
-    /**
-     * Функция `indexOfFirst` предназначена для поиска первого элемента, который удовлетворяет определенному условию на указанной странице в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `predicate`: функция-предикат, которая принимает элемент типа `T` и возвращает `Boolean`. Эта функция определяет условие, которому должен удовлетворять искомый элемент.
-     * - `page`: ключ страницы типа `UInt`, на которой нужно искать элемент.
-     *
-     * Выходные параметры:
-     * - Возвращает пару `Pair<UInt, Int>`, где первый элемент - это ключ страницы, а второй элемент - это индекс элемента на странице, который удовлетворяет условию `predicate`.
-     * - Если такого элемента не найдено, функция возвращает `null`.
-     *
-     * Особенности и ограничения:
-     * - Функция проходит только по указанной странице в `pages` и по всем элементам на этой странице. Это может быть ресурсоемкой операцией для больших коллекций.
-     * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только первый найденный.
-     */
     fun indexOfFirst(predicate: (T) -> Boolean, page: UInt): Pair<UInt, Int>? {
         val pageState = cache.getValue(page)
         for ((i, e) in pageState.data.withIndex()) {
@@ -804,38 +688,10 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return null
     }
 
-    /**
-     * Функция `indexOfFirst` предназначена для поиска первого вхождения указанного элемента в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `element`: элемент типа `T`, который нужно найти.
-     *
-     * Выходные параметры:
-     * - Возвращает пару `Pair<UInt, Int>`, где первый элемент - это ключ страницы, а второй элемент - это индекс элемента на странице, который равен `element`.
-     * - Если такого элемента не найдено, функция возвращает `null`.
-     *
-     * Особенности и ограничения:
-     * - Функция проходит по всем страницам в `pages` и по всем элементам на каждой странице. Это может быть ресурсоемкой операцией для больших коллекций.
-     * - Функция возвращает при первом обнаружении элемента, равного `element`. Если есть несколько таких элементов, функция вернет только первый найденный.
-     */
     fun indexOfFirst(element: T): Pair<UInt, Int>? {
         return indexOfFirst { it == element }
     }
 
-    /**
-     * Функция `indexOfLast` предназначена для поиска первого элемента, который удовлетворяет определенному условию в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `predicate`: функция-предикат, которая принимает элемент типа `T` и возвращает `Boolean`. Эта функция определяет условие, которому должен удовлетворять искомый элемент.
-     *
-     * Выходные параметры:
-     * - Возвращает пару `Pair<UInt, Int>`, где первый элемент - это ключ страницы, а второй элемент - это индекс элемента на странице, который удовлетворяет условию `predicate`.
-     * - Если такого элемента не найдено, функция возвращает `null`.
-     *
-     * Особенности и ограничения:
-     * - Функция проходит по всем страницам в `pages` и по всем элементам на каждой странице. Это может быть ресурсоемкой операцией для больших коллекций.
-     * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только последний найденный.
-     */
     fun indexOfLast(predicate: (T) -> Boolean): Pair<UInt, Int>? {
         for (k in cache.keys.toList().reversed()) {
             val v = cache.getValue(k)
@@ -848,21 +704,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return null
     }
 
-    /**
-     * Функция `indexOfLast` предназначена для поиска первого элемента, который удовлетворяет определенному условию на указанной странице в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `predicate`: функция-предикат, которая принимает элемент типа `T` и возвращает `Boolean`. Эта функция определяет условие, которому должен удовлетворять искомый элемент.
-     * - `page`: ключ страницы типа `UInt`, на которой нужно искать элемент.
-     *
-     * Выходные параметры:
-     * - Возвращает пару `Pair<UInt, Int>`, где первый элемент - это ключ страницы, а второй элемент - это индекс элемента на странице, который удовлетворяет условию `predicate`.
-     * - Если такого элемента не найдено, функция возвращает `null`.
-     *
-     * Особенности и ограничения:
-     * - Функция проходит только по указанной странице в `pages` и по всем элементам на этой странице. Это может быть ресурсоемкой операцией для больших коллекций.
-     * - Функция возвращает при первом обнаружении элемента, удовлетворяющего условию `predicate`. Если есть несколько таких элементов, функция вернет только последний найденный.
-     */
     fun indexOfLast(predicate: (T) -> Boolean, page: UInt): Pair<UInt, Int>? {
         val pageState = cache.getValue(page)
         for ((i, e) in pageState.data.reversed().withIndex()) {
@@ -873,20 +714,6 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return null
     }
 
-    /**
-     * Функция `indexOfLast` предназначена для поиска первого вхождения указанного элемента в коллекции `pages`.
-     *
-     * Входные параметры:
-     * - `element`: элемент типа `T`, который нужно найти.
-     *
-     * Выходные параметры:
-     * - Возвращает пару `Pair<UInt, Int>`, где первый элемент - это ключ страницы, а второй элемент - это индекс элемента на странице, который равен `element`.
-     * - Если такого элемента не найдено, функция возвращает `null`.
-     *
-     * Особенности и ограничения:
-     * - Функция проходит по всем страницам в `pages` и по всем элементам на каждой странице. Это может быть ресурсоемкой операцией для больших коллекций.
-     * - Функция возвращает при первом обнаружении элемента, равного `element`. Если есть несколько таких элементов, функция вернет только последний найденный.
-     */
     fun indexOfLast(element: T): Pair<UInt, Int>? {
         return indexOfLast { it == element }
     }
@@ -896,14 +723,13 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `scan` производит сканирование страниц в заданном диапазоне.
+     * This function scans a range of pages and returns their states.
      *
-     * @param range Диапазон для сканирования типа `UIntRange`. По умолчанию, диапазон определяется функциями `getMinPageFrom` и `getMaxPageFrom`, применяемыми к текущей странице.
-     * @return Список состояний страниц `List<PageState<T>>`. Если страница отсутствует в `pages`, цикл прерывается.
+     * @param range The range of pages to scan. This is a UIntRange, so it must be a range of positive integers. The default range is from the first page before the current page to the first page after the current page.
      *
-     * Особенности использования:
-     * - Функция работает с коллекцией `pages`, которая должна быть определена вне этой функции.
-     * - Функция может вернуть пустой список, если в `pages` нет страниц из заданного диапазона.
+     * @return A list of the states of the pages in the given range. If a page in the range is not in the cache, the function breaks and returns the states of the pages found so far.
+     *
+     * Note: This function uses the cache of the Paginator class, so it can only find pages that have been loaded and cached. Also, it breaks as soon as it encounters a page that is not in the cache, so it may not return the states of all the pages in the given range. To ensure that all the pages in the range are scanned, make sure to load and cache all the pages in the range before calling this function.
      */
     fun scan(
         range: UIntRange = kotlin.run {
@@ -922,14 +748,14 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `getMaxPageFrom` определяет максимальную страницу, удовлетворяющую заданному предикату.
+     * This function searches for a page after the given page that satisfies a certain condition.
      *
-     * @param page Начальная страница для поиска типа `UInt`.
-     * @param predicate Предикат, применяемый к состоянию страницы. По умолчанию, предикат возвращает `true` для любого состояния страницы.
-     * @return Максимальная страница, удовлетворяющая предикату, типа `UInt`.
+     * @param page The page number from which the search begins. This is a UInt, so it must be a positive integer.
+     * @param predicate A function that takes a PageState and returns a Boolean. It defines the condition that a page must satisfy. The default condition is true, which means all pages are considered valid.
      *
-     * Особенности использования:
-     * - Функция может вернуть ту же самую страницу, если нет других страниц, удовлетворяющих предикату.
+     * @return The page number of the first page after the given page that satisfies the condition. If no such page is found, it returns the given page number.
+     *
+     * Note: This function assumes that the pages are numbered in ascending order starting from 1. Therefore, it will not search for a page number less than 1. Also, it uses the cache of the Paginator class, so it can only find pages that have been loaded and cached.
      */
     fun searchPageAfter(
         page: UInt,
@@ -945,14 +771,14 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `getMinPageFrom` определяет минимальную страницу, удовлетворяющую заданному предикату.
+     * This function searches for a page before the given page that satisfies a certain condition.
      *
-     * @param page Начальная страница для поиска типа `UInt`.
-     * @param predicate Предикат, применяемый к состоянию страницы. По умолчанию, предикат возвращает `true` для любого состояния страницы.
-     * @return Максимальная страница, удовлетворяющая предикату, типа `UInt`.
+     * @param page The page number from which the search begins. This is a UInt, so it must be a positive integer.
+     * @param predicate A function that takes a PageState and returns a Boolean. It defines the condition that a page must satisfy. The default condition is true, which means all pages are considered valid.
      *
-     * Особенности использования:
-     * - Функция может вернуть ту же самую страницу, если нет других страниц, удовлетворяющих предикату.
+     * @return The page number of the first page before the given page that satisfies the condition. If no such page is found, it returns the given page number.
+     *
+     * Note: This function assumes that the pages are numbered in ascending order starting from 1. Therefore, it will not search for a page number less than 1. Also, it uses the cache of the Paginator class, so it can only find pages that have been loaded and cached.
      */
     fun searchPageBefore(
         page: UInt,
@@ -967,6 +793,16 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
         return min
     }
 
+    /**
+     * This function is used to resize the capacity of the Paginator class. It updates the capacity, optionally resizes the data in the cache to fit the new capacity, and updates the snapshot of the paginator.
+     *
+     * @param capacity The new capacity. This is an Int, so it must be a positive integer.
+     * @param resize A Boolean that determines whether to resize the data in the cache to fit the new capacity. If true, the data is resized. Default is true.
+     * @param silently A Boolean that determines whether to update the snapshot after resizing the data. If true, the snapshot is not updated. Default is false.
+     * @param initSuccessState A function that initializes a successful state. It takes the page number and the data as parameters. Default is the initSuccessState function defined in the Paginator class.
+     *
+     * Note: This function uses the cache of the Paginator class, so it can only resize the data of pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a main thread that can handle UI updates. If the silently parameter is set to true, the snapshot of the paginator is not updated after resizing the data. This can be useful for avoiding unnecessary UI updates in an Android app. However, it also means that the snapshot may not accurately represent the current state of the paginator after calling this function. If you need the most up-to-date snapshot, you should set the silently parameter to false or manually update the snapshot after calling this function.
+     */
     fun resize(
         capacity: Int,
         resize: Boolean = true,
@@ -1005,14 +841,9 @@ class Paginator<T>(val source: suspend (page: UInt) -> List<T>) {
     }
 
     /**
-     * Функция `release` предназначена для сброса состояния объекта, в котором она вызывается. Эта функция не принимает входных параметров и не возвращает результатов.
+     * This function is used to reset the Paginator class. It clears the cache and the bookmarks, resets the bookmark iterator, sets the current page to 0, and updates the snapshot of the paginator to an empty list.
      *
-     * Основное предназначение:
-     * Очистка коллекций `pages` и `bookmarks`, сброс текущей страницы `currentPage` до 0 и обновление `_snapshot` до пустого списка.
-     *
-     * Особенности и ограничения:
-     * - Функция должна вызываться только когда необходимо полностью сбросить состояние объекта.
-     * - После вызова этой функции все данные, связанные со страницами, закладками и текущей страницей, будут утеряны.
+     * Note: This function does not take any parameters and does not return any value. After calling this function, the Paginator class will be in its initial state, as if it was just created. All the data in the cache and the bookmarks will be lost, so you should only call this function when you no longer need the current state of the paginator. Also, this function updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a main thread that can handle UI updates.
      */
     fun release() {
         cache.clear()
