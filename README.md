@@ -18,7 +18,7 @@ repositories {
 ```
 
 ``` Gradle
-implementation("com.github.jamal-wia:Paginator:2.2.21")
+implementation("com.github.jamal-wia:Paginator:2.2.22")
 ```
 
 ## **Быстрый старт в 3 шага**
