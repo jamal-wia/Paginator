@@ -47,7 +47,7 @@ class MainViewModel : ViewModel() {
 
     fun endReached() {
         viewModelScope.launch {
-            paginator.nextPage()
+            paginator.goNextPage()
         }
     }
 

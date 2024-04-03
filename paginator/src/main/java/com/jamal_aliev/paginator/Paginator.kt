@@ -1,8 +1,10 @@
 package com.jamal_aliev.paginator
 
+import com.jamal_aliev.paginator.Paginator.LockedException.GoNextPageWasLockedException
+import com.jamal_aliev.paginator.Paginator.LockedException.GoPreviousPageWasLockedException
 import com.jamal_aliev.paginator.Paginator.LockedException.JumpWasLockedException
-import com.jamal_aliev.paginator.Paginator.LockedException.NextPageWasLockedException
-import com.jamal_aliev.paginator.Paginator.LockedException.PreviousPageWasLockedException
+import com.jamal_aliev.paginator.Paginator.LockedException.RefreshWasLockedException
+import com.jamal_aliev.paginator.Paginator.LockedException.RestartWasLockedException
 import com.jamal_aliev.paginator.Paginator.PageState.Empty
 import com.jamal_aliev.paginator.Paginator.PageState.Error
 import com.jamal_aliev.paginator.Paginator.PageState.Progress
@@ -21,7 +23,8 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         private set
 
     private val cache = hashMapOf<UInt, PageState<T>>()
-    var currentPage = 0u
+    val pages get() = cache.keys.toList()
+    var contextPage = 0u
         private set
 
     val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkUInt(page = 1u))
@@ -166,7 +169,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         if (lockJump) throw JumpWasLockedException()
 
         check(bookmark.page > 0u)
-        currentPage = bookmark.page
+        contextPage = bookmark.page
 
         if (cache[bookmark.page].isValidSuccessState()) {
             _snapshot.update { scan() }
@@ -193,7 +196,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         return bookmark
     }
 
-    var lockNextPage: Boolean = false
+    var lockGoNextPage: Boolean = false
 
     /**
      * This suspend function is used to navigate to the next page in the pagination system. It updates the current page, loads the state of the new page, and updates the snapshot of the paginator.
@@ -207,23 +210,23 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
      *
      * Note: This function uses the cache of the Paginator class, so it can only navigate to pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a coroutine scope that can handle main thread updates. The function runs asynchronously for each page, so the order in which the pages are refreshed is not guaranteed.
      */
-    suspend fun nextPage(
+    suspend fun goNextPage(
         initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
         initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
         initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
         initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): UInt = coroutineScope {
-        if (lockNextPage) throw NextPageWasLockedException()
+        if (lockGoNextPage) throw GoNextPageWasLockedException()
 
-        val nextPage = searchPageAfter(currentPage) { it.isValidSuccessState() } + 1u
+        val nextPage = searchPageAfter(contextPage) { it.isValidSuccessState() } + 1u
         check(nextPage > 0u)
         if (cache[nextPage].isProgressState())
             return@coroutineScope nextPage
 
-        val refreshJob = if (cache[currentPage].isValidSuccessState()) null
+        val refreshJob = if (cache[contextPage].isValidSuccessState()) null
         else launch {
             refresh(
-                pages = listOf(currentPage),
+                pages = listOf(contextPage),
                 loadingSilently = true,
                 finalSilently = true,
                 initProgressState = initProgressState,
@@ -245,7 +248,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { finalPageState ->
-            if (finalPageState.isSuccessState()) currentPage = nextPage
+            if (finalPageState.isSuccessState()) contextPage = nextPage
             cache[nextPage] = finalPageState
             _snapshot.update { scan() }
         }
@@ -254,7 +257,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         return@coroutineScope nextPage
     }
 
-    var lockPreviousPage: Boolean = false
+    var lockGoPreviousPage: Boolean = false
 
     /**
      * This suspend function is used to navigate to the previous page in the pagination system. It updates the current page, loads the state of the new page, and updates the snapshot of the paginator.
@@ -268,23 +271,23 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
      *
      * Note: This function uses the cache of the Paginator class, so it can only navigate to pages that have been loaded and cached. Also, it updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a coroutine scope that can handle main thread updates. The function runs asynchronously for each page, so the order in which the pages are refreshed is not guaranteed. If the previous page is already in a progress state, it returns the page number without loading the page state. This can be useful for avoiding unnecessary network requests or database queries. However, it also means that the state of the previous page may not be up-to-date when the function returns. If you need the most up-to-date state of the previous page, you should force a refresh of the page state before calling this function.
      */
-    suspend fun previousPage(
+    suspend fun goPreviousPage(
         initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
         initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
         initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
         initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): UInt = coroutineScope {
-        if (lockPreviousPage) throw PreviousPageWasLockedException()
+        if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
 
-        val previousPage = searchPageBefore(currentPage) { it.isValidSuccessState() } - 1u
+        val previousPage = searchPageBefore(contextPage) { it.isValidSuccessState() } - 1u
         check(previousPage > 0u)
         if (cache[previousPage].isProgressState())
             return@coroutineScope previousPage
 
-        val refreshJob = if (cache[currentPage].isValidSuccessState()) null
+        val refreshJob = if (cache[contextPage].isValidSuccessState()) null
         else launch {
             refresh(
-                pages = listOf(currentPage),
+                pages = listOf(contextPage),
                 loadingSilently = true,
                 finalSilently = true,
                 initProgressState = initProgressState,
@@ -306,7 +309,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { finalPageState ->
-            if (finalPageState.isSuccessState()) currentPage = previousPage
+            if (finalPageState.isSuccessState()) contextPage = previousPage
             cache[previousPage] = finalPageState
             _snapshot.update { scan() }
         }
@@ -314,6 +317,42 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         refreshJob?.join()
         return@coroutineScope previousPage
     }
+
+    var lockRestart: Boolean = false
+
+    suspend fun restart(
+        initProgressState: ((page: UInt, data: List<T>) -> Progress<T>)? = this.initProgressState,
+        initEmptyState: ((page: UInt, data: List<T>) -> Empty<T>)? = this.initEmptyState,
+        initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
+        initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
+    ): Unit = coroutineScope {
+        if (lockRestart) throw RestartWasLockedException()
+
+        val firstPage = cache.getValue(1u)
+        cache.clear()
+        cache[1u] = firstPage
+
+        contextPage = 0u
+        loadPageState(
+            page = 1u,
+            forceLoading = true,
+            loading = { page, pageState ->
+                cache[page] = initProgressState?.invoke(
+                    page, pageState?.data.orEmpty()
+                ) ?: ProgressState(page)
+                _snapshot.update { scan(range = 1u..1u) }
+            },
+            initEmptyState = initEmptyState,
+            initSuccessState = initSuccessState,
+            initErrorState = initErrorState
+        ).also { finalPageState ->
+            contextPage = 1u
+            cache[1u] = finalPageState
+            _snapshot.update { scan(range = 1u..1u) }
+        }
+    }
+
+    var lockRefresh: Boolean = false
 
     /**
      * This suspend function is used to refresh a list of pages in the pagination system. It updates the state of each page, loads the new state of each page, and updates the snapshot of the paginator.
@@ -337,6 +376,8 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
         initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ): Unit = coroutineScope {
+        if (lockRefresh) throw RefreshWasLockedException()
+
         pages.forEach { page ->
             cache[page] = initProgressState?.invoke(
                 page, cache[page]?.data.orEmpty()
@@ -373,6 +414,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState,
         initErrorState: ((exception: Exception, page: UInt, data: List<T>) -> Error<T>)? = this.initErrorState
     ) {
+        if (lockRefresh) throw RefreshWasLockedException()
         return refresh(
             pages = cache.keys.toList(),
             loadingSilently = loadingSilently,
@@ -560,7 +602,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         cache[page] = pageState.copy(data = updatedData)
 
         if (!silently) {
-            val rangeSnapshot = searchPageBefore(currentPage)..searchPageAfter(currentPage)
+            val rangeSnapshot = searchPageBefore(contextPage)..searchPageAfter(contextPage)
             if (page in rangeSnapshot) {
                 _snapshot.update { scan(rangeSnapshot) }
             }
@@ -650,12 +692,12 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             } else {
                 val rangePageInvalidated = (page + 1u)..cache.keys.last()
                 for (invalid in rangePageInvalidated) cache.remove(invalid)
-                currentPage = page
+                contextPage = page
             }
         }
 
         if (!silently) {
-            val rangeSnapshot = searchPageBefore(currentPage)..searchPageAfter(currentPage)
+            val rangeSnapshot = searchPageBefore(contextPage)..searchPageAfter(contextPage)
             if (page in rangeSnapshot) {
                 _snapshot.update { scan(rangeSnapshot) }
             }
@@ -701,7 +743,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         )
 
         if (!silently) {
-            val rangeSnapshot = searchPageBefore(currentPage)..searchPageAfter(currentPage)
+            val rangeSnapshot = searchPageBefore(contextPage)..searchPageAfter(contextPage)
             if (page in rangeSnapshot) {
                 _snapshot.update { scan(rangeSnapshot) }
             }
@@ -775,8 +817,8 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
      */
     fun scan(
         range: UIntRange = kotlin.run {
-            val min = searchPageBefore(currentPage)
-            val max = searchPageAfter(currentPage)
+            val min = searchPageBefore(contextPage)
+            val max = searchPageAfter(contextPage)
             return@run min..max
         }
     ): List<PageState<T>> {
@@ -856,8 +898,8 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         this.capacity = capacity
 
         if (resize) {
-            val firstSuccessPage = searchPageBefore(currentPage) { it.isSuccessState() }
-            val lastSuccessPage = searchPageAfter(currentPage) { it.isSuccessState() }
+            val firstSuccessPage = searchPageBefore(contextPage) { it.isSuccessState() }
+            val lastSuccessPage = searchPageAfter(contextPage) { it.isSuccessState() }
             val successStatesRange = firstSuccessPage..lastSuccessPage
             val successStates = successStatesRange.map { cache.getValue(it) }
             val items = successStates.flatMap { it.data }.toMutableList()
@@ -887,13 +929,22 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
      *
      * Note: This function does not take any parameters and does not return any value. After calling this function, the Paginator class will be in its initial state, as if it was just created. All the data in the cache and the bookmarks will be lost, so you should only call this function when you no longer need the current state of the paginator. Also, this function updates the snapshot of the paginator, which can trigger UI updates in an Android app. Therefore, it should be called from a main thread that can handle UI updates.
      */
-    fun release() {
+    fun release(
+        capacity: Int = 20,
+        silently: Boolean = false
+    ) {
         cache.clear()
         bookmarks.clear()
         bookmarks.add(BookmarkUInt(page = 1u))
         bookmarkIterator = bookmarks.listIterator()
-        currentPage = 0u
-        _snapshot.update { emptyList() }
+        contextPage = 0u
+        if (!silently) _snapshot.update { emptyList() }
+        resize(capacity, resize = false, silently = true)
+        lockJump = false
+        lockGoNextPage = false
+        lockGoPreviousPage = false
+        lockRestart = false
+        lockRefresh = false
     }
 
     override fun toString() = "Paginator(pages=$cache, bookmarks=$bookmarks)"
@@ -972,10 +1023,16 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         class JumpWasLockedException :
             LockedException("Jump was locked. Please try set false to field lockJump")
 
-        class NextPageWasLockedException :
-            LockedException("NextPage was locked. Please try set false to field lockNext")
+        class GoNextPageWasLockedException :
+            LockedException("NextPage was locked. Please try set false to field lockGoNextPage")
 
-        class PreviousPageWasLockedException :
-            LockedException("PreviousPage was locked. Please try set false to field lockPrevious")
+        class GoPreviousPageWasLockedException :
+            LockedException("PreviousPage was locked. Please try set false to field lockGoPreviousPage")
+
+        class RestartWasLockedException
+            : LockedException("Restart was locked. Please try set false to field lockRestart")
+
+        class RefreshWasLockedException :
+            LockedException("Refresh was locked. Please try set false to field lockRefresh")
     }
 }
