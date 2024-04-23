@@ -332,7 +332,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         cache.clear()
         cache[1u] = firstPage
 
-        contextPage = 0u
+        contextPage = 1u
         loadPageState(
             page = 1u,
             forceLoading = true,
@@ -346,7 +346,6 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { finalPageState ->
-            contextPage = 1u
             cache[1u] = finalPageState
             _snapshot.update { scan(range = 1u..1u) }
         }
