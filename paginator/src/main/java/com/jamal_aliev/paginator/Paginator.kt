@@ -168,10 +168,10 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
     ): Bookmark {
         if (lockJump) throw JumpWasLockedException()
 
-        check(bookmark.page > 0u)
-        contextPage = bookmark.page
+        check(bookmark.page > 0u) { "bookmark.page should be greater than 0" }
 
         if (cache[bookmark.page].isValidSuccessState()) {
+            contextPage = bookmark.page
             _snapshot.update { scan() }
             return bookmark
         }
@@ -183,6 +183,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
                 cache[page] = initProgressState?.invoke(
                     page, pageState?.data.orEmpty()
                 ) ?: ProgressState(page)
+                contextPage = bookmark.page
                 _snapshot.update { scan() }
             },
             initEmptyState = initEmptyState,
@@ -190,6 +191,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             initErrorState = initErrorState
         ).also { finalPageState ->
             cache[bookmark.page] = finalPageState
+            contextPage = bookmark.page
             _snapshot.update { scan() }
         }
 
@@ -218,23 +220,31 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
     ): UInt = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
 
-        val nextPage = searchPageAfter(contextPage) { it.isValidSuccessState() } + 1u
-        check(nextPage > 0u)
+        val pivotContextPage = searchPageAfter(contextPage) { it.isValidSuccessState() }
+        check(pivotContextPage > 0u) { "pivotContextPage should be greater than 0. Paginator was not be started. Please use jump method before goNextPage" }
+        val pivotContextPageState = cache[pivotContextPage]
+        val nextPage = if (pivotContextPageState.isValidSuccessState()) pivotContextPage + 1u
+        else pivotContextPage
+
         if (cache[nextPage].isProgressState())
             return@coroutineScope nextPage
 
-        val refreshJob = if (cache[contextPage].isValidSuccessState()) null
-        else launch {
-            refresh(
-                pages = listOf(contextPage),
-                loadingSilently = true,
-                finalSilently = true,
-                initProgressState = initProgressState,
-                initEmptyState = initEmptyState,
-                initSuccessState = initSuccessState,
-                initErrorState = initErrorState
-            )
-        }
+        val pivotPageRefreshJob =
+            if (nextPage != pivotContextPage
+                && !pivotContextPageState.isValidSuccessState()
+            ) {
+                launch {
+                    refresh(
+                        pages = listOf(pivotContextPage),
+                        loadingSilently = true,
+                        finalSilently = true,
+                        initProgressState = initProgressState,
+                        initEmptyState = initEmptyState,
+                        initSuccessState = initSuccessState,
+                        initErrorState = initErrorState
+                    )
+                }
+            } else null
 
         loadPageState(
             page = nextPage,
@@ -248,12 +258,12 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { finalPageState ->
-            if (finalPageState.isSuccessState()) contextPage = nextPage
             cache[nextPage] = finalPageState
+            if (finalPageState.isValidSuccessState()) contextPage = nextPage
             _snapshot.update { scan() }
         }
 
-        refreshJob?.join()
+        pivotPageRefreshJob?.join()
         return@coroutineScope nextPage
     }
 
@@ -279,23 +289,32 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
     ): UInt = coroutineScope {
         if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
 
-        val previousPage = searchPageBefore(contextPage) { it.isValidSuccessState() } - 1u
-        check(previousPage > 0u)
+        val pivotContextPage = searchPageBefore(contextPage) { it.isValidSuccessState() }
+        check(pivotContextPage > 0u) { "pivotContextPage should be greater than 0. Paginator was not be started. Please use jump method before goNextPage" }
+        val pivotContextPageState = cache[pivotContextPage]
+        val previousPage = if (pivotContextPageState.isValidSuccessState()) pivotContextPage - 1u
+        else pivotContextPage
+        check(previousPage > 0u) { "previousPage should be greater than 0" }
+
         if (cache[previousPage].isProgressState())
             return@coroutineScope previousPage
 
-        val refreshJob = if (cache[contextPage].isValidSuccessState()) null
-        else launch {
-            refresh(
-                pages = listOf(contextPage),
-                loadingSilently = true,
-                finalSilently = true,
-                initProgressState = initProgressState,
-                initEmptyState = initEmptyState,
-                initSuccessState = initSuccessState,
-                initErrorState = initErrorState
-            )
-        }
+        val pivotPageRefreshJob =
+            if (previousPage != pivotContextPage
+                && !pivotContextPageState.isValidSuccessState()
+            ) {
+                launch {
+                    refresh(
+                        pages = listOf(pivotContextPage),
+                        loadingSilently = true,
+                        finalSilently = true,
+                        initProgressState = initProgressState,
+                        initEmptyState = initEmptyState,
+                        initSuccessState = initSuccessState,
+                        initErrorState = initErrorState
+                    )
+                }
+            } else null
 
         loadPageState(
             page = previousPage,
@@ -309,12 +328,12 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { finalPageState ->
-            if (finalPageState.isSuccessState()) contextPage = previousPage
             cache[previousPage] = finalPageState
+            if (finalPageState.isValidSuccessState()) contextPage = previousPage
             _snapshot.update { scan() }
         }
 
-        refreshJob?.join()
+        pivotPageRefreshJob?.join()
         return@coroutineScope previousPage
     }
 
