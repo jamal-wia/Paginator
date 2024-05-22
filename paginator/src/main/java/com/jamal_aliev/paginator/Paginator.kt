@@ -472,11 +472,17 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             val cachedState = if (forceLoading) null else cache[page]
             if (cachedState.isValidSuccessState()) return cachedState!!
             loading?.invoke(page, cachedState)
-            val data = source.invoke(this, page)
-            if (data.isEmpty()) initEmptyState?.invoke(page, data) ?: EmptyState(page)
-            else initSuccessState?.invoke(page, data) ?: SuccessState(page, data)
+            val sourceData = source.invoke(this, page)
+            if (sourceData.isEmpty()) {
+                initEmptyState?.invoke(page, sourceData)
+                    ?: EmptyState(page)
+            } else {
+                initSuccessState?.invoke(page, sourceData)
+                    ?: SuccessState(page, sourceData.toList())
+            }
         } catch (exception: Exception) {
-            initErrorState?.invoke(exception, page, emptyList()) ?: ErrorState(exception, page)
+            initErrorState?.invoke(exception, page, emptyList())
+                ?: ErrorState(exception, page)
         }
     }
 
@@ -617,7 +623,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             }
         }
 
-        cache[page] = pageState.copy(data = updatedData)
+        cache[page] = pageState.copy(data = updatedData.toList())
 
         if (!silently) {
             val rangeSnapshot = searchPageBefore(contextPage)..searchPageAfter(contextPage)
@@ -632,11 +638,11 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
     fun addElement(
         element: T,
         silently: Boolean = false,
-        initPageState: (() -> PageState<T>)? = null
+        initSuccessPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = this.initSuccessState
     ): Boolean {
         val lastPage = cache.keys.maxOrNull() ?: return false
         val lastIndex = cache.getValue(lastPage).data.lastIndex
-        addElement(element, lastPage, lastIndex, silently, initPageState)
+        addElement(element, lastPage, lastIndex, silently, initSuccessPageState)
         return true
     }
 
@@ -645,7 +651,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         page: UInt,
         index: Int,
         silently: Boolean = false,
-        initPageState: (() -> PageState<T>)? = null
+        initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ) {
         return addAllElements(
             elements = listOf(element),
@@ -674,26 +680,24 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         page: UInt,
         index: Int,
         silently: Boolean = false,
-        initPageState: (() -> PageState<T>)? = null
+        initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ) {
-        val pageState = (initPageState?.invoke() ?: cache[page])
+        val pageState = (cache[page] ?: initPageState?.invoke(page, emptyList()))
             ?: throw IndexOutOfBoundsException(
                 "page-$page was not created"
             )
 
         val updatedData = pageState.data.toMutableList()
             .also { it.addAll(index, elements) }
-        val extraElements =
+
+        val extraElements: MutableList<T>? =
             if (updatedData.size > capacity) {
-                val initialCapacity = updatedData.size - capacity
-                ArrayList<T>(initialCapacity)
-                    .apply {
-                        repeat(initialCapacity) { add(updatedData.removeLast()) }
-                        reverse()
-                    }
+                MutableList(size = updatedData.size - capacity) {
+                    updatedData.removeLast()
+                }.also { it.reverse() }
             } else null
 
-        cache[page] = pageState.copy(data = updatedData)
+        cache[page] = pageState.copy(data = updatedData.toList())
 
         if (!extraElements.isNullOrEmpty()) {
             val nextPageState = cache[page + 1u]
@@ -710,7 +714,6 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             } else {
                 val rangePageInvalidated = (page + 1u)..cache.keys.last()
                 for (invalid in rangePageInvalidated) cache.remove(invalid)
-                contextPage = page
             }
         }
 
@@ -973,9 +976,20 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
 
     companion object {
         fun PageState<*>?.isProgressState() = this is Progress<*>
+        inline fun <reified T> PageState<T>.isRealProgressState() =
+            this is Progress<T> && this::class == T::class
+
         fun PageState<*>?.isEmptyState() = this is Empty<*>
-        fun PageState<*>?.isSuccessState() = this is Success<*>
+        inline fun <reified T> PageState<T>.isRealEmptyState() =
+            this is Empty<T> && this::class == T::class
+
+        fun PageState<*>?.isSuccessState() = this is Success<*> && this !is Empty<*>
+        inline fun <reified T> PageState<T>.isRealSuccessState() =
+            this.isSuccessState() && this::class == T::class
+
         fun PageState<*>?.isErrorState() = this is Error<*>
+        inline fun <reified T> PageState<T>.isRealErrorState() =
+            this is Error<T> && this::class == T::class
     }
 
     sealed class PageState<E>(
@@ -986,33 +1000,73 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         open class Progress<T>(
             override val page: UInt,
             override val data: List<T>,
-        ) : PageState<T>(page, data)
+        ) : PageState<T>(page, data) {
+
+            override fun copy(page: UInt, data: List<T>): Progress<T> {
+                return Progress(page, data)
+            }
+        }
 
         open class Success<T>(
             override val page: UInt,
             override val data: List<T>,
-        ) : PageState<T>(page, data)
+        ) : PageState<T>(page, data) {
+            init {
+                checkData()
+            }
+
+            private fun checkData() {
+                check(data.isNotEmpty()) { "data must not be empty" }
+            }
+
+            /**
+             * If you want to override this function you should check the data because it can't be empty
+             * */
+            override fun copy(page: UInt, data: List<T>): Success<T> {
+                return if (data.isEmpty()) Empty(page, data) else Success(page, data)
+            }
+        }
 
         open class Empty<T>(
             override val page: UInt,
             override val data: List<T>,
-        ) : PageState<T>(page, data)
+        ) : Success<T>(page, data) {
+
+            override fun copy(page: UInt, data: List<T>): Empty<T> {
+                return Empty(page, data)
+            }
+        }
 
         open class Error<T>(
             val exception: Exception,
             override val page: UInt,
             override val data: List<T>,
-        ) : PageState<T>(page, data)
+        ) : PageState<T>(page, data) {
+            open fun copy(e: Exception, page: UInt, data: List<T>): Error<T> {
+                return Error(e, page, data)
+            }
 
-        fun copy(
-            page: UInt = this.page,
-            data: List<E> = this.data
-        ): PageState<E> = when (this) {
-            is Progress -> Progress(page, data)
-            is Success -> if (data.isEmpty()) Empty(page, data) else Success(page, data)
-            is Empty -> Empty(page, data)
-            is Error -> Error(exception, page, data)
+            override fun copy(page: UInt, data: List<T>): Error<T> {
+                return copy(e = this.exception, page = page, data = data)
+            }
+
+            override fun toString(): String {
+                return "${this::class.simpleName}(exception=${exception}, data=${this.data})"
+            }
+
+            override fun hashCode(): Int {
+                return exception.hashCode()
+            }
+
+            override fun equals(other: Any?): Boolean {
+                if (other !is Error<*>) return false
+                return other::class == this::class
+                        && other.data === this.data
+                        && other.exception === this.exception
+            }
         }
+
+        abstract fun copy(page: UInt = this.page, data: List<E> = this.data): PageState<E>
 
         override fun toString() = "${this::class.simpleName}(data=${this.data})"
 

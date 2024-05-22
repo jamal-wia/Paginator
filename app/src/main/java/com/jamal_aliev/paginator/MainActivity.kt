@@ -30,6 +30,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jamal_aliev.paginator.MainViewState.DataState
+import com.jamal_aliev.paginator.Paginator.Companion.isEmptyState
+import com.jamal_aliev.paginator.Paginator.Companion.isErrorState
+import com.jamal_aliev.paginator.Paginator.Companion.isProgressState
+import com.jamal_aliev.paginator.Paginator.Companion.isSuccessState
 import com.jamal_aliev.paginator.ui.theme.PaginatorTheme
 
 class MainActivity : ComponentActivity() {
@@ -87,8 +91,8 @@ class MainActivity : ComponentActivity() {
 
         LazyColumn(state = lazyListState) {
             state.data.forEach { pageState ->
-                when (pageState) {
-                    is Paginator.PageState.Success -> {
+                when {
+                    pageState.isSuccessState() -> {
                         items(pageState.data.size) { index ->
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally
@@ -115,9 +119,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    is Paginator.PageState.Empty -> TODO()
+                    pageState.isEmptyState() -> TODO()
 
-                    is Paginator.PageState.Error -> {
+                    pageState.isErrorState() -> {
+                        pageState as Paginator.PageState.Error
                         item {
                             Column(
                                 modifier = Modifier
@@ -143,7 +148,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    is Paginator.PageState.Progress -> {
+                    pageState.isProgressState() -> {
                         item {
                             Column(
                                 modifier = Modifier
