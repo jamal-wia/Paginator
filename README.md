@@ -7,6 +7,7 @@
 предыдущих страниц,
 множественные источники данных, предварительная загрузка данных и удобное API для взаимодействия
 [Telegram Paginator_Library](https://t.me/+0eeAM-EJpqgwNGZi)
+[YouTube Tutorial RU](https://www.youtube.com/watch?v=YsUX7-FgKgA)
 
 ## **Подключение**
 
