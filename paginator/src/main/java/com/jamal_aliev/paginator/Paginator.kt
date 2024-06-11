@@ -22,6 +22,9 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
     var capacity: Int = 20
         private set
 
+    val ignoreCapacity: Boolean
+        get() = capacity == 0
+
     private val cache = hashMapOf<UInt, PageState<T>>()
     val pages get() = cache.keys.toList()
     var contextPage = 0u
@@ -170,7 +173,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
 
         check(bookmark.page > 0u) { "bookmark.page should be greater than 0" }
 
-        if (cache[bookmark.page].isValidSuccessState()) {
+        if (isValidSuccessState(cache[bookmark.page])) {
             contextPage = bookmark.page
             _snapshot.update { scan() }
             return bookmark
@@ -220,10 +223,10 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
     ): UInt = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
 
-        val pivotContextPage = searchPageAfter(contextPage) { it.isValidSuccessState() }
+        val pivotContextPage = searchPageAfter(contextPage) { isValidSuccessState(it) }
         check(pivotContextPage > 0u) { "pivotContextPage should be greater than 0. Paginator was not be started. Please use jump method before goNextPage" }
         val pivotContextPageState = cache[pivotContextPage]
-        val nextPage = if (pivotContextPageState.isValidSuccessState()) pivotContextPage + 1u
+        val nextPage = if (isValidSuccessState(pivotContextPageState)) pivotContextPage + 1u
         else pivotContextPage
 
         if (cache[nextPage].isProgressState())
@@ -231,7 +234,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
 
         val pivotPageRefreshJob =
             if (nextPage != pivotContextPage
-                && !pivotContextPageState.isValidSuccessState()
+                && !isValidSuccessState(pivotContextPageState)
             ) {
                 launch {
                     refresh(
@@ -259,7 +262,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             initErrorState = initErrorState
         ).also { finalPageState ->
             cache[nextPage] = finalPageState
-            if (finalPageState.isValidSuccessState()) contextPage = nextPage
+            if (isValidSuccessState(finalPageState)) contextPage = nextPage
             _snapshot.update { scan() }
         }
 
@@ -289,10 +292,10 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
     ): UInt = coroutineScope {
         if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
 
-        val pivotContextPage = searchPageBefore(contextPage) { it.isValidSuccessState() }
+        val pivotContextPage = searchPageBefore(contextPage) { isValidSuccessState(it) }
         check(pivotContextPage > 0u) { "pivotContextPage should be greater than 0. Paginator was not be started. Please use jump method before goNextPage" }
         val pivotContextPageState = cache[pivotContextPage]
-        val previousPage = if (pivotContextPageState.isValidSuccessState()) pivotContextPage - 1u
+        val previousPage = if (isValidSuccessState(pivotContextPageState)) pivotContextPage - 1u
         else pivotContextPage
         check(previousPage > 0u) { "previousPage should be greater than 0" }
 
@@ -301,7 +304,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
 
         val pivotPageRefreshJob =
             if (previousPage != pivotContextPage
-                && !pivotContextPageState.isValidSuccessState()
+                && !isValidSuccessState(pivotContextPageState)
             ) {
                 launch {
                     refresh(
@@ -329,7 +332,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             initErrorState = initErrorState
         ).also { finalPageState ->
             cache[previousPage] = finalPageState
-            if (finalPageState.isValidSuccessState()) contextPage = previousPage
+            if (isValidSuccessState(finalPageState)) contextPage = previousPage
             _snapshot.update { scan() }
         }
 
@@ -470,7 +473,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
     ): PageState<T> {
         return try {
             val cachedState = if (forceLoading) null else cache[page]
-            if (cachedState.isValidSuccessState()) return cachedState!!
+            if (isValidSuccessState(cachedState)) return cachedState!!
             loading?.invoke(page, cachedState)
             val sourceData = source.invoke(this, page)
             if (sourceData.isEmpty()) {
@@ -604,7 +607,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         val updatedData = pageState.data.toMutableList()
             .also { removed = it.removeAt(index) }
 
-        if (updatedData.size < capacity) {
+        if (updatedData.size < capacity && !ignoreCapacity) {
             val nextPageState = cache[page + 1u]
             if (nextPageState != null
                 && nextPageState::class == pageState::class
@@ -623,7 +626,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             }
         }
 
-        cache[page] = pageState.copy(data = updatedData.toList())
+        cache[page] = pageState.copy(data = updatedData)
 
         if (!silently) {
             val rangeSnapshot = searchPageBefore(contextPage)..searchPageAfter(contextPage)
@@ -691,13 +694,13 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             .also { it.addAll(index, elements) }
 
         val extraElements: MutableList<T>? =
-            if (updatedData.size > capacity) {
+            if (updatedData.size > capacity && !ignoreCapacity) {
                 MutableList(size = updatedData.size - capacity) {
                     updatedData.removeLast()
                 }.also { it.reverse() }
             } else null
 
-        cache[page] = pageState.copy(data = updatedData.toList())
+        cache[page] = pageState.copy(data = updatedData)
 
         if (!extraElements.isNullOrEmpty()) {
             val nextPageState = cache[page + 1u]
@@ -823,8 +826,11 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         return indexOfLast { it == element }
     }
 
-    fun PageState<T>?.isValidSuccessState(): Boolean {
-        return (this as? Success)?.data?.size == capacity
+    inline fun isValidSuccessState(pageState: PageState<T>?): Boolean {
+        if (pageState is Empty) return false
+        if (pageState !is Success) return false
+        if (ignoreCapacity) return true
+        return pageState.data.size == capacity
     }
 
     /**
@@ -915,10 +921,10 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         initSuccessState: ((page: UInt, data: List<T>) -> Success<T>)? = this.initSuccessState
     ) {
         if (this.capacity == capacity) return
-        check(capacity > 0)
+        check(capacity >= 0)
         this.capacity = capacity
 
-        if (resize) {
+        if (resize && capacity > 0) {
             val firstSuccessPage = searchPageBefore(contextPage) { it.isSuccessState() }
             val lastSuccessPage = searchPageAfter(contextPage) { it.isSuccessState() }
             val successStatesRange = firstSuccessPage..lastSuccessPage
@@ -940,7 +946,7 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
             }
         }
 
-        if (!silently) {
+        if (!silently && capacity > 0) {
             _snapshot.update { scan() }
         }
     }
@@ -990,6 +996,8 @@ class Paginator<T>(val source: suspend Paginator<T>.(page: UInt) -> List<T>) {
         fun PageState<*>?.isErrorState() = this is Error<*>
         inline fun <reified T> PageState<T>.isRealErrorState() =
             this is Error<T> && this::class == T::class
+
+        const val IGNORE_CAPACITY = 0
     }
 
     sealed class PageState<E>(
