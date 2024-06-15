@@ -31,9 +31,9 @@ class MainViewModel : ViewModel() {
             .launchIn(viewModelScope)
 
         viewModelScope.launch {
-            val async1 = async { paginator.loadPageState(1u, forceLoading = true) }
-            val async2 = async { paginator.loadPageState(2u, forceLoading = true) }
-            val async3 = async { paginator.loadPageState(3u, forceLoading = true) }
+            val async1 = async { paginator.loadOrGetPageState(1u, forceLoading = true) }
+            val async2 = async { paginator.loadOrGetPageState(2u, forceLoading = true) }
+            val async3 = async { paginator.loadOrGetPageState(3u, forceLoading = true) }
             val pageState1 = async1.await()
             val pageState2 = async2.await()
             val pageState3 = async3.await()
@@ -51,13 +51,13 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun refreshPage(pageState: Paginator.PageState.Error<String>) {
+    fun refreshPage(pageState: Paginator.PageState.ErrorPage<String>) {
         viewModelScope.launch {
-            val newState = paginator.loadPageState(
+            val newState = paginator.loadOrGetPageState(
                 page = pageState.page,
                 forceLoading = true,
                 loading = { page, pageState ->
-                    paginator.setPageState(paginator.ProgressState(page))
+                    paginator.setPageState(paginator.ProgressPageFactory(page))
                 }
             )
             paginator.setPageState(newState)

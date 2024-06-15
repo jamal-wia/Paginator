@@ -30,10 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jamal_aliev.paginator.MainViewState.DataState
-import com.jamal_aliev.paginator.Paginator.Companion.isEmptyState
-import com.jamal_aliev.paginator.Paginator.Companion.isErrorState
-import com.jamal_aliev.paginator.Paginator.Companion.isProgressState
-import com.jamal_aliev.paginator.Paginator.Companion.isSuccessState
 import com.jamal_aliev.paginator.ui.theme.PaginatorTheme
 
 class MainActivity : ComponentActivity() {
@@ -122,7 +118,7 @@ class MainActivity : ComponentActivity() {
                     pageState.isEmptyState() -> TODO()
 
                     pageState.isErrorState() -> {
-                        pageState as Paginator.PageState.Error
+                        pageState as Paginator.PageState.ErrorPage
                         item {
                             Column(
                                 modifier = Modifier
