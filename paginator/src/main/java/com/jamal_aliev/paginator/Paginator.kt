@@ -16,7 +16,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlin.math.max
 
 private typealias InitializerProgressPage<T> = (page: UInt, data: List<T>) -> ProgressPage<T>
@@ -37,8 +36,16 @@ open class Paginator<T>(
     protected val cache = sortedMapOf<UInt, PageState<T>>()
     val pages get() = cache.keys.toList()
 
-    // TODO: Заменить на сontextRange или просто использовать две переменные
-    var contextPage = 0u
+    /**
+     * This is variable that holds the left valid success page expect jump situation
+     * */
+    var startContextPage = 0u
+        private set
+
+    /**
+     * This is variable that holds the right valid success page expect jump situation
+     * */
+    var endContextPage = 0u
         private set
 
     val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkUInt(page = 1u))
@@ -55,6 +62,8 @@ open class Paginator<T>(
 
     suspend fun jumpForward(
         recycling: Boolean = recyclingBookmark,
+        silentlyLoading: Boolean = false,
+        silentlyResult: Boolean = false,
         initProgressState: InitializerProgressPage<T>? = initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
         initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
@@ -74,6 +83,8 @@ open class Paginator<T>(
             }
             return jump(
                 bookmark = bookmark,
+                silentlyLoading = silentlyLoading,
+                silentlyResult = silentlyResult,
                 initProgressState = initProgressState,
                 initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
@@ -86,6 +97,9 @@ open class Paginator<T>(
 
     suspend fun jumpBack(
         recycling: Boolean = recyclingBookmark,
+
+        silentlyLoading: Boolean = false,
+        silentlyResult: Boolean = false,
         initProgressState: InitializerProgressPage<T>? = initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
@@ -105,6 +119,8 @@ open class Paginator<T>(
             }
             return jump(
                 bookmark = bookmark,
+                silentlyLoading = silentlyLoading,
+                silentlyResult = silentlyResult,
                 initProgressState = initProgressState,
                 initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
@@ -119,6 +135,8 @@ open class Paginator<T>(
 
     suspend fun jump(
         bookmark: Bookmark,
+        silentlyLoading: Boolean = false,
+        silentlyResult: Boolean = false,
         initProgressState: InitializerProgressPage<T>? = initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
@@ -128,11 +146,19 @@ open class Paginator<T>(
 
         check(bookmark.page > 0u) { "bookmark.page should be greater than 0" }
 
-        if (isValidSuccessState(cache[bookmark.page])) {
-            contextPage = bookmark.page
+        val probablySuccessBookmarkPage = cache[bookmark.page]
+        if (isValidSuccessState(probablySuccessBookmarkPage)) {
+            fastSearchPageBefore(probablySuccessBookmarkPage) { isValidSuccessState(it) }
+                ?.also { startContextPage = it.page }
+            fastSearchPageAfter(probablySuccessBookmarkPage) { isValidSuccessState(it) }
+                ?.also { endContextPage = it.page }
             _snapshot.update { scan() }
             return bookmark
         }
+
+        startContextPage = bookmark.page
+        endContextPage = bookmark.page
+
         loadOrGetPageState(
             page = bookmark.page,
             forceLoading = true,
@@ -142,16 +168,24 @@ open class Paginator<T>(
                     data = pageState?.data.orEmpty(),
                     initProgressState = initProgressState
                 )
-                contextPage = bookmark.page
-                _snapshot.update { scan() }
+                if (!silentlyLoading) {
+                    _snapshot.update { scan() }
+                }
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
-        ).also { finalPageState ->
-            cache[bookmark.page] = finalPageState
-            contextPage = bookmark.page
-            _snapshot.update { scan() }
+        ).also { resultPageState ->
+            cache[bookmark.page] = resultPageState
+
+            fastSearchPageBefore(cache[startContextPage]) { isValidSuccessState(it) }
+                ?.also { startContextPage = it.page }
+            fastSearchPageAfter(cache[endContextPage]) { isValidSuccessState(it) }
+                ?.also { endContextPage = it.page }
+
+            if (!silentlyResult) {
+                _snapshot.update { scan() }
+            }
         }
 
         return bookmark
@@ -160,6 +194,8 @@ open class Paginator<T>(
     var lockGoNextPage: Boolean = false
 
     suspend fun goNextPage(
+        silentlyLoading: Boolean = false,
+        silentlyResult: Boolean = false,
         initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
@@ -167,58 +203,49 @@ open class Paginator<T>(
     ): UInt = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
 
-        val pivotContextPage = searchPageAfter(contextPage) { isValidSuccessState(it) }
-        check(pivotContextPage > 0u) { "pivotContextPage should be greater than 0. Paginator was not be started. Please use jump method before goNextPage" }
-        val pivotContextPageState = cache[pivotContextPage]
-        val nextPage = if (isValidSuccessState(pivotContextPageState)) pivotContextPage + 1u
-        else pivotContextPage
+        fastSearchPageAfter(cache[endContextPage]) { isValidSuccessState(it) }
+            ?.also { endContextPage = it.page }
+
+        val pivotContextPage = endContextPage
+        val nextPage = pivotContextPage + 1u
 
         if (cache[nextPage].isProgressState())
             return@coroutineScope nextPage
 
-        val pivotPageRefreshJob =
-            if (nextPage != pivotContextPage
-                && !isValidSuccessState(pivotContextPageState)
-            ) {
-                launch {
-                    refresh(
-                        pages = listOf(pivotContextPage),
-                        loadingSilently = true,
-                        finalSilently = true,
-                        initProgressState = initProgressState,
-                        initEmptyState = initEmptyState,
-                        initSuccessState = initSuccessState,
-                        initErrorState = initErrorState
-                    )
-                }
-            } else null
-
         loadOrGetPageState(
             page = nextPage,
+            forceLoading = true,
             loading = { page, pageState ->
                 cache[page] = ProgressPageFactory(
                     page = page,
                     data = pageState?.data.orEmpty(),
                     initProgressState = initProgressState
                 )
-                _snapshot.update { scan() }
+                if (!silentlyLoading) {
+                    _snapshot.update { scan() }
+                }
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
-        ).also { finalPageState ->
-            cache[nextPage] = finalPageState
-            if (isValidSuccessState(finalPageState)) contextPage = nextPage
-            _snapshot.update { scan() }
+        ).also { resultPageState ->
+            cache[nextPage] = resultPageState
+            if (endContextPage == pivotContextPage
+                && isValidSuccessState(resultPageState)
+            ) endContextPage = nextPage
+            if (!silentlyResult) {
+                _snapshot.update { scan() }
+            }
         }
 
-        pivotPageRefreshJob?.join()
         return@coroutineScope nextPage
     }
 
     var lockGoPreviousPage: Boolean = false
 
     suspend fun goPreviousPage(
+        silentlyLoading: Boolean = false,
+        silentlyResult: Boolean = false,
         initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
@@ -226,59 +253,50 @@ open class Paginator<T>(
     ): UInt = coroutineScope {
         if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
 
-        val pivotContextPage = searchPageBefore(contextPage) { isValidSuccessState(it) }
-        check(pivotContextPage > 0u) { "pivotContextPage should be greater than 0. Paginator was not be started. Please use jump method before goNextPage" }
-        val pivotContextPageState = cache[pivotContextPage]
-        val previousPage = if (isValidSuccessState(pivotContextPageState)) pivotContextPage - 1u
-        else pivotContextPage
-        check(previousPage > 0u) { "previousPage should be greater than 0" }
+        fastSearchPageBefore(cache[startContextPage]) { isValidSuccessState(it) }
+            ?.also { startContextPage = it.page }
+
+        val pivotContextPage = startContextPage
+        if (pivotContextPage <= 1u) return@coroutineScope pivotContextPage
+        val previousPage = pivotContextPage - 1u
 
         if (cache[previousPage].isProgressState())
             return@coroutineScope previousPage
 
-        val pivotPageRefreshJob =
-            if (previousPage != pivotContextPage
-                && !isValidSuccessState(pivotContextPageState)
-            ) {
-                launch {
-                    refresh(
-                        pages = listOf(pivotContextPage),
-                        loadingSilently = true,
-                        finalSilently = true,
-                        initProgressState = initProgressState,
-                        initEmptyState = initEmptyState,
-                        initSuccessState = initSuccessState,
-                        initErrorState = initErrorState
-                    )
-                }
-            } else null
-
         loadOrGetPageState(
             page = previousPage,
+            forceLoading = true,
             loading = { page, pageState ->
                 cache[page] = ProgressPageFactory(
                     page = page,
                     data = pageState?.data.orEmpty(),
                     initProgressState = initProgressState
                 )
-                _snapshot.update { scan() }
+                if (!silentlyLoading) {
+                    _snapshot.update { scan() }
+                }
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
-        ).also { finalPageState ->
-            cache[previousPage] = finalPageState
-            if (isValidSuccessState(finalPageState)) contextPage = previousPage
-            _snapshot.update { scan() }
+        ).also { resultPageState ->
+            cache[previousPage] = resultPageState
+            if (startContextPage == pivotContextPage
+                && isValidSuccessState(resultPageState)
+            ) startContextPage = previousPage
+            if (!silentlyResult) {
+                _snapshot.update { scan() }
+            }
         }
 
-        pivotPageRefreshJob?.join()
         return@coroutineScope previousPage
     }
 
     var lockRestart: Boolean = false
 
     suspend fun restart(
+        silentlyLoading: Boolean = false,
+        silentlyResult: Boolean = false,
         initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
@@ -290,7 +308,8 @@ open class Paginator<T>(
         cache.clear()
         cache[1u] = firstPage
 
-        contextPage = 1u
+        startContextPage = 1u
+        endContextPage = 1u
         loadOrGetPageState(
             page = 1u,
             forceLoading = true,
@@ -300,14 +319,18 @@ open class Paginator<T>(
                     data = pageState?.data.orEmpty(),
                     initProgressState = initProgressState
                 )
-                _snapshot.update { scan(range = 1u..1u) }
+                if (!silentlyLoading) {
+                    _snapshot.update { scan(range = 1u..1u) }
+                }
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
-        ).also { finalPageState ->
-            cache[1u] = finalPageState
-            _snapshot.update { scan(range = 1u..1u) }
+        ).also { resultPageState ->
+            cache[1u] = resultPageState
+            if (!silentlyResult) {
+                _snapshot.update { scan(range = 1u..1u) }
+            }
         }
     }
 
@@ -374,19 +397,19 @@ open class Paginator<T>(
         )
     }
 
-    suspend fun loadOrGetPageState(
+    suspend inline fun loadOrGetPageState(
         page: UInt,
         forceLoading: Boolean = false,
-        loading: ((page: UInt, pageState: PageState<T>?) -> Unit)? = null,
-        source: suspend Paginator<T>.(page: UInt) -> List<T> = this.source,
-        initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T>? = initializerErrorPage
+        loading: ((page: UInt, pageState: PageState<T>?) -> Unit) = { _, _ -> },
+        noinline source: suspend Paginator<T>.(page: UInt) -> List<T> = this.source,
+        noinline initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
+        noinline initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
+        noinline initErrorState: InitializerErrorPage<T>? = initializerErrorPage
     ): PageState<T> {
         return try {
-            val cachedState = if (forceLoading) null else cache[page]
+            val cachedState = if (forceLoading) null else getPageState(page)
             if (isValidSuccessState(cachedState)) return cachedState!!
-            loading?.invoke(page, cachedState)
+            loading.invoke(page, cachedState)
             SuccessPageFactory(
                 page = page,
                 data = source.invoke(this, page),
@@ -429,7 +452,9 @@ open class Paginator<T>(
         silently: Boolean = false
     ) {
         cache[state.page] = state
-        if (!silently) _snapshot.update { scan() }
+        if (!silently) {
+            _snapshot.update { scan() }
+        }
     }
 
     fun removeBookmark(bookmark: Bookmark): Boolean {
@@ -495,7 +520,9 @@ open class Paginator<T>(
         cache[page] = pageState.copy(data = updatedData)
 
         if (!silently) {
-            val rangeSnapshot = searchPageBefore(contextPage)..searchPageAfter(contextPage)
+            val pageBefore = fastSearchPageBefore(cache[startContextPage])!!
+            val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
+            val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
                 _snapshot.update { scan(rangeSnapshot) }
             }
@@ -576,7 +603,9 @@ open class Paginator<T>(
         }
 
         if (!silently) {
-            val rangeSnapshot = searchPageBefore(contextPage)..searchPageAfter(contextPage)
+            val pageBefore = fastSearchPageBefore(cache[startContextPage])!!
+            val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
+            val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
                 _snapshot.update { scan(rangeSnapshot) }
             }
@@ -612,7 +641,9 @@ open class Paginator<T>(
         )
 
         if (!silently) {
-            val rangeSnapshot = searchPageBefore(contextPage)..searchPageAfter(contextPage)
+            val pageBefore = fastSearchPageBefore(cache[startContextPage])!!
+            val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
+            val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
                 _snapshot.update { scan(rangeSnapshot) }
             }
@@ -681,8 +712,10 @@ open class Paginator<T>(
 
     fun scan(
         range: UIntRange = kotlin.run {
-            val min = searchPageBefore(contextPage)
-            val max = searchPageAfter(contextPage)
+            val min = fastSearchPageBefore(cache[startContextPage])?.page
+            val max = fastSearchPageAfter(cache[endContextPage])?.page
+            requireNotNull(min) { "You cannot scan because startContextPage is 0" }
+            requireNotNull(max) { "You cannot scan because endContextPage is 0" }
             return@run min..max
         }
     ): List<PageState<T>> {
@@ -696,32 +729,36 @@ open class Paginator<T>(
         return result
     }
 
-    fun searchPageAfter(
-        page: UInt,
+    inline fun fastSearchPageAfter(
+        pivotPage: PageState<T>?,
         predicate: (PageState<T>) -> Boolean = { true }
-    ): UInt {
-        var max = page
+    ): PageState<T>? {
+        if (pivotPage == null || !predicate(pivotPage)) return null
+        var result: PageState<T> = pivotPage
         while (true) {
-            val pageState = cache[max + 1u]
-            if (pageState != null && predicate(pageState)) max++
-            else break
+            val pageState = getPageState(result.page + 1u)
+            if (pageState != null && predicate(pageState)) {
+                result = pageState
+            } else {
+                return result
+            }
         }
-        // TODO Возвращать что-то более значимое
-        return max
     }
 
-    fun searchPageBefore(
-        page: UInt,
+    inline fun fastSearchPageBefore(
+        pivotPage: PageState<T>?,
         predicate: (PageState<T>) -> Boolean = { true }
-    ): UInt {
-        var min = page
+    ): PageState<T>? {
+        if (pivotPage == null || !predicate(pivotPage)) return null
+        var result: PageState<T> = pivotPage
         while (true) {
-            val pageState = cache[min - 1u]
-            if (pageState != null && predicate(pageState)) min--
-            else break
+            val pageState = getPageState(result.page - 1u)
+            if (pageState != null && predicate(pageState)) {
+                result = pageState
+            } else {
+                return result
+            }
         }
-        // TODO Возвращать что-то более значимое
-        return min
     }
 
     fun resize(
@@ -731,19 +768,22 @@ open class Paginator<T>(
         initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage
     ) {
         if (this.capacity == capacity) return
-        check(capacity >= 0)
+        check(capacity >= 0) { "capacity must be greater or equal than zero" }
         this.capacity = capacity
 
         if (resize && capacity > 0) {
-            val firstSuccessPage = searchPageBefore(contextPage) { it.isSuccessState() }
-            val lastSuccessPage = searchPageAfter(contextPage) { it.isSuccessState() }
-            val successStatesRange = firstSuccessPage..lastSuccessPage
+            val firstSuccessPage =
+                fastSearchPageAfter(cache[startContextPage]) { it.isSuccessState() }
+            val lastSuccessPage =
+                fastSearchPageBefore(cache[endContextPage]) { it.isSuccessState() }
+            firstSuccessPage!!; lastSuccessPage!!
+            val successStatesRange = firstSuccessPage.page..lastSuccessPage.page
             val successStates = successStatesRange.map { cache.getValue(it) }
             val items = successStates.flatMap { it.data }.toMutableList()
 
             cache.clear()
 
-            var pageIndex = firstSuccessPage
+            var pageIndex = firstSuccessPage.page
             while (items.isNotEmpty()) {
                 val successData = mutableListOf<T>()
                 while (items.isNotEmpty() && successData.size < capacity) {
@@ -772,7 +812,8 @@ open class Paginator<T>(
         bookmarks.clear()
         bookmarks.add(BookmarkUInt(page = 1u))
         bookmarkIterator = bookmarks.listIterator()
-        contextPage = 0u
+        startContextPage = 0u
+        endContextPage = 0u
         if (!silently) _snapshot.update { emptyList() }
         resize(capacity, resize = false, silently = true)
         lockJump = false
