@@ -211,6 +211,7 @@ open class Paginator<T>(
                 ?.also {
                     pivotContextPage = it.page
                     pivotContextPageState = it
+                    endContextPage = pivotContextPage
                 }
         }
 
@@ -272,6 +273,7 @@ open class Paginator<T>(
                 ?.also {
                     pivotContextPage = it.page
                     pivotContextPageState = it
+                    startContextPage = pivotContextPage
                 }
         }
 
