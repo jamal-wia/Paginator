@@ -203,13 +203,23 @@ open class Paginator<T>(
     ): UInt = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
 
-        fastSearchPageAfter(cache[endContextPage]) { isValidSuccessState(it) }
-            ?.also { endContextPage = it.page }
+        var pivotContextPage = endContextPage
+        var pivotContextPageState = cache[pivotContextPage]
+        val pivotContextPageValid = isValidSuccessState(pivotContextPageState)
+        if (pivotContextPageValid) {
+            fastSearchPageAfter(cache[pivotContextPage + 1u]) { isValidSuccessState(it) }
+                ?.also {
+                    pivotContextPage = it.page
+                    pivotContextPageState = it
+                }
+        }
 
-        val pivotContextPage = endContextPage
-        val nextPage = pivotContextPage + 1u
+        val nextPage = if (pivotContextPageValid) pivotContextPage + 1u
+        else pivotContextPage
+        val nextPageState = if (nextPage == pivotContextPage) pivotContextPageState
+        else cache[nextPage]
 
-        if (cache[nextPage].isProgressState())
+        if (nextPageState.isProgressState())
             return@coroutineScope nextPage
 
         loadOrGetPageState(
@@ -253,14 +263,23 @@ open class Paginator<T>(
     ): UInt = coroutineScope {
         if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
 
-        fastSearchPageBefore(cache[startContextPage]) { isValidSuccessState(it) }
-            ?.also { startContextPage = it.page }
+        var pivotContextPage = startContextPage
+        var pivotContextPageState = cache[pivotContextPage]
+        val pivotContextPageValid = isValidSuccessState(pivotContextPageState)
+        if (pivotContextPageValid) {
+            fastSearchPageBefore(cache[pivotContextPage - 1u]) { isValidSuccessState(it) }
+                ?.also {
+                    pivotContextPage = it.page
+                    pivotContextPageState = it
+                }
+        }
 
-        val pivotContextPage = startContextPage
-        if (pivotContextPage <= 1u) return@coroutineScope pivotContextPage
-        val previousPage = pivotContextPage - 1u
+        val previousPage = if (pivotContextPageValid) pivotContextPage + 1u
+        else pivotContextPage
+        val previousPageState = if (previousPage == pivotContextPage) pivotContextPageState
+        else cache[previousPage]
 
-        if (cache[previousPage].isProgressState())
+        if (previousPageState.isProgressState())
             return@coroutineScope previousPage
 
         loadOrGetPageState(
