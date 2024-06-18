@@ -572,7 +572,6 @@ open class Paginator<T>(
         silently: Boolean = false,
         initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ) {
-        // TODO: не нужно вызывать listOf
         return addAllElements(
             elements = listOf(element),
             page = page,
@@ -608,7 +607,6 @@ open class Paginator<T>(
 
         if (!extraElements.isNullOrEmpty()) {
             val nextPageState = cache[page + 1u]
-            // TODO: Запутанное условие есть вероятность прокинуть элементы в другое состояние
             if ((nextPageState != null && nextPageState::class == pageState::class)
                 || (nextPageState == null && initPageState != null)
             ) {
@@ -735,15 +733,16 @@ open class Paginator<T>(
 
     fun scan(
         range: UIntRange = kotlin.run {
+            check(startContextPage != 0u) { "You cannot scan because startContextPage is 0" }
+            check(endContextPage != 0u) { "You cannot scan because endContextPage is 0" }
             val min = fastSearchPageBefore(cache[startContextPage])?.page
             val max = fastSearchPageAfter(cache[endContextPage])?.page
-            requireNotNull(min) { "You cannot scan because startContextPage is 0" }
-            requireNotNull(max) { "You cannot scan because endContextPage is 0" }
+            checkNotNull(min) { "min is null the data structure is broken!" }
+            checkNotNull(max) { "max is null the data structure is broken!" }
             return@run min..max
         }
     ): List<PageState<T>> {
         val capacity = max(range.last - range.first, 1u)
-        // TODO избавиться от ArrayList
         val result = ArrayList<PageState<T>>(capacity.toInt())
         for (item in range) {
             val page = cache[item] ?: break
