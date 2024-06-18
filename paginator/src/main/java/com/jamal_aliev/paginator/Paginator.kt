@@ -215,6 +215,7 @@ open class Paginator<T>(
         }
 
         val nextPage = if (pivotContextPageValid) pivotContextPage + 1u
+        else if (pivotContextPage == 0u) 1u
         else pivotContextPage
         val nextPageState = if (nextPage == pivotContextPage) pivotContextPageState
         else cache[nextPage]
@@ -274,8 +275,9 @@ open class Paginator<T>(
                 }
         }
 
-        val previousPage = if (pivotContextPageValid) pivotContextPage + 1u
+        val previousPage = if (pivotContextPageValid) pivotContextPage - 1u
         else pivotContextPage
+        if (previousPage == 0u) return@coroutineScope previousPage
         val previousPageState = if (previousPage == pivotContextPage) pivotContextPageState
         else cache[previousPage]
 
