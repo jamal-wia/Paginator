@@ -115,7 +115,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    pageState.isEmptyState() -> TODO()
+                    pageState.isEmptyState() -> {}
 
                     pageState.isErrorState() -> {
                         pageState as Paginator.PageState.ErrorPage

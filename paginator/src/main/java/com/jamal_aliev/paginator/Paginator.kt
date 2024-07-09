@@ -13,8 +13,11 @@ import com.jamal_aliev.paginator.Paginator.PageState.ProgressPage
 import com.jamal_aliev.paginator.Paginator.PageState.SuccessPage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlin.math.max
 
@@ -38,8 +41,28 @@ open class Paginator<T>(
     val pageStates get() = cache.values.toList()
     val size get() = cache.size
 
-    private val asFlow = MutableStateFlow<Map<UInt, PageState<T>>>(cache)
-    fun asFlow() = asFlow.asStateFlow()
+    private var openCacheFlow = true
+    private var enableCacheFlow = false
+    private val _cacheFlow = MutableStateFlow<Map<UInt, PageState<T>>>(cache)
+    fun asFlow(): Flow<Map<UInt, PageState<T>>> {
+        enableCacheFlow = true
+        return _cacheFlow.asStateFlow()
+            .filter { openCacheFlow }
+    }
+
+    /**
+     * repeat emit the cache variable into _cacheFlow
+     * */
+    suspend fun repeatCacheFlow() {
+        openCacheFlow = false
+        val plug = emptyMap<UInt, PageState<T>>()
+        _cacheFlow.update { plug }
+        do {
+            delay(timeMillis = 1L)
+        } while (_cacheFlow.value != plug)
+        openCacheFlow = true
+        _cacheFlow.update { cache }
+    }
 
     /**
      * This is variable that holds the left valid success page expect jump situation
@@ -65,10 +88,24 @@ open class Paginator<T>(
     var initializerEmptyPage: InitializerEmptyPage<T>? = null
     var initializerErrorPage: InitializerErrorPage<T>? = null
 
+    /**
+     * Moves forward to the next bookmark in the list.
+     *
+     * @param recycling Whether to recycle bookmarks when reaching the end.
+     * @param silentlyLoading Whether to update the snapshot silently during loading.
+     * @param silentlyResult Whether to update the snapshot silently after loading.
+     * @param initProgressState Custom initializer for progress state.
+     * @param initSuccessState Custom initializer for success state.
+     * @param initEmptyState Custom initializer for empty state.
+     * @param initErrorState Custom initializer for error state.
+     * @return The next bookmark, or null if there are no more bookmarks.
+     * @throws JumpWasLockedException If jumping is locked.
+     */
     suspend fun jumpForward(
         recycling: Boolean = recyclingBookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T>? = initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
         initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
@@ -90,6 +127,7 @@ open class Paginator<T>(
                 bookmark = bookmark,
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
+                enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
                 initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
@@ -100,11 +138,24 @@ open class Paginator<T>(
         }
     }
 
+    /**
+     * Moves backward to the previous bookmark in the list.
+     *
+     * @param recycling Whether to recycle bookmarks when reaching the beginning.
+     * @param silentlyLoading Whether to update the snapshot silently during loading.
+     * @param silentlyResult Whether to update the snapshot silently after loading.
+     * @param initProgressState Custom initializer for progress state.
+     * @param initSuccessState Custom initializer for success state.
+     * @param initEmptyState Custom initializer for empty state.
+     * @param initErrorState Custom initializer for error state.
+     * @return The previous bookmark, or null if there are no more bookmarks.
+     * @throws JumpWasLockedException If jumping is locked.
+     */
     suspend fun jumpBack(
         recycling: Boolean = recyclingBookmark,
-
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T>? = initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
@@ -126,6 +177,7 @@ open class Paginator<T>(
                 bookmark = bookmark,
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
+                enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
                 initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
@@ -138,10 +190,24 @@ open class Paginator<T>(
 
     var lockJump = false
 
+    /**
+     * Jumps to a specific bookmark.
+     *
+     * @param bookmark The bookmark to jump to.
+     * @param silentlyLoading Whether to update the snapshot silently during loading.
+     * @param silentlyResult Whether to update the snapshot silently after loading.
+     * @param initProgressState Custom initializer for progress state.
+     * @param initSuccessState Custom initializer for success state.
+     * @param initEmptyState Custom initializer for empty state.
+     * @param initErrorState Custom initializer for error state.
+     * @return The provided bookmark.
+     * @throws JumpWasLockedException If jumping is locked.
+     */
     suspend fun jump(
         bookmark: Bookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T>? = initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
@@ -157,7 +223,7 @@ open class Paginator<T>(
                 ?.also { startContextPage = it.page }
             fastSearchPageAfter(probablySuccessBookmarkPage) { isValidSuccessState(it) }
                 ?.also { endContextPage = it.page }
-            _snapshot.update { scan() }
+            resnapshot()
             return bookmark
         }
 
@@ -176,8 +242,11 @@ open class Paginator<T>(
                     ),
                     silently = true,
                 )
+                if (enableCacheFlow) {
+                    repeatCacheFlow()
+                }
                 if (!silentlyLoading) {
-                    _snapshot.update { scan() }
+                    resnapshot()
                 }
             },
             initEmptyState = initEmptyState,
@@ -194,8 +263,11 @@ open class Paginator<T>(
             fastSearchPageAfter(cache[endContextPage]) { isValidSuccessState(it) }
                 ?.also { endContextPage = it.page }
 
+            if (enableCacheFlow) {
+                repeatCacheFlow()
+            }
             if (!silentlyResult) {
-                _snapshot.update { scan() }
+                resnapshot()
             }
         }
 
@@ -204,9 +276,22 @@ open class Paginator<T>(
 
     var lockGoNextPage: Boolean = false
 
+    /**
+     * Loads the next page.
+     *
+     * @param silentlyLoading Whether to update the snapshot silently during loading.
+     * @param silentlyResult Whether to update the snapshot silently after loading.
+     * @param initProgressState Custom initializer for progress state.
+     * @param initEmptyState Custom initializer for empty state.
+     * @param initSuccessState Custom initializer for success state.
+     * @param initErrorState Custom initializer for error state.
+     * @return The page number of the next page.
+     * @throws GoNextPageWasLockedException If moving to the next page is locked.
+     */
     suspend fun goNextPage(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
@@ -247,8 +332,11 @@ open class Paginator<T>(
                     ),
                     silently = true,
                 )
+                if (enableCacheFlow) {
+                    repeatCacheFlow()
+                }
                 if (!silentlyLoading) {
-                    _snapshot.update { scan() }
+                    resnapshot()
                 }
             },
             initEmptyState = initEmptyState,
@@ -264,8 +352,11 @@ open class Paginator<T>(
             ) {
                 endContextPage = nextPage
             }
+            if (enableCacheFlow) {
+                repeatCacheFlow()
+            }
             if (!silentlyResult) {
-                _snapshot.update { scan() }
+                resnapshot()
             }
         }
 
@@ -274,9 +365,22 @@ open class Paginator<T>(
 
     var lockGoPreviousPage: Boolean = false
 
+    /**
+     * Loads the previous page.
+     *
+     * @param silentlyLoading Whether to update the snapshot silently during loading.
+     * @param silentlyResult Whether to update the snapshot silently after loading.
+     * @param initProgressState Custom initializer for progress state.
+     * @param initEmptyState Custom initializer for empty state.
+     * @param initSuccessState Custom initializer for success state.
+     * @param initErrorState Custom initializer for error state.
+     * @return The page number of the previous page.
+     * @throws GoPreviousPageWasLockedException If moving to the previous page is locked.
+     */
     suspend fun goPreviousPage(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
@@ -317,8 +421,11 @@ open class Paginator<T>(
                     ),
                     silently = true
                 )
+                if (enableCacheFlow) {
+                    repeatCacheFlow()
+                }
                 if (!silentlyLoading) {
-                    _snapshot.update { scan() }
+                    resnapshot()
                 }
             },
             initEmptyState = initEmptyState,
@@ -334,8 +441,11 @@ open class Paginator<T>(
             ) {
                 startContextPage = previousPage
             }
+            if (enableCacheFlow) {
+                repeatCacheFlow()
+            }
             if (!silentlyResult) {
-                _snapshot.update { scan() }
+                resnapshot()
             }
         }
 
@@ -344,9 +454,21 @@ open class Paginator<T>(
 
     var lockRestart: Boolean = false
 
+    /**
+     * Resets the paginator to its initial state and reloads the first page.
+     *
+     * @param silentlyLoading Whether the loading state should be set silently.
+     * @param silentlyResult Whether the result state should be set silently.
+     * @param initProgressState Custom initializer for the progress state page.
+     * @param initEmptyState Custom initializer for the empty state page.
+     * @param initSuccessState Custom initializer for the success state page.
+     * @param initErrorState Custom initializer for the error state page.
+     * @throws RestartWasLockedException if the restart process is locked.
+     */
     suspend fun restart(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
@@ -375,10 +497,11 @@ open class Paginator<T>(
                     ),
                     silently = true
                 )
+                if (enableCacheFlow) {
+                    repeatCacheFlow()
+                }
                 if (!silentlyLoading) {
-                    _snapshot.update {
-                        scan(range = 1u..1u)
-                    }
+                    resnapshot(1u..1u)
                 }
             },
             initEmptyState = initEmptyState,
@@ -389,20 +512,38 @@ open class Paginator<T>(
                 state = resultPageState,
                 silently = true
             )
+            if (enableCacheFlow) {
+                repeatCacheFlow()
+            }
             if (!silentlyResult) {
-                _snapshot.update {
-                    scan(range = 1u..1u)
-                }
+                resnapshot(1u..1u)
             }
         }
     }
 
+    /**
+     * Indicates whether the refresh operation is locked. If true, any attempts to refresh will throw an exception.
+     */
     var lockRefresh: Boolean = false
 
+    /**
+     * Refreshes the specified pages by setting their state to a progress state, loading their data,
+     * and then updating their state based on the loaded data.
+     *
+     * @param pages The list of pages to refresh.
+     * @param loadingSilently If true, the loading state will not trigger snapshot updates.
+     * @param finalSilently If true, the final state will not trigger snapshot updates.
+     * @param initProgressState Initializer for the progress state.
+     * @param initEmptyState Initializer for the empty state.
+     * @param initSuccessState Initializer for the success state.
+     * @param initErrorState Initializer for the error state.
+     * @throws RefreshWasLockedException if the refresh operation is locked.
+     */
     suspend fun refresh(
         pages: List<UInt>,
         loadingSilently: Boolean = false,
         finalSilently: Boolean = false,
+        enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
@@ -420,8 +561,11 @@ open class Paginator<T>(
                 silently = true
             )
         }
+        if (enableCacheFlow) {
+            repeatCacheFlow()
+        }
         if (!loadingSilently) {
-            _snapshot.update { scan() }
+            resnapshot()
         }
 
         pages.map { page ->
@@ -441,14 +585,30 @@ open class Paginator<T>(
             }
         }.forEach { it.await() }
 
+        if (enableCacheFlow) {
+            repeatCacheFlow()
+        }
         if (!finalSilently) {
-            _snapshot.update { scan() }
+            resnapshot()
         }
     }
 
+    /**
+     * Refreshes all pages in the cache by setting their state to a progress state, loading their data,
+     * and then updating their state based on the loaded data.
+     *
+     * @param loadingSilently If true, the loading state will not trigger snapshot updates.
+     * @param finalSilently If true, the final state will not trigger snapshot updates.
+     * @param initProgressState Initializer for the progress state.
+     * @param initEmptyState Initializer for the empty state.
+     * @param initSuccessState Initializer for the success state.
+     * @param initErrorState Initializer for the error state.
+     * @throws RefreshWasLockedException if the refresh operation is locked.
+     */
     suspend fun refreshAll(
         loadingSilently: Boolean = false,
         finalSilently: Boolean = false,
+        enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
@@ -459,6 +619,7 @@ open class Paginator<T>(
             pages = cache.keys.toList(),
             loadingSilently = loadingSilently,
             finalSilently = finalSilently,
+            enableCacheFlow = enableCacheFlow,
             initProgressState = initProgressState,
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
@@ -466,6 +627,19 @@ open class Paginator<T>(
         )
     }
 
+    /**
+     * Loads or retrieves the state of a page. If forceLoading is true, the page state will be reloaded
+     * from the source, otherwise, it will return the cached state if it is valid.
+     *
+     * @param page The page number to load or get the state.
+     * @param forceLoading If true, the page state will be reloaded from the source.
+     * @param loading A callback invoked when the loading starts.
+     * @param source A suspend function that provides the data for the page.
+     * @param initEmptyState Initializer for the empty state.
+     * @param initSuccessState Initializer for the success state.
+     * @param initErrorState Initializer for the error state.
+     * @return The state of the page after loading or getting from the cache.
+     */
     suspend inline fun loadOrGetPageState(
         page: UInt,
         forceLoading: Boolean = false,
@@ -481,7 +655,8 @@ open class Paginator<T>(
             loading.invoke(page, cachedState)
             SuccessPageFactory(
                 page = page,
-                data = source.invoke(this, page),
+                data = source.invoke(this, page)
+                    .toMutableList(),
                 initSuccessState = initSuccessState,
                 initEmptyState = initEmptyState
             )
@@ -495,9 +670,17 @@ open class Paginator<T>(
         }
     }
 
+    /**
+     * Removes the state of a page and sets its state to empty.
+     *
+     * @param page The page number to remove the state.
+     * @param emitIntoAsFlow If true, the change will be emitted into the flow.
+     * @param silently If true, the change will not trigger snapshot update.
+     * @param initEmptyState Initializer for the empty state.
+     * @return The removed page state, or null if it was not found.
+     */
     fun removePageState(
         page: UInt,
-        emitIntoAsFlow: Boolean = true,
         silently: Boolean = false,
         initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage
     ): PageState<T>? {
@@ -509,41 +692,57 @@ open class Paginator<T>(
                     data = emptyList(),
                     initEmptyState = initEmptyState
                 ),
-                emitIntoAsFlow = false,
                 silently = true
             )
         }
-        if (emitIntoAsFlow) {
-            asFlow.tryEmit(cache)
-        }
         if (!silently) {
-            _snapshot.update { scan() }
+            resnapshot()
         }
         return removed
     }
 
+    /**
+     * Retrieves the state of a page from the cache.
+     *
+     * @param page The page number to retrieve the state.
+     * @return The state of the page, or null if not found.
+     */
     fun getPageState(page: UInt): PageState<T>? {
         return cache[page]
     }
 
+    /**
+     * Sets the state of a page and updates the cache.
+     *
+     * @param state The new state of the page.
+     * @param silently If true, the change will not trigger snapshot update.
+     */
     fun setPageState(
         state: PageState<T>,
-        emitIntoAsFlow: Boolean = true,
         silently: Boolean = false
     ) {
         cache[state.page] = state
-        if (emitIntoAsFlow) {
-            asFlow.tryEmit(cache)
-        }
         if (!silently) {
-            _snapshot.update { scan() }
+            resnapshot()
         }
     }
 
+    /**
+     * Removes a bookmark from the paginator.
+     *
+     * @param bookmark The bookmark to remove.
+     * @return True if the bookmark was removed, false otherwise.
+     */
     fun removeBookmark(bookmark: Bookmark): Boolean {
         return bookmarks.remove(bookmark)
     }
 
+    /**
+     * Adds a bookmark to the paginator.
+     *
+     * @param bookmark The bookmark to add.
+     * @return True if the bookmark was added, false otherwise.
+     */
     fun addBookmark(bookmark: Bookmark): Boolean {
         return bookmarks.add(bookmark)
     }
@@ -570,16 +769,25 @@ open class Paginator<T>(
         return null
     }
 
+    /**
+     * Removes an element at a specific index within a page.
+     *
+     * @param page The page number where the element should be removed.
+     * @param index The index within the page where the element should be removed.
+     * @param silently If true, the change will not trigger snapshot update.
+     * @return The removed element.
+     * @throws NoSuchElementException if the page is not found in the cache.
+     */
     fun removeElement(
         page: UInt,
         index: Int,
-        emitIntoAsFlow: Boolean = true,
         silently: Boolean = false,
     ): T {
         val pageState = cache.getValue(page)
         val removed: T
 
-        val updatedData = pageState.data.toMutableList()
+        val updatedData = pageState.data
+            .let { it as MutableList }
             .also { removed = it.removeAt(index) }
 
         if (updatedData.size < capacity && !ignoreCapacity) {
@@ -594,16 +802,15 @@ open class Paginator<T>(
                         removeElement(
                             page = page + 1u,
                             index = 0,
-                            emitIntoAsFlow = false,
                             silently = true
                         )
                     )
                 }
             }
         }
+
         setPageState(
             state = pageState.copy(data = updatedData),
-            emitIntoAsFlow = emitIntoAsFlow,
             silently = true
         )
 
@@ -612,7 +819,7 @@ open class Paginator<T>(
             val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
             val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
-                _snapshot.update { scan(rangeSnapshot) }
+                resnapshot(rangeSnapshot)
             }
         }
 
@@ -646,11 +853,20 @@ open class Paginator<T>(
         )
     }
 
+    /**
+     * Adds a list of elements at a specific index within a page.
+     *
+     * @param elements The elements to add.
+     * @param page The page number where the elements should be added.
+     * @param index The index within the page where the elements should be added.
+     * @param silently If true, the change will not trigger snapshot update.
+     * @param initPageState An optional function to initialize a page state if it doesn't exist.
+     * @throws IndexOutOfBoundsException if the page is not found in the cache and initPageState is not provided.
+     */
     fun addAllElements(
         elements: List<T>,
         page: UInt,
         index: Int,
-        emitIntoAsFlow: Boolean = true,
         silently: Boolean = false,
         initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ) {
@@ -659,7 +875,8 @@ open class Paginator<T>(
                 "page-$page was not created"
             )
 
-        val updatedData = pageState.data.toMutableList()
+        val updatedData = pageState.data
+            .let { it as MutableList }
             .also { it.addAll(index, elements) }
 
         val extraElements: MutableList<T>? =
@@ -671,7 +888,6 @@ open class Paginator<T>(
 
         setPageState(
             state = pageState.copy(data = updatedData),
-            emitIntoAsFlow = emitIntoAsFlow,
             silently = true,
         )
 
@@ -684,7 +900,6 @@ open class Paginator<T>(
                     elements = extraElements,
                     page = page + 1u,
                     index = 0,
-                    emitIntoAsFlow = false,
                     silently = true,
                     initPageState = initPageState
                 )
@@ -699,7 +914,7 @@ open class Paginator<T>(
             val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
             val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
-                _snapshot.update { scan(rangeSnapshot) }
+                resnapshot(rangeSnapshot)
             }
         }
     }
@@ -717,6 +932,13 @@ open class Paginator<T>(
         return null
     }
 
+    /**
+     * Retrieves an element at a specific index within a page.
+     *
+     * @param page The page number where the element is located.
+     * @param index The index within the page where the element is located.
+     * @return The element at the specified page and index, or null if not found.
+     */
     fun getElement(
         page: UInt,
         index: Int,
@@ -725,20 +947,77 @@ open class Paginator<T>(
             ?.data?.get(index)
     }
 
+    /**
+     * Replaces all elements within the paginator based on a provider and predicate.
+     *
+     * @param providerElement A function that provides a new element based on the current element, pageState, and index.
+     * @param silently If true, the change will not trigger snapshot update.
+     * @param predicate A function that determines whether an element should be replaced.
+     */
+    inline fun replaceAllElement(
+        providerElement: (current: T, pageState: PageState<T>, indext: Int) -> T?,
+        silently: Boolean = false,
+        predicate: (current: T, pageState: PageState<T>, indext: Int) -> Boolean
+    ) {
+        safeForeEach { pageState ->
+            var index = 0
+            while (index < pageState.data.size) {
+                val current = pageState.data[index]
+                if (predicate(current, pageState, index)) {
+                    val newElement = providerElement(current, pageState, index)
+                    if (newElement != null) {
+                        setElement(
+                            element = newElement,
+                            page = pageState.page,
+                            index = index,
+                            silently = true
+                        )
+                    } else {
+                        removeElement(
+                            page = pageState.page,
+                            index = index,
+                            silently = true
+                        )
+                    }
+                }
+                ++index
+            }
+        }
+        if (!silently) {
+            resnapshot()
+        }
+    }
+
     inline fun setElement(
         element: T,
         silently: Boolean = false,
         predicate: (T) -> Boolean
     ) {
         this.safeForeEach { pageState ->
-            for ((index, e) in pageState.data.withIndex()) {
-                if (predicate(e)) {
-                    setElement(element, pageState.page, index, silently)
+            var index = 0
+            while (index < pageState.data.size) {
+                if (predicate(pageState.data[index++])) {
+                    setElement(
+                        element = element,
+                        page = pageState.page,
+                        index = index,
+                        silently = silently
+                    )
+                    return
                 }
             }
         }
     }
 
+    /**
+     * Sets an element at a specific index within a page.
+     *
+     * @param element The element to set.
+     * @param page The page number where the element should be set.
+     * @param index The index within the page where the element should be set.
+     * @param silently If true, the change will not trigger snapshot update.
+     * @throws NoSuchElementException if the page is not found in the cache.
+     */
     fun setElement(
         element: T,
         page: UInt,
@@ -748,7 +1027,8 @@ open class Paginator<T>(
         val pageState = cache.getValue(page)
         setPageState(
             state = pageState.copy(
-                data = pageState.data.toMutableList()
+                data = pageState.data
+                    .let { it as MutableList }
                     .also { it[index] = element }
             ),
             silently = true
@@ -759,11 +1039,18 @@ open class Paginator<T>(
             val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
             val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
-                _snapshot.update { scan(rangeSnapshot) }
+                resnapshot(rangeSnapshot)
             }
         }
     }
 
+    /**
+     * Checks if the given PageState is a valid success state.
+     *
+     * @param pageState The PageState to check.
+     * @return True if the PageState is a SuccessPage with a size equal to capacity, false otherwise.
+     *         Returns false if the PageState is an EmptyPage.
+     */
     @Suppress("NOTHING_TO_INLINE")
     inline fun isValidSuccessState(pageState: PageState<T>?): Boolean {
         if (pageState is EmptyPage) return false
@@ -772,6 +1059,12 @@ open class Paginator<T>(
         return pageState.data.size == capacity
     }
 
+    /**
+     * Updates the snapshot of the paginator within the given range.
+     *
+     * @param range The range of pages to include in the snapshot. Defaults to the range from startContextPage to endContextPage.
+     * @throws IllegalStateException if startContextPage or endContextPage is 0, or if min or max values are null.
+     */
     fun resnapshot(
         range: UIntRange = kotlin.run {
             check(startContextPage != 0u) { "You cannot scan because startContextPage is 0" }
@@ -788,6 +1081,13 @@ open class Paginator<T>(
         }
     }
 
+    /**
+     * Scans and returns a list of PageState within the given range.
+     *
+     * @param range The range of pages to scan. Defaults to the range from startContextPage to endContextPage.
+     * @return A list of PageState within the specified range.
+     * @throws IllegalStateException if startContextPage or endContextPage is 0, or if min or max values are null.
+     */
     fun scan(
         range: UIntRange = kotlin.run {
             check(startContextPage != 0u) { "You cannot scan because startContextPage is 0" }
@@ -808,6 +1108,13 @@ open class Paginator<T>(
         return result
     }
 
+    /**
+     * Searches for the first PageState after the given pivotPage that matches the predicate.
+     *
+     * @param pivotPage The page to start searching from.
+     * @param predicate A function to test each PageState.
+     * @return The first PageState after the pivotPage that matches the predicate, or null if none found.
+     */
     inline fun fastSearchPageAfter(
         pivotPage: PageState<T>?,
         predicate: (PageState<T>) -> Boolean = { true }
@@ -824,6 +1131,13 @@ open class Paginator<T>(
         }
     }
 
+    /**
+     * Searches for the first PageState before the given pivotPage that matches the predicate.
+     *
+     * @param pivotPage The page to start searching from.
+     * @param predicate A function to test each PageState.
+     * @return The first PageState before the pivotPage that matches the predicate, or null if none found.
+     */
     inline fun fastSearchPageBefore(
         pivotPage: PageState<T>?,
         predicate: (PageState<T>) -> Boolean = { true }
@@ -840,6 +1154,16 @@ open class Paginator<T>(
         }
     }
 
+    /**
+     * Adjusts the capacity of the paginator and optionally resizes the cached pages.
+     *
+     * @param capacity The new capacity for each page. Must be greater or equal to zero.
+     * @param resize If true, the pages will be resized according to the new capacity.
+     * @param silently If true, the function will not trigger a snapshot update.
+     * @param initSuccessState An optional initializer for success page state.
+     *
+     * @throws IllegalArgumentException if the capacity is less than zero.
+     */
     fun resize(
         capacity: Int,
         resize: Boolean = true,
@@ -881,10 +1205,16 @@ open class Paginator<T>(
         }
 
         if (!silently && capacity > 0) {
-            _snapshot.update { scan() }
+            resnapshot()
         }
     }
 
+    /**
+     * Releases the paginator by clearing the cache, resetting bookmarks, and resizing to the default capacity.
+     *
+     * @param capacity The new capacity for each page after releasing. Defaults to DEFAULT_CAPACITY.
+     * @param silently If true, the function will not trigger a snapshot update.
+     */
     fun release(
         capacity: Int = DEFAULT_CAPACITY,
         silently: Boolean = false
@@ -1017,7 +1347,9 @@ open class Paginator<T>(
 
             @Suppress("NOTHING_TO_INLINE")
             private inline fun checkData() {
-                check(data.isNotEmpty()) { "data must not be empty" }
+                if (this !is EmptyPage) {
+                    check(data.isNotEmpty()) { "data must not be empty" }
+                }
             }
 
             /**
@@ -1097,31 +1429,76 @@ open class Paginator<T>(
     }
 }
 
+/**
+ * Checks if the PageState is in progress state.
+ *
+ * @return True if the PageState is ProgressPage, false otherwise.
+ */
 @Suppress("NOTHING_TO_INLINE")
 inline fun PageState<*>?.isProgressState() = this is ProgressPage<*>
 
+/**
+ * Checks if the PageState is a real progress state.
+ *
+ * @return True if the PageState is ProgressPage of type T, false otherwise.
+ */
 inline fun <reified T> PageState<T>.isRealProgressState() =
-    this is PageState.ProgressPage<T> && this::class == T::class
+    this is ProgressPage<T> && this::class == T::class
 
+/**
+ * Checks if the PageState is in empty state.
+ *
+ * @return True if the PageState is EmptyPage, false otherwise.
+ */
 @Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isEmptyState() = this is PageState.EmptyPage<*>
+inline fun PageState<*>?.isEmptyState() = this is EmptyPage<*>
 
+/**
+ * Checks if the PageState is a real empty state.
+ *
+ * @return True if the PageState is EmptyPage of type T, false otherwise.
+ */
 inline fun <reified T> PageState<T>.isRealEmptyState() =
-    this is PageState.EmptyPage<T> && this::class == T::class
+    this is EmptyPage<T> && this::class == T::class
 
+/**
+ * Checks if the PageState is in success state.
+ *
+ * @return True if the PageState is SuccessPage and not EmptyPage, false otherwise.
+ */
 @Suppress("NOTHING_TO_INLINE")
 inline fun PageState<*>?.isSuccessState() =
-    this is PageState.SuccessPage<*> && this !is PageState.EmptyPage<*>
+    this is SuccessPage<*> && this !is EmptyPage<*>
 
+/**
+ * Checks if the PageState is a real success state.
+ *
+ * @return True if the PageState is SuccessPage of type T, false otherwise.
+ */
 inline fun <reified T> PageState<T>.isRealSuccessState() =
     this.isSuccessState() && this::class == T::class
 
+/**
+ * Checks if the PageState is in error state.
+ *
+ * @return True if the PageState is ErrorPage, false otherwise.
+ */
 @Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isErrorState() = this is PageState.ErrorPage<*>
+inline fun PageState<*>?.isErrorState() = this is ErrorPage<*>
 
+/**
+ * Checks if the PageState is a real error state.
+ *
+ * @return True if the PageState is ErrorPage of type T, false otherwise.
+ */
 inline fun <reified T> PageState<T>.isRealErrorState() =
-    this is PageState.ErrorPage<T> && this::class == T::class
+    this is ErrorPage<T> && this::class == T::class
 
+/**
+ * Iterates through each PageState in the paginator and performs the given action on it.
+ *
+ * @param action The action to be performed on each PageState.
+ */
 inline fun <T> Paginator<T>.foreEach(
     action: (PageState<T>) -> Unit
 ) {
@@ -1130,6 +1507,11 @@ inline fun <T> Paginator<T>.foreEach(
     }
 }
 
+/**
+ * Iterates through each PageState in the paginator safely and performs the given action on it.
+ *
+ * @param action The action to be performed on each PageState.
+ */
 inline fun <T> Paginator<T>.safeForeEach(
     action: (PageState<T>) -> Unit
 ) {
@@ -1140,6 +1522,12 @@ inline fun <T> Paginator<T>.safeForeEach(
     }
 }
 
+/**
+ * Finds the index of the first element matching the given predicate in the paginator.
+ *
+ * @param predicate The predicate to match elements.
+ * @return A pair containing the page number and index of the first matching element, or null if none found.
+ */
 inline fun <T> Paginator<T>.indexOfFirst(
     predicate: (T) -> Boolean
 ): Pair<UInt, Int>? {
@@ -1150,6 +1538,14 @@ inline fun <T> Paginator<T>.indexOfFirst(
     return null
 }
 
+/**
+ * Finds the index of the first element matching the given predicate in the specified page.
+ *
+ * @param page The page number to search in.
+ * @param predicate The predicate to match elements.
+ * @return A pair containing the page number and index of the first matching element, or null if none found.
+ * @throws IllegalArgumentException if the page is not found.
+ */
 inline fun <T> Paginator<T>.indexOfFirst(
     page: UInt,
     predicate: (T) -> Boolean
@@ -1163,6 +1559,12 @@ inline fun <T> Paginator<T>.indexOfFirst(
     return null
 }
 
+/**
+ * Finds the index of the last element matching the given predicate in the paginator.
+ *
+ * @param predicate The predicate to match elements.
+ * @return A pair containing the page number and index of the last matching element, or null if none found.
+ */
 inline fun <T> Paginator<T>.indexOfLast(
     predicate: (T) -> Boolean
 ): Pair<UInt, Int>? {
@@ -1173,6 +1575,14 @@ inline fun <T> Paginator<T>.indexOfLast(
     return null
 }
 
+/**
+ * Finds the index of the last element matching the given predicate in the specified page.
+ *
+ * @param page The page number to search in.
+ * @param predicate The predicate to match elements.
+ * @return A pair containing the page number and index of the last matching element, or null if none found.
+ * @throws IllegalArgumentException if the page is not found.
+ */
 inline fun <T> Paginator<T>.indexOfLast(
     page: UInt,
     predicate: (T) -> Boolean
