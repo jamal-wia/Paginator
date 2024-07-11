@@ -80,8 +80,10 @@ open class Paginator<T>(
     var recyclingBookmark = false
     private var bookmarkIterator = bookmarks.listIterator()
 
+    private var openSnapshot = true
     private val _snapshot = MutableStateFlow(emptyList<PageState<T>>())
     val snapshot = _snapshot.asStateFlow()
+        .filter { openSnapshot }
 
     var initializerProgressPage: InitializerProgressPage<T>? = null
     var initializerSuccessPage: InitializerSuccessPage<T>? = null
@@ -1076,9 +1078,10 @@ open class Paginator<T>(
             return@run min..max
         }
     ) {
-        _snapshot.update {
-            scan(range)
-        }
+        openSnapshot = false
+        _snapshot.update { emptyList() }
+        openSnapshot = true
+        _snapshot.update { scan(range) }
     }
 
     /**
@@ -1384,16 +1387,6 @@ open class Paginator<T>(
             override fun toString(): String {
                 return "${this::class.simpleName}(exception=${exception}, data=${this.data})"
             }
-
-            override fun hashCode(): Int = this.page.hashCode()
-
-            override fun equals(other: Any?): Boolean {
-                if (other !is ErrorPage<*>) return false
-                return this.page == other.page
-                        && other::class == this::class
-                        && other.data === this.data
-                        && other.exception === this.exception
-            }
         }
 
         abstract fun copy(page: UInt = this.page, data: List<E> = this.data): PageState<E>
@@ -1402,16 +1395,9 @@ open class Paginator<T>(
 
         override fun hashCode(): Int = this.page.hashCode()
 
-        override fun equals(other: Any?): Boolean {
-            if (other !is PageState<*>) return false
-            return this.page == other.page
-                    && other::class == this::class
-                    && other.data === this.data
-        }
+        override fun equals(other: Any?): Boolean = this === other
 
-        override operator fun compareTo(other: PageState<*>): Int {
-            return this.page.compareTo(other.page)
-        }
+        override operator fun compareTo(other: PageState<*>): Int = page.compareTo(other.page)
     }
 
     interface Bookmark {
