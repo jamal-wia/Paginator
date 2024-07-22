@@ -1067,7 +1067,19 @@ open class Paginator<T>(
      * @param range The range of pages to include in the snapshot. Defaults to the range from startContextPage to endContextPage.
      * @throws IllegalStateException if startContextPage or endContextPage is 0, or if min or max values are null.
      */
-    fun resnapshot(
+    fun resnapshot(range: UIntRange? = null) {
+        (range ?: kotlin.run {
+            if (startContextPage == 0u || endContextPage == 0u) return@run null
+            val min = fastSearchPageBefore(cache[startContextPage])?.page
+            val max = fastSearchPageAfter(cache[endContextPage])?.page
+            return@run if (min != null && max != null) min..max
+            else null
+        })?.let {
+            requireResnapshot(it)
+        }
+    }
+
+    fun requireResnapshot(
         range: UIntRange = kotlin.run {
             check(startContextPage != 0u) { "You cannot scan because startContextPage is 0" }
             check(endContextPage != 0u) { "You cannot scan because endContextPage is 0" }
