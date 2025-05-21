@@ -5,11 +5,11 @@ plugins {
 }
 
 group = "com.github.jamal-wia"
-version = "3.3.0"
+version = "4.0.0"
 
 android {
     namespace = "com.jamal_aliev.paginator"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 24
@@ -38,9 +38,10 @@ android {
 
 dependencies {
 
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
@@ -54,7 +55,7 @@ afterEvaluate {
                 from(components["release"])
                 groupId = "com.github.jamal-wia"
                 artifactId = "paginator"
-                version = "3.3.0"
+                version = "4.0.0"
             }
         }
     }

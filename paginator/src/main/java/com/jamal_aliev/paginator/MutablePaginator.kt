@@ -1,16 +1,25 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.Paginator.Bookmark.BookmarkUInt
-import com.jamal_aliev.paginator.Paginator.LockedException.GoNextPageWasLockedException
-import com.jamal_aliev.paginator.Paginator.LockedException.GoPreviousPageWasLockedException
-import com.jamal_aliev.paginator.Paginator.LockedException.JumpWasLockedException
-import com.jamal_aliev.paginator.Paginator.LockedException.RefreshWasLockedException
-import com.jamal_aliev.paginator.Paginator.LockedException.RestartWasLockedException
-import com.jamal_aliev.paginator.Paginator.PageState
-import com.jamal_aliev.paginator.Paginator.PageState.EmptyPage
-import com.jamal_aliev.paginator.Paginator.PageState.ErrorPage
-import com.jamal_aliev.paginator.Paginator.PageState.ProgressPage
-import com.jamal_aliev.paginator.Paginator.PageState.SuccessPage
+import com.jamal_aliev.paginator.bookmark.Bookmark
+import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkUInt
+import com.jamal_aliev.paginator.exception.LockedException.GoNextPageWasLockedException
+import com.jamal_aliev.paginator.exception.LockedException.GoPreviousPageWasLockedException
+import com.jamal_aliev.paginator.exception.LockedException.JumpWasLockedException
+import com.jamal_aliev.paginator.exception.LockedException.RefreshWasLockedException
+import com.jamal_aliev.paginator.exception.LockedException.RestartWasLockedException
+import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.page.PageState.EmptyPage
+import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.page.PageState.ProgressPage
+import com.jamal_aliev.paginator.page.PageState.ErrorPage
+import com.jamal_aliev.paginator.extension.isProgressState
+import com.jamal_aliev.paginator.extension.isSuccessState
+import com.jamal_aliev.paginator.extension.far
+import com.jamal_aliev.paginator.extension.smartForEach
+import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
+import com.jamal_aliev.paginator.initializer.InitializerErrorPage
+import com.jamal_aliev.paginator.initializer.InitializerProgressPage
+import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -18,17 +27,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.runBlocking
 import kotlin.math.max
 
-private typealias InitializerProgressPage<T> = (page: UInt, data: List<T>) -> ProgressPage<T>
-private typealias InitializerSuccessPage<T> = (page: UInt, data: List<T>) -> SuccessPage<T>
-private typealias InitializerEmptyPage<T> = (page: UInt, data: List<T>) -> EmptyPage<T>
-private typealias InitializerErrorPage<T> = (e: Exception, page: UInt, data: List<T>) -> ErrorPage<T>
-
-open class Paginator<T>(
-    var source: suspend Paginator<T>.(page: UInt) -> List<T>
-) : Comparable<Paginator<*>> {
+open class MutablePaginator<T>(
+    var source: suspend MutablePaginator<T>.(page: UInt) -> List<T>
+) : Comparable<MutablePaginator<*>> {
 
     var capacity: Int = DEFAULT_CAPACITY
         private set
@@ -37,58 +43,160 @@ open class Paginator<T>(
         get() = capacity == IGNORE_CAPACITY
 
     protected val cache = sortedMapOf<UInt, PageState<T>>()
-    val pages get() = cache.keys.toList()
-    val pageStates get() = cache.values.toList()
-    val size get() = cache.size
+    val pages: List<UInt> get() = cache.keys.toList()
+    val pageStates: List<PageState<T>> get() = cache.values.toList()
+    val size: Int get() = cache.size
 
-    private var openCacheFlow = true
     private var enableCacheFlow = false
-    private val _cacheFlow = MutableStateFlow<Map<UInt, PageState<T>>>(cache)
+    private val _cacheFlow = MutableStateFlow(false to cache)
     fun asFlow(): Flow<Map<UInt, PageState<T>>> {
         enableCacheFlow = true
         return _cacheFlow.asStateFlow()
-            .filter { openCacheFlow }
+            .filter { it.first }
+            .map { it.second }
     }
 
     /**
      * repeat emit the cache variable into _cacheFlow
      * */
-    suspend fun repeatCacheFlow() {
-        openCacheFlow = false
-        val plug = emptyMap<UInt, PageState<T>>()
-        _cacheFlow.update { plug }
-        do {
-            delay(timeMillis = 1L)
-        } while (_cacheFlow.value != plug)
-        openCacheFlow = true
-        _cacheFlow.update { cache }
+    fun repeatCacheFlow() {
+        _cacheFlow.update { false to sortedMapOf() }
+        _cacheFlow.update { true to cache }
     }
 
     /**
-     * This is variable that holds the left valid success page expect jump situation
+     * This is variable that holds the left valid success page expect a jump situation
      * */
     var startContextPage = 0u
         private set
 
+    protected fun expandStartContextPage(pageState: PageState<T>?): PageState<T>? {
+        return fastSearchPageBefore(pageState, ::isValidSuccessState)
+            ?.also { startContextPage = it.page }
+    }
+
     /**
-     * This is variable that holds the right valid success page expect jump situation
+     * This is a variable that holds the right valid success page expect a jump situation
      * */
     var endContextPage = 0u
         private set
+
+    protected fun expandEndContextPage(pageState: PageState<T>?): PageState<T>? {
+        return fastSearchPageAfter(pageState, ::isValidSuccessState)
+            ?.also { endContextPage = it.page }
+    }
+
+    val isStarted: Boolean get() = startContextPage > 0u && endContextPage > 0u
+
+    fun findNearContextPage(startPoint: UInt = 1u, endPoint: UInt = startPoint) {
+        require(startPoint >= 1u) { "startPoint must be greater than zero" }
+        require(endPoint >= 1u) { "endPoint must be greater than zero" }
+        require(endPoint >= startPoint) { "endPoint must be greater than startPoint" }
+
+        fun find(sPont: UInt, ePoint: UInt) {
+            var fromLeftToLeft = sPont
+            var fromRightToRight = ePoint
+            var fromLeftToRight = sPont
+            var fromRightToLeft = ePoint
+            val max = cache.lastKey()
+            while (fromLeftToRight <= fromRightToLeft ||
+                fromLeftToLeft >= 1u || fromRightToRight <= max
+            ) {
+                if (fromLeftToRight < fromRightToLeft) {
+                    if (isValidSuccessState(getPageState(fromLeftToRight))) {
+                        startContextPage = fromLeftToRight
+                        endContextPage = fromLeftToRight
+                        expandEndContextPage(getPageState(fromLeftToRight + 1u))
+                        break
+                    }
+                    if (isValidSuccessState(getPageState(fromRightToLeft))) {
+                        startContextPage = fromRightToLeft
+                        endContextPage = fromRightToLeft
+                        expandStartContextPage(getPageState(fromRightToLeft - 1u))
+                        break
+                    }
+                } else if (fromLeftToRight == fromRightToLeft) {
+                    val fromLeftToRightState = getPageState(fromLeftToRight)
+                    if (isValidSuccessState(fromLeftToRightState)) {
+                        startContextPage = fromLeftToRight
+                        endContextPage = fromLeftToRight
+                        break
+                    }
+                }
+                if (fromLeftToLeft >= 1u) {
+                    if (isValidSuccessState(getPageState(fromLeftToLeft))) {
+                        startContextPage = fromLeftToLeft
+                        endContextPage = fromLeftToLeft
+                        expandStartContextPage(getPageState(fromLeftToLeft - 1u))
+                        break
+                    }
+                }
+                if (fromRightToRight <= max) {
+                    if (isValidSuccessState(getPageState(fromRightToRight))) {
+                        startContextPage = fromRightToRight
+                        endContextPage = fromRightToRight
+                        expandEndContextPage(getPageState(fromRightToRight + 1u))
+                        break
+                    }
+                }
+
+                if (fromLeftToLeft > 1u) fromLeftToLeft--
+                if (fromRightToRight < max) fromRightToRight++
+                if (fromLeftToRight < fromRightToLeft) {
+                    fromLeftToRight++
+                    fromRightToLeft--
+                }
+            }
+        }
+
+        if (size == 0) {
+            startContextPage = 0u
+            endContextPage = 0u
+            return
+        }
+
+        if (startPoint != endPoint) return find(startPoint, endPoint)
+
+        val pointState = getPageState(startPoint)
+        if (!isValidSuccessState(pointState))
+            return find(startPoint - 1u, endPoint + 1u)
+
+        pointState!!
+        startContextPage = startPoint
+        endContextPage = startPoint
+        expandStartContextPage(getPageState(pointState.page - 1u))
+        expandEndContextPage(getPageState(pointState.page + 1u))
+    }
 
     val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkUInt(page = 1u))
     var recyclingBookmark = false
     private var bookmarkIterator = bookmarks.listIterator()
 
-    private var openSnapshot = true
-    private val _snapshot = MutableStateFlow(emptyList<PageState<T>>())
-    val snapshot = _snapshot.asStateFlow()
-        .filter { openSnapshot }
+    private val _snapshot = MutableStateFlow(false to emptyList<PageState<T>>())
+    val snapshot: Flow<List<PageState<T>>>
+        get() {
+            return _snapshot.asStateFlow()
+                .filter { it.first }
+                .map { it.second }
+        }
 
-    var initializerProgressPage: InitializerProgressPage<T>? = null
-    var initializerSuccessPage: InitializerSuccessPage<T>? = null
-    var initializerEmptyPage: InitializerEmptyPage<T>? = null
-    var initializerErrorPage: InitializerErrorPage<T>? = null
+    var initializerProgressPage: InitializerProgressPage<T> =
+        fun(page: UInt, data: List<T>): ProgressPage<T> {
+            return ProgressPage(page = page, data = data)
+        }
+    var initializerSuccessPage: InitializerSuccessPage<T> =
+        fun(page: UInt, data: List<T>): SuccessPage<T> {
+            return if (data.isEmpty()) initializerEmptyPage.invoke(page, data)
+            else SuccessPage(page = page, data = data)
+        }
+    var initializerEmptyPage: InitializerEmptyPage<T> =
+        fun(page: UInt, data: List<T>): EmptyPage<T> {
+            return EmptyPage(page = page, data = data)
+        }
+    var initializerErrorPage: InitializerErrorPage<T> =
+        fun(exception: Exception, page: UInt, data: List<T>): ErrorPage<T> {
+            return ErrorPage(exception = exception, page = page, data = data)
+        }
 
     /**
      * Moves forward to the next bookmark in the list.
@@ -108,17 +216,19 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         enableCacheFlow: Boolean = this.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T>? = initializerProgressPage,
-        initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
-        initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
-        initErrorState: InitializerErrorPage<T>? = initializerErrorPage
-    ): Bookmark? {
+        initProgressState: InitializerProgressPage<T> = initializerProgressPage,
+        initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
+        initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
+        initErrorState: InitializerErrorPage<T> = initializerErrorPage
+    ): Pair<PageState<T>, Bookmark>? {
         if (lockJump) throw JumpWasLockedException()
 
-        var bookmark = bookmarkIterator
-            .takeIf { it.hasNext() }
-            ?.next()
-        if (bookmark == null && recycling || bookmark != null) {
+        var bookmark: Bookmark? =
+            bookmarkIterator
+                .takeIf { it.hasNext() }
+                ?.next()
+
+        if (bookmark != null || recycling) {
             if (bookmark == null) {
                 bookmarkIterator = bookmarks.listIterator()
                 bookmark = bookmarkIterator
@@ -135,9 +245,9 @@ open class Paginator<T>(
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
-        } else {
-            return null
         }
+
+        return null
     }
 
     /**
@@ -158,17 +268,18 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         enableCacheFlow: Boolean = this.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T>? = initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T>? = initializerErrorPage
-    ): Bookmark? {
+        initProgressState: InitializerProgressPage<T> = initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = initializerErrorPage
+    ): Pair<PageState<T>, Bookmark>? {
         if (lockJump) throw JumpWasLockedException()
 
         var bookmark = bookmarkIterator
             .takeIf { it.hasPrevious() }
             ?.previous()
-        if (bookmark == null && recycling || bookmark != null) {
+
+        if (bookmark != null || recycling) {
             if (bookmark == null) {
                 bookmarkIterator = bookmarks.listIterator(bookmarks.lastIndex)
                 bookmark = bookmarkIterator
@@ -185,9 +296,9 @@ open class Paginator<T>(
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
-        } else {
-            return null
         }
+
+        return null
     }
 
     var lockJump = false
@@ -210,23 +321,21 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         enableCacheFlow: Boolean = this.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T>? = initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T>? = initializerErrorPage
-    ): Bookmark {
+        initProgressState: InitializerProgressPage<T> = initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = initializerErrorPage
+    ): Pair<PageState<T>, Bookmark> {
         if (lockJump) throw JumpWasLockedException()
 
         check(bookmark.page > 0u) { "bookmark.page should be greater than 0" }
 
         val probablySuccessBookmarkPage = cache[bookmark.page]
         if (isValidSuccessState(probablySuccessBookmarkPage)) {
-            fastSearchPageBefore(probablySuccessBookmarkPage) { isValidSuccessState(it) }
-                ?.also { startContextPage = it.page }
-            fastSearchPageAfter(probablySuccessBookmarkPage) { isValidSuccessState(it) }
-                ?.also { endContextPage = it.page }
-            resnapshot()
-            return bookmark
+            expandStartContextPage(probablySuccessBookmarkPage)
+            expandEndContextPage(probablySuccessBookmarkPage)
+            if (!silentlyResult) snapshot()
+            return probablySuccessBookmarkPage!! to bookmark
         }
 
         startContextPage = bookmark.page
@@ -237,18 +346,14 @@ open class Paginator<T>(
             forceLoading = true,
             loading = { page, pageState ->
                 setPageState(
-                    state = ProgressPageFactory(
-                        page = page,
-                        data = pageState?.data.orEmpty(),
-                        initProgressState = initProgressState
-                    ),
+                    state = initProgressState.invoke(page, pageState?.data.orEmpty()),
                     silently = true,
                 )
                 if (enableCacheFlow) {
                     repeatCacheFlow()
                 }
                 if (!silentlyLoading) {
-                    resnapshot()
+                    snapshot()
                 }
             },
             initEmptyState = initEmptyState,
@@ -259,21 +364,18 @@ open class Paginator<T>(
                 state = resultPageState,
                 silently = true
             )
-
-            fastSearchPageBefore(cache[startContextPage]) { isValidSuccessState(it) }
-                ?.also { startContextPage = it.page }
-            fastSearchPageAfter(cache[endContextPage]) { isValidSuccessState(it) }
-                ?.also { endContextPage = it.page }
+            expandStartContextPage(getPageState(startContextPage))
+            expandEndContextPage(getPageState(endContextPage))
 
             if (enableCacheFlow) {
                 repeatCacheFlow()
             }
             if (!silentlyResult) {
-                resnapshot()
+                snapshot()
             }
-        }
 
-        return bookmark
+            return resultPageState to bookmark
+        }
     }
 
     var lockGoNextPage: Boolean = false
@@ -294,17 +396,29 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         enableCacheFlow: Boolean = this.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T>? = this.initializerErrorPage
-    ): UInt = coroutineScope {
+        initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = this.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
+    ): PageState<T> = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
+        if (!isStarted) {
+            return@coroutineScope jump(
+                bookmark = BookmarkUInt(page = 1u),
+                silentlyLoading = silentlyLoading,
+                silentlyResult = silentlyResult,
+                enableCacheFlow = enableCacheFlow,
+                initProgressState = initProgressState,
+                initEmptyState = initEmptyState,
+                initSuccessState = initSuccessState,
+                initErrorState = initErrorState,
+            ).first
+        }
 
-        var pivotContextPage = endContextPage
-        var pivotContextPageState = cache[pivotContextPage]
-        val pivotContextPageValid = isValidSuccessState(pivotContextPageState)
-        if (pivotContextPageValid) {
+        var pivotContextPage: UInt = endContextPage
+        var pivotContextPageState: PageState<T>? = cache[pivotContextPage]
+        val isPivotContextPageValid: Boolean = isValidSuccessState(pivotContextPageState)
+        if (isPivotContextPageValid) {
             fastSearchPageAfter(cache[pivotContextPage + 1u]) { isValidSuccessState(it) }
                 ?.also {
                     pivotContextPage = it.page
@@ -313,32 +427,29 @@ open class Paginator<T>(
                 }
         }
 
-        val nextPage = if (pivotContextPageValid) pivotContextPage + 1u
-        else if (pivotContextPage == 0u) 1u
-        else pivotContextPage
-        val nextPageState = if (nextPage == pivotContextPage) pivotContextPageState
-        else cache[nextPage]
+        val nextPage: UInt =
+            if (isPivotContextPageValid) pivotContextPage + 1u
+            else pivotContextPage
+        val nextPageState: PageState<T>? =
+            if (nextPage == pivotContextPage) pivotContextPageState
+            else cache[nextPage]
 
         if (nextPageState.isProgressState())
-            return@coroutineScope nextPage
+            return@coroutineScope nextPageState!!
 
         loadOrGetPageState(
             page = nextPage,
             forceLoading = true,
             loading = { page, pageState ->
                 setPageState(
-                    state = ProgressPageFactory(
-                        page = page,
-                        data = pageState?.data.orEmpty(),
-                        initProgressState = initProgressState
-                    ),
+                    state = initProgressState.invoke(page, pageState?.data.orEmpty()),
                     silently = true,
                 )
                 if (enableCacheFlow) {
                     repeatCacheFlow()
                 }
                 if (!silentlyLoading) {
-                    resnapshot()
+                    snapshot()
                 }
             },
             initEmptyState = initEmptyState,
@@ -358,11 +469,11 @@ open class Paginator<T>(
                 repeatCacheFlow()
             }
             if (!silentlyResult) {
-                resnapshot()
+                snapshot()
             }
-        }
 
-        return@coroutineScope nextPage
+            return@coroutineScope resultPageState
+        }
     }
 
     var lockGoPreviousPage: Boolean = false
@@ -383,51 +494,54 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         enableCacheFlow: Boolean = this.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T>? = this.initializerErrorPage
-    ): UInt = coroutineScope {
+        initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = this.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
+    ): PageState<T> = coroutineScope {
         if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
+        check(isStarted) {
+            "startContextPage=0 or endContextPage=0 so paginator was not jumped (started). " +
+                    "First of all paginator must be jumped (started). " +
+                    "Please use jump function to start paginator before use goPreviousPage"
+        }
 
         var pivotContextPage = startContextPage
         var pivotContextPageState = cache[pivotContextPage]
         val pivotContextPageValid = isValidSuccessState(pivotContextPageState)
         if (pivotContextPageValid) {
             fastSearchPageBefore(cache[pivotContextPage - 1u]) { isValidSuccessState(it) }
-                ?.also {
-                    pivotContextPage = it.page
-                    pivotContextPageState = it
+                ?.also { beforePageState ->
+                    pivotContextPage = beforePageState.page
+                    pivotContextPageState = beforePageState
                     startContextPage = pivotContextPage
                 }
         }
 
-        val previousPage = if (pivotContextPageValid) pivotContextPage - 1u
-        else pivotContextPage
-        if (previousPage == 0u) return@coroutineScope previousPage
-        val previousPageState = if (previousPage == pivotContextPage) pivotContextPageState
-        else cache[previousPage]
+        val previousPage: UInt =
+            if (pivotContextPageValid) pivotContextPage - 1u
+            else pivotContextPage
+        check(previousPage > 0u) { "previousPage is 0. you can't go to 0" }
+        val previousPageState: PageState<T>? =
+            if (previousPage == pivotContextPage) pivotContextPageState
+            else cache[previousPage]
 
         if (previousPageState.isProgressState())
-            return@coroutineScope previousPage
+            return@coroutineScope previousPageState!!
 
         loadOrGetPageState(
             page = previousPage,
             forceLoading = true,
             loading = { page, pageState ->
                 setPageState(
-                    state = ProgressPageFactory(
-                        page = page,
-                        data = pageState?.data.orEmpty(),
-                        initProgressState = initProgressState
-                    ),
+                    state = initProgressState(page, pageState?.data.orEmpty()),
                     silently = true
                 )
                 if (enableCacheFlow) {
                     repeatCacheFlow()
                 }
                 if (!silentlyLoading) {
-                    resnapshot()
+                    snapshot()
                 }
             },
             initEmptyState = initEmptyState,
@@ -447,11 +561,11 @@ open class Paginator<T>(
                 repeatCacheFlow()
             }
             if (!silentlyResult) {
-                resnapshot()
+                snapshot()
             }
-        }
 
-        return@coroutineScope previousPage
+            return@coroutineScope resultPageState
+        }
     }
 
     var lockRestart: Boolean = false
@@ -471,10 +585,10 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         enableCacheFlow: Boolean = this.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T>? = this.initializerErrorPage
+        initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = this.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
     ): Unit = coroutineScope {
         if (lockRestart) throw RestartWasLockedException()
 
@@ -492,18 +606,14 @@ open class Paginator<T>(
             forceLoading = true,
             loading = { page, pageState ->
                 setPageState(
-                    state = ProgressPageFactory(
-                        page = page,
-                        data = pageState?.data.orEmpty(),
-                        initProgressState = initProgressState
-                    ),
+                    state = initProgressState.invoke(page, pageState?.data.orEmpty()),
                     silently = true
                 )
                 if (enableCacheFlow) {
                     repeatCacheFlow()
                 }
                 if (!silentlyLoading) {
-                    resnapshot(1u..1u)
+                    snapshot(1u..1u)
                 }
             },
             initEmptyState = initEmptyState,
@@ -518,7 +628,7 @@ open class Paginator<T>(
                 repeatCacheFlow()
             }
             if (!silentlyResult) {
-                resnapshot(1u..1u)
+                snapshot(1u..1u)
             }
         }
     }
@@ -546,20 +656,16 @@ open class Paginator<T>(
         loadingSilently: Boolean = false,
         finalSilently: Boolean = false,
         enableCacheFlow: Boolean = this.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T>? = this.initializerErrorPage
+        initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = this.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
     ): Unit = coroutineScope {
         if (lockRefresh) throw RefreshWasLockedException()
 
         pages.forEach { page ->
             setPageState(
-                state = ProgressPageFactory(
-                    page = page,
-                    data = cache[page]?.data.orEmpty(),
-                    initProgressState = initProgressState
-                ),
+                state = initProgressState.invoke(page, cache[page]?.data.orEmpty()),
                 silently = true
             )
         }
@@ -567,7 +673,7 @@ open class Paginator<T>(
             repeatCacheFlow()
         }
         if (!loadingSilently) {
-            resnapshot()
+            snapshot()
         }
 
         pages.map { page ->
@@ -591,7 +697,7 @@ open class Paginator<T>(
             repeatCacheFlow()
         }
         if (!finalSilently) {
-            resnapshot()
+            snapshot()
         }
     }
 
@@ -611,10 +717,10 @@ open class Paginator<T>(
         loadingSilently: Boolean = false,
         finalSilently: Boolean = false,
         enableCacheFlow: Boolean = this.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T>? = this.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T>? = this.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T>? = this.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T>? = this.initializerErrorPage
+        initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = this.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
     ) {
         if (lockRefresh) throw RefreshWasLockedException()
         return refresh(
@@ -646,29 +752,22 @@ open class Paginator<T>(
         page: UInt,
         forceLoading: Boolean = false,
         loading: ((page: UInt, pageState: PageState<T>?) -> Unit) = { _, _ -> },
-        noinline source: suspend Paginator<T>.(page: UInt) -> List<T> = this.source,
-        noinline initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage,
-        noinline initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
-        noinline initErrorState: InitializerErrorPage<T>? = initializerErrorPage
+        noinline source: suspend MutablePaginator<T>.(page: UInt) -> List<T> = this.source,
+        noinline initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
+        noinline initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
+        noinline initErrorState: InitializerErrorPage<T> = initializerErrorPage
     ): PageState<T> {
         return try {
             val cachedState = if (forceLoading) null else getPageState(page)
             if (isValidSuccessState(cachedState)) return cachedState!!
             loading.invoke(page, cachedState)
-            SuccessPageFactory(
-                page = page,
-                data = source.invoke(this, page)
-                    .toMutableList(),
-                initSuccessState = initSuccessState,
-                initEmptyState = initEmptyState
-            )
+            val data: MutableList<T> =
+                source.invoke(this, page)
+                    .toMutableList()
+            if (data.isEmpty()) initEmptyState.invoke(page, data)
+            else initSuccessState.invoke(page, data)
         } catch (exception: Exception) {
-            ErrorPageFactory(
-                e = exception,
-                page = page,
-                data = emptyList(),
-                initErrorState = initErrorState
-            )
+            initErrorState.invoke(exception, page, emptyList())
         }
     }
 
@@ -676,31 +775,89 @@ open class Paginator<T>(
      * Removes the state of a page and sets its state to empty.
      *
      * @param page The page number to remove the state.
-     * @param emitIntoAsFlow If true, the change will be emitted into the flow.
      * @param silently If true, the change will not trigger snapshot update.
-     * @param initEmptyState Initializer for the empty state.
      * @return The removed page state, or null if it was not found.
      */
     fun removePageState(
         page: UInt,
         silently: Boolean = false,
-        initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage
     ): PageState<T>? {
-        val removed = cache.remove(page)
-        if (removed != null) {
-            setPageState(
-                state = EmptyPageFactory(
-                    page = page,
-                    data = emptyList(),
-                    initEmptyState = initEmptyState
-                ),
-                silently = true
-            )
+        fun collapse(startPage: UInt, compression: Int) {
+            var current: PageState<T> = cache.remove(startPage)!!
+            for (i in 1..compression) {
+                val collapsed = current.copy(page = current.page - 1u)
+                current = getPageState(current.page - 1u)!!
+                setPageState(state = collapsed, silently = true)
+            }
+
         }
-        if (!silently) {
-            resnapshot()
+
+        fun recalculateContext(removedPage: UInt) {
+            if (removedPage in startContextPage..endContextPage) {
+                if (endContextPage - startContextPage > 0u) endContextPage--
+                else if (removedPage == 1u) findNearContextPage()
+                else findNearContextPage(removedPage - 1u, removedPage + 1u)
+            }
         }
-        return removed
+
+        var pageStateToRemove: PageState<T>? = null
+        if (!isStarted) pageStateToRemove = cache.remove(page)
+        else {
+            pageStateToRemove = getPageState(page) ?: return null
+            var prev: PageState<*>? = null
+            var pageToRemoveIndex = -1
+            var startContextIndex = -1
+            var wasRemoved = false
+            smartForEach(
+                startIndex = { list ->
+                    pageToRemoveIndex = list.binarySearch { it.page.compareTo(page) }
+                    startContextIndex = pageToRemoveIndex
+                    return@smartForEach pageToRemoveIndex
+                }
+            ) { list, index, current ->
+                val previous = prev ?: current
+                if (previous far current) {
+                    if (!wasRemoved) {
+                        if (index - 1 == pageToRemoveIndex) {
+                            cache.remove(page)
+                            recalculateContext(page)
+                        } else {
+                            collapse(previous.page, index - 1 - pageToRemoveIndex)
+                            recalculateContext(previous.page)
+                        }
+                        if (index == list.lastIndex) {
+                            cache.remove(current.page)
+                            recalculateContext(current.page)
+                        }
+                        wasRemoved = true
+                    } else {
+                        collapse(previous.page, index - 1 - startContextIndex)
+                        recalculateContext(previous.page)
+                    }
+                    startContextIndex = index
+                } else if (index == list.lastIndex) {
+                    if (!wasRemoved) {
+                        if (index == pageToRemoveIndex) {
+                            cache.remove(page)
+                            recalculateContext(page)
+                        } else {
+                            collapse(current.page, index - pageToRemoveIndex)
+                            recalculateContext(current.page)
+                        }
+                        wasRemoved = true
+                    } else {
+                        collapse(current.page, index - startContextIndex)
+                        recalculateContext(current.page)
+                    }
+                }
+                prev = current
+                return@smartForEach true
+            }
+        }
+        if (!silently && pageStateToRemove != null) {
+            snapshot()
+        }
+        return pageStateToRemove
     }
 
     /**
@@ -725,28 +882,8 @@ open class Paginator<T>(
     ) {
         cache[state.page] = state
         if (!silently) {
-            resnapshot()
+            snapshot()
         }
-    }
-
-    /**
-     * Removes a bookmark from the paginator.
-     *
-     * @param bookmark The bookmark to remove.
-     * @return True if the bookmark was removed, false otherwise.
-     */
-    fun removeBookmark(bookmark: Bookmark): Boolean {
-        return bookmarks.remove(bookmark)
-    }
-
-    /**
-     * Adds a bookmark to the paginator.
-     *
-     * @param bookmark The bookmark to add.
-     * @return True if the bookmark was added, false otherwise.
-     */
-    fun addBookmark(bookmark: Bookmark): Boolean {
-        return bookmarks.add(bookmark)
     }
 
     fun removeElement(predicate: (T) -> Boolean): T? {
@@ -811,17 +948,24 @@ open class Paginator<T>(
             }
         }
 
-        setPageState(
-            state = pageState.copy(data = updatedData),
-            silently = true
-        )
+        if (updatedData.isEmpty()) {
+            removePageState(
+                page = page,
+                silently = true
+            )
+        } else {
+            setPageState(
+                state = pageState.copy(data = updatedData),
+                silently = true
+            )
+        }
 
         if (!silently) {
             val pageBefore = fastSearchPageBefore(cache[startContextPage])!!
             val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
             val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
-                resnapshot(rangeSnapshot)
+                snapshot(rangeSnapshot)
             }
         }
 
@@ -833,8 +977,8 @@ open class Paginator<T>(
         silently: Boolean = false,
         initSuccessPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ): Boolean {
-        val lastPage = cache.keys.maxOrNull() ?: return false
-        val lastIndex = cache.getValue(lastPage).data.lastIndex
+        val lastPage: UInt = cache.keys.maxOrNull() ?: return false
+        val lastIndex: Int = cache.getValue(lastPage).data.lastIndex
         addElement(element, lastPage, lastIndex, silently, initSuccessPageState)
         return true
     }
@@ -872,20 +1016,21 @@ open class Paginator<T>(
         silently: Boolean = false,
         initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ) {
-        val pageState = (cache[page] ?: initPageState?.invoke(page, emptyList()))
-            ?: throw IndexOutOfBoundsException(
-                "page-$page was not created"
-            )
+        val pageState: PageState<T> =
+            (cache[page] ?: initPageState?.invoke(page, emptyList()))
+                ?: throw IndexOutOfBoundsException(
+                    "page-$page was not created"
+                )
 
-        val updatedData = pageState.data
-            .let { it as MutableList }
-            .also { it.addAll(index, elements) }
+        val updatedData: MutableList<T> =
+            pageState.data.let { it as MutableList }
+                .also { it.addAll(index, elements) }
 
         val extraElements: MutableList<T>? =
             if (updatedData.size > capacity && !ignoreCapacity) {
                 MutableList(size = updatedData.size - capacity) {
-                    updatedData.removeLast()
-                }.also { it.reverse() }
+                    updatedData.removeAt(updatedData.lastIndex)
+                }.apply(MutableList<T>::reverse)
             } else null
 
         setPageState(
@@ -906,8 +1051,8 @@ open class Paginator<T>(
                     initPageState = initPageState
                 )
             } else {
-                val rangePageInvalidated = (page + 1u)..cache.keys.last()
-                for (invalid in rangePageInvalidated) cache.remove(invalid)
+                val rangePageInvalidated: UIntRange = (page + 1u)..cache.keys.last()
+                rangePageInvalidated.forEach(cache::remove)
             }
         }
 
@@ -916,7 +1061,7 @@ open class Paginator<T>(
             val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
             val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
-                resnapshot(rangeSnapshot)
+                snapshot(rangeSnapshot)
             }
         }
     }
@@ -924,12 +1069,13 @@ open class Paginator<T>(
     inline fun getElement(
         predicate: (T) -> Boolean
     ): T? {
-        this.safeForeEach { pageState ->
-            for (e in pageState.data) {
-                if (predicate(e)) {
-                    return e
+        this.smartForEach { _, _, pageState: PageState<T> ->
+            for (element in pageState.data) {
+                if (predicate(element)) {
+                    return element
                 }
             }
+            return@smartForEach true
         }
         return null
     }
@@ -957,11 +1103,11 @@ open class Paginator<T>(
      * @param predicate A function that determines whether an element should be replaced.
      */
     inline fun replaceAllElement(
-        providerElement: (current: T, pageState: PageState<T>, indext: Int) -> T?,
+        providerElement: (current: T, pageState: PageState<T>, index: Int) -> T?,
         silently: Boolean = false,
-        predicate: (current: T, pageState: PageState<T>, indext: Int) -> Boolean
+        predicate: (current: T, pageState: PageState<T>, index: Int) -> Boolean
     ) {
-        safeForeEach { pageState ->
+        smartForEach { _, _, pageState ->
             var index = 0
             while (index < pageState.data.size) {
                 val current = pageState.data[index]
@@ -984,9 +1130,10 @@ open class Paginator<T>(
                 }
                 ++index
             }
+            return@smartForEach true
         }
         if (!silently) {
-            resnapshot()
+            snapshot()
         }
     }
 
@@ -995,7 +1142,7 @@ open class Paginator<T>(
         silently: Boolean = false,
         predicate: (T) -> Boolean
     ) {
-        this.safeForeEach { pageState ->
+        this.smartForEach { _, _, pageState ->
             var index = 0
             while (index < pageState.data.size) {
                 if (predicate(pageState.data[index++])) {
@@ -1008,6 +1155,7 @@ open class Paginator<T>(
                     return
                 }
             }
+            return@smartForEach true
         }
     }
 
@@ -1041,7 +1189,7 @@ open class Paginator<T>(
             val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
             val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
-                resnapshot(rangeSnapshot)
+                snapshot(rangeSnapshot)
             }
         }
     }
@@ -1064,47 +1212,31 @@ open class Paginator<T>(
     /**
      * Updates the snapshot of the paginator within the given range.
      *
-     * @param range The range of pages to include in the snapshot. Defaults to the range from startContextPage to endContextPage.
-     * @throws IllegalStateException if startContextPage or endContextPage is 0, or if min or max values are null.
+     * @param pageRange The range of pages to include in the snapshot. Defaults to the range from startContextPage to endContextPage.
+     * @throws IllegalStateException if startContextPage or endContextPage is zero, or if min or max values are null.
      */
-    fun resnapshot(range: UIntRange? = null) {
-        (range ?: kotlin.run {
-            if (startContextPage == 0u || endContextPage == 0u) return@run null
+    fun snapshot(pageRange: UIntRange? = null) {
+        (pageRange ?: kotlin.run {
+            if (!isStarted) return@run null
             val min = fastSearchPageBefore(cache[startContextPage])?.page
             val max = fastSearchPageAfter(cache[endContextPage])?.page
             return@run if (min != null && max != null) min..max
             else null
-        })?.let {
-            requireResnapshot(it)
+        })?.let { mPageRange: UIntRange ->
+            _snapshot.update { false to emptyList() }
+            _snapshot.update { true to scan(mPageRange) }
         }
-    }
-
-    fun requireResnapshot(
-        range: UIntRange = kotlin.run {
-            check(startContextPage != 0u) { "You cannot scan because startContextPage is 0" }
-            check(endContextPage != 0u) { "You cannot scan because endContextPage is 0" }
-            val min = fastSearchPageBefore(cache[startContextPage])?.page
-            val max = fastSearchPageAfter(cache[endContextPage])?.page
-            checkNotNull(min) { "min is null the data structure is broken!" }
-            checkNotNull(max) { "max is null the data structure is broken!" }
-            return@run min..max
-        }
-    ) {
-        openSnapshot = false
-        _snapshot.update { emptyList() }
-        openSnapshot = true
-        _snapshot.update { scan(range) }
     }
 
     /**
      * Scans and returns a list of PageState within the given range.
      *
-     * @param range The range of pages to scan. Defaults to the range from startContextPage to endContextPage.
+     * @param pagesRange The range of pages to scan. Defaults to the range from startContextPage to endContextPage.
      * @return A list of PageState within the specified range.
-     * @throws IllegalStateException if startContextPage or endContextPage is 0, or if min or max values are null.
+     * @throws IllegalStateException if startContextPage or endContextPage is zero, or if min or max values are null.
      */
     fun scan(
-        range: UIntRange = kotlin.run {
+        pagesRange: UIntRange = kotlin.run {
             check(startContextPage != 0u) { "You cannot scan because startContextPage is 0" }
             check(endContextPage != 0u) { "You cannot scan because endContextPage is 0" }
             val min = fastSearchPageBefore(cache[startContextPage])?.page
@@ -1114,13 +1246,13 @@ open class Paginator<T>(
             return@run min..max
         }
     ): List<PageState<T>> {
-        val capacity = max(range.last - range.first, 1u)
-        val result = ArrayList<PageState<T>>(capacity.toInt())
-        for (item in range) {
-            val page = cache[item] ?: break
-            result.add(page)
+        val capacity: UInt = max(pagesRange.last - pagesRange.first, 1u)
+        return buildList(capacity.toInt()) {
+            for (page in pagesRange) {
+                val pageState: PageState<T> = cache[page] ?: break
+                this.add(pageState)
+            }
         }
-        return result
     }
 
     /**
@@ -1183,44 +1315,52 @@ open class Paginator<T>(
         capacity: Int,
         resize: Boolean = true,
         silently: Boolean = false,
-        initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage
+        initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage
     ) {
         if (this.capacity == capacity) return
         check(capacity >= 0) { "capacity must be greater or equal than zero" }
         this.capacity = capacity
 
         if (resize && capacity > 0) {
-            val firstSuccessPage =
-                fastSearchPageAfter(cache[startContextPage]) { it.isSuccessState() }
-            val lastSuccessPage =
-                fastSearchPageBefore(cache[endContextPage]) { it.isSuccessState() }
-            firstSuccessPage!!; lastSuccessPage!!
-            val successStatesRange = firstSuccessPage.page..lastSuccessPage.page
-            val successStates = successStatesRange.map { cache.getValue(it) }
-            val items = successStates.flatMap { it.data }.toMutableList()
+            val firstSuccessPageState: PageState<T>? =
+                fastSearchPageAfter(
+                    pivotPage = cache[startContextPage],
+                    predicate = { pageState: PageState<T> ->
+                        pageState.isSuccessState()
+                    }
+                )
+            val lastSuccessPageState: PageState<T>? =
+                fastSearchPageBefore(
+                    pivotPage = cache[endContextPage],
+                    predicate = { pageState: PageState<T> ->
+                        pageState.isSuccessState()
+                    }
+                )
+            firstSuccessPageState!!; lastSuccessPageState!!
+            val items: MutableList<T> =
+                (firstSuccessPageState.page..lastSuccessPageState.page)
+                    .map { page: UInt -> cache.getValue(page) }
+                    .flatMap { pageState: PageState<T> -> pageState.data }
+                    .toMutableList()
 
             cache.clear()
 
-            var pageIndex = firstSuccessPage.page
+            var pageIndex: UInt = firstSuccessPageState.page
             while (items.isNotEmpty()) {
                 val successData = mutableListOf<T>()
                 while (items.isNotEmpty() && successData.size < capacity) {
-                    successData.add(items.removeFirst())
+                    successData.add(items.removeAt(0))
                 }
 
                 setPageState(
-                    state = SuccessPageFactory(
-                        page = pageIndex++,
-                        data = successData,
-                        initSuccessState = initSuccessState
-                    ),
+                    state = initSuccessState.invoke(pageIndex++, successData),
                     silently = true
                 )
             }
         }
 
         if (!silently && capacity > 0) {
-            resnapshot()
+            snapshot()
         }
     }
 
@@ -1240,7 +1380,7 @@ open class Paginator<T>(
         bookmarkIterator = bookmarks.listIterator()
         startContextPage = 0u
         endContextPage = 0u
-        if (!silently) _snapshot.update { emptyList() }
+        if (!silently) _snapshot.update { true to emptyList() }
         resize(capacity, resize = false, silently = true)
         lockJump = false
         lockGoNextPage = false
@@ -1249,13 +1389,15 @@ open class Paginator<T>(
         lockRefresh = false
     }
 
-    override operator fun compareTo(other: Paginator<*>): Int = this.size - other.size
+    override operator fun compareTo(other: MutablePaginator<*>): Int = this.size - other.size
 
-    operator fun iterator() = cache.iterator()
+    operator fun iterator(): MutableIterator<MutableMap.MutableEntry<UInt, PageState<T>>> {
+        return cache.iterator()
+    }
 
-    operator fun contains(page: UInt) = getPageState(page) != null
+    operator fun contains(page: UInt): Boolean = getPageState(page) != null
 
-    operator fun contains(pageState: PageState<T>) = getPageState(pageState.page) != null
+    operator fun contains(pageState: PageState<T>): Boolean = getPageState(pageState.page) != null
 
     operator fun minusAssign(page: UInt) {
         removePageState(page)
@@ -1265,331 +1407,21 @@ open class Paginator<T>(
         removePageState(pageState.page)
     }
 
-    operator fun plusAssign(pageState: PageState<T>) = setPageState(pageState)
+    operator fun plusAssign(pageState: PageState<T>): Unit = setPageState(pageState)
 
     operator fun get(page: UInt): PageState<T>? = getPageState(page)
 
     operator fun get(page: UInt, index: Int): T? = getElement(page, index)
 
-    override fun toString() = "Paginator(pages=$cache, bookmarks=$bookmarks)"
+    override fun toString(): String = "Paginator(pages=$cache, bookmarks=$bookmarks)"
 
-    override fun hashCode() = cache.hashCode()
+    override fun hashCode(): Int = cache.hashCode()
 
-    override fun equals(other: Any?) = (other as? Paginator<*>)?.cache === this.cache
-
-    @Suppress("FunctionName", "NOTHING_TO_INLINE")
-    inline fun ProgressPageFactory(
-        page: UInt,
-        data: List<T> = emptyList(),
-        noinline initProgressState: InitializerProgressPage<T>? = initializerProgressPage
-    ): ProgressPage<T> {
-        return initProgressState?.invoke(page, data)
-            ?: ProgressPage(page, data)
-    }
-
-    @Suppress("FunctionName", "NOTHING_TO_INLINE")
-    inline fun SuccessPageFactory(
-        page: UInt,
-        data: List<T> = emptyList(),
-        noinline initSuccessState: InitializerSuccessPage<T>? = initializerSuccessPage,
-        noinline initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage
-    ): SuccessPage<T> {
-        return if (data.isEmpty()) EmptyPageFactory(page, data, initEmptyState)
-        else initSuccessState?.invoke(page, data) ?: SuccessPage(page, data)
-    }
-
-    @Suppress("FunctionName", "NOTHING_TO_INLINE")
-    inline fun EmptyPageFactory(
-        page: UInt,
-        data: List<T> = emptyList(),
-        noinline initEmptyState: InitializerEmptyPage<T>? = initializerEmptyPage
-    ): EmptyPage<T> {
-        return initEmptyState?.invoke(page, data)
-            ?: EmptyPage(page, data)
-    }
-
-    @Suppress("FunctionName", "NOTHING_TO_INLINE")
-    inline fun ErrorPageFactory(
-        e: Exception,
-        page: UInt,
-        data: List<T> = emptyList(),
-        noinline initErrorState: InitializerErrorPage<T>? = initializerErrorPage
-    ): ErrorPage<T> {
-        return initErrorState?.invoke(e, page, data)
-            ?: ErrorPage(e, page, data)
-    }
-
-    sealed class LockedException(
-        override val message: String?
-    ) : Exception(message) {
-        open class JumpWasLockedException :
-            LockedException("Jump was locked. Please try set false to field lockJump")
-
-        open class GoNextPageWasLockedException :
-            LockedException("NextPage was locked. Please try set false to field lockGoNextPage")
-
-        open class GoPreviousPageWasLockedException :
-            LockedException("PreviousPage was locked. Please try set false to field lockGoPreviousPage")
-
-        open class RestartWasLockedException
-            : LockedException("Restart was locked. Please try set false to field lockRestart")
-
-        open class RefreshWasLockedException :
-            LockedException("Refresh was locked. Please try set false to field lockRefresh")
-    }
-
-    sealed class PageState<E>(
-        open val page: UInt,
-        open val data: List<E>
-    ) : Comparable<PageState<*>> {
-
-        open class ProgressPage<T>(
-            override val page: UInt,
-            override val data: List<T>,
-        ) : PageState<T>(page, data) {
-
-            override fun copy(page: UInt, data: List<T>) = ProgressPage(page, data)
-        }
-
-        open class SuccessPage<T>(
-            override val page: UInt,
-            override val data: List<T>,
-        ) : PageState<T>(page, data) {
-
-            init {
-                checkData()
-            }
-
-            @Suppress("NOTHING_TO_INLINE")
-            private inline fun checkData() {
-                if (this !is EmptyPage) {
-                    check(data.isNotEmpty()) { "data must not be empty" }
-                }
-            }
-
-            /**
-             * If you want to override this function you should check the data because it can't be empty
-             * */
-            override fun copy(page: UInt, data: List<T>): SuccessPage<T> {
-                return if (data.isEmpty()) EmptyPage(page, data)
-                else SuccessPage(page, data)
-            }
-        }
-
-        open class EmptyPage<T>(
-            override val page: UInt,
-            override val data: List<T>,
-        ) : SuccessPage<T>(page, data) {
-            override fun copy(page: UInt, data: List<T>) = EmptyPage(page, data)
-        }
-
-        open class ErrorPage<T>(
-            val exception: Exception,
-            override val page: UInt,
-            override val data: List<T>,
-        ) : PageState<T>(page, data) {
-            open fun copy(e: Exception, page: UInt, data: List<T>): ErrorPage<T> {
-                return ErrorPage(e, page, data)
-            }
-
-            override fun copy(page: UInt, data: List<T>): ErrorPage<T> {
-                return copy(e = this.exception, page = page, data = data)
-            }
-
-            override fun toString(): String {
-                return "${this::class.simpleName}(exception=${exception}, data=${this.data})"
-            }
-        }
-
-        abstract fun copy(page: UInt = this.page, data: List<E> = this.data): PageState<E>
-
-        override fun toString() = "${this::class.simpleName}(data=${this.data})"
-
-        override fun hashCode(): Int = this.page.hashCode()
-
-        override fun equals(other: Any?): Boolean = this === other
-
-        override operator fun compareTo(other: PageState<*>): Int = page.compareTo(other.page)
-    }
-
-    interface Bookmark {
-        val page: UInt
-
-        @JvmInline
-        value class BookmarkUInt(
-            override val page: UInt
-        ) : Bookmark
-    }
+    override fun equals(other: Any?): Boolean =
+        (other as? MutablePaginator<*>)?.cache === this.cache
 
     companion object {
         const val DEFAULT_CAPACITY = 20
         const val IGNORE_CAPACITY = 0
     }
-}
-
-/**
- * Checks if the PageState is in progress state.
- *
- * @return True if the PageState is ProgressPage, false otherwise.
- */
-@Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isProgressState() = this is ProgressPage<*>
-
-/**
- * Checks if the PageState is a real progress state.
- *
- * @return True if the PageState is ProgressPage of type T, false otherwise.
- */
-inline fun <reified T> PageState<T>.isRealProgressState() =
-    this is ProgressPage<T> && this::class == T::class
-
-/**
- * Checks if the PageState is in empty state.
- *
- * @return True if the PageState is EmptyPage, false otherwise.
- */
-@Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isEmptyState() = this is EmptyPage<*>
-
-/**
- * Checks if the PageState is a real empty state.
- *
- * @return True if the PageState is EmptyPage of type T, false otherwise.
- */
-inline fun <reified T> PageState<T>.isRealEmptyState() =
-    this is EmptyPage<T> && this::class == T::class
-
-/**
- * Checks if the PageState is in success state.
- *
- * @return True if the PageState is SuccessPage and not EmptyPage, false otherwise.
- */
-@Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isSuccessState() =
-    this is SuccessPage<*> && this !is EmptyPage<*>
-
-/**
- * Checks if the PageState is a real success state.
- *
- * @return True if the PageState is SuccessPage of type T, false otherwise.
- */
-inline fun <reified T> PageState<T>.isRealSuccessState() =
-    this.isSuccessState() && this::class == T::class
-
-/**
- * Checks if the PageState is in error state.
- *
- * @return True if the PageState is ErrorPage, false otherwise.
- */
-@Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isErrorState() = this is ErrorPage<*>
-
-/**
- * Checks if the PageState is a real error state.
- *
- * @return True if the PageState is ErrorPage of type T, false otherwise.
- */
-inline fun <reified T> PageState<T>.isRealErrorState() =
-    this is ErrorPage<T> && this::class == T::class
-
-/**
- * Iterates through each PageState in the paginator and performs the given action on it.
- *
- * @param action The action to be performed on each PageState.
- */
-inline fun <T> Paginator<T>.foreEach(
-    action: (PageState<T>) -> Unit
-) {
-    for (state in this) {
-        action(state.value)
-    }
-}
-
-/**
- * Iterates through each PageState in the paginator safely and performs the given action on it.
- *
- * @param action The action to be performed on each PageState.
- */
-inline fun <T> Paginator<T>.safeForeEach(
-    action: (PageState<T>) -> Unit
-) {
-    var i = 0
-    val data = this.pageStates
-    while (i < data.size) {
-        action(data[i++])
-    }
-}
-
-/**
- * Finds the index of the first element matching the given predicate in the paginator.
- *
- * @param predicate The predicate to match elements.
- * @return A pair containing the page number and index of the first matching element, or null if none found.
- */
-inline fun <T> Paginator<T>.indexOfFirst(
-    predicate: (T) -> Boolean
-): Pair<UInt, Int>? {
-    for (page in pageStates) {
-        val result = page.data.indexOfFirst(predicate)
-        if (result != -1) return page.page to result
-    }
-    return null
-}
-
-/**
- * Finds the index of the first element matching the given predicate in the specified page.
- *
- * @param page The page number to search in.
- * @param predicate The predicate to match elements.
- * @return A pair containing the page number and index of the first matching element, or null if none found.
- * @throws IllegalArgumentException if the page is not found.
- */
-inline fun <T> Paginator<T>.indexOfFirst(
-    page: UInt,
-    predicate: (T) -> Boolean
-): Pair<UInt, Int>? {
-    val pageState = checkNotNull(getPageState(page)) { "Page $page is not found" }
-    for ((i, e) in pageState.data.withIndex()) {
-        if (predicate(e)) {
-            return page to i
-        }
-    }
-    return null
-}
-
-/**
- * Finds the index of the last element matching the given predicate in the paginator.
- *
- * @param predicate The predicate to match elements.
- * @return A pair containing the page number and index of the last matching element, or null if none found.
- */
-inline fun <T> Paginator<T>.indexOfLast(
-    predicate: (T) -> Boolean
-): Pair<UInt, Int>? {
-    for (page in pageStates.reversed()) {
-        val result = page.data.indexOfLast(predicate)
-        if (result != -1) return page.page to result
-    }
-    return null
-}
-
-/**
- * Finds the index of the last element matching the given predicate in the specified page.
- *
- * @param page The page number to search in.
- * @param predicate The predicate to match elements.
- * @return A pair containing the page number and index of the last matching element, or null if none found.
- * @throws IllegalArgumentException if the page is not found.
- */
-inline fun <T> Paginator<T>.indexOfLast(
-    page: UInt,
-    predicate: (T) -> Boolean
-): Pair<UInt, Int>? {
-    val pageState = checkNotNull(getPageState(page)) { "Page $page is not found" }
-    for ((i, e) in pageState.data.reversed().withIndex()) {
-        if (predicate(e)) {
-            return page to i
-        }
-    }
-    return null
 }

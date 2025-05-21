@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.jamal_aliev.paginator.MainViewState.DataState
 import com.jamal_aliev.paginator.MainViewState.ProgressState
+import com.jamal_aliev.paginator.page.PageState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +22,7 @@ class MainViewModel : ViewModel() {
     private val _state: MutableStateFlow<MainViewState> = MutableStateFlow(ProgressState)
     val state = _state.asStateFlow()
 
-    private val paginator = Paginator(source = { SampleRepository.loadPage(it.toInt()) })
+    private val paginator = MutablePaginator(source = { SampleRepository.loadPage(it.toInt()) })
 
     init {
         paginator.snapshot
@@ -51,16 +52,9 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun refreshPage(pageState: Paginator.PageState.ErrorPage<String>) {
+    fun refreshPage(pageState: PageState.ErrorPage<String>) {
         viewModelScope.launch {
-            val newState = paginator.loadOrGetPageState(
-                page = pageState.page,
-                forceLoading = true,
-                loading = { page, pageState ->
-                    paginator.setPageState(paginator.ProgressPageFactory(page))
-                }
-            )
-            paginator.setPageState(newState)
+            paginator.refresh(pages = listOf(pageState.page))
         }
     }
 
