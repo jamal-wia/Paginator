@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.bookmark.Bookmark
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkUInt
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.EmptyPage
@@ -9,8 +8,11 @@ import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.Assert.*
 
 class MutablePaginatorTest {
 
@@ -200,6 +202,57 @@ class MutablePaginatorTest {
         assertEquals(0, paginator.size)
         assertEquals(0u, paginator.startContextPage)
         assertEquals(0u, paginator.endContextPage)
+    }
+
+
+    @Test
+    fun `test context findNearContextPage`(): Unit = runBlocking {
+        val paginator = MutablePaginator { emptyList<String>() }.apply {
+            resize(capacity = 1, resize = false, silently = true)
+        }
+        val data = listOf(
+            SuccessPage(page = 1u, data = listOf("data of page")), // 0
+            SuccessPage(page = 2u, data = listOf("data of page")), // 1
+            SuccessPage(page = 3u, data = listOf("data of page")), // 2
+            SuccessPage(page = 11u, data = listOf("data of page")), // 3
+            SuccessPage(page = 12u, data = listOf("data of page")), // 4
+            SuccessPage(page = 13u, data = listOf("data of page")), // 5
+            SuccessPage(page = 21u, data = listOf("data of page")), // 6
+            SuccessPage(page = 22u, data = listOf("data of page")), // 7
+            SuccessPage(page = 23u, data = listOf("data of page")), // 8
+        )
+        assertFalse(paginator.isStarted)
+        assertEquals(0, paginator.size)
+        data.forEach(paginator::setPageState)
+        assertEquals(data.size, paginator.size)
+
+        paginator.findNearContextPage(startPoint = 1u)
+        assertEquals(1u, paginator.startContextPage)
+        assertEquals(3u, paginator.endContextPage)
+
+        paginator.findNearContextPage(startPoint = 5u, endPoint = 12u)
+        assertEquals(11u, paginator.startContextPage)
+        assertEquals(13u, paginator.endContextPage)
+
+        paginator.findNearContextPage(startPoint = 4u, endPoint = 6u)
+        assertEquals(1u, paginator.startContextPage)
+        assertEquals(3u, paginator.endContextPage)
+
+        paginator.findNearContextPage(startPoint = 7u)
+        assertEquals(1u, paginator.startContextPage)
+        assertEquals(3u, paginator.endContextPage)
+
+        paginator.findNearContextPage(startPoint = 7u, endPoint = 8u)
+        assertEquals(11u, paginator.startContextPage)
+        assertEquals(13u, paginator.endContextPage)
+
+        paginator.findNearContextPage(startPoint = 9u, endPoint = 15u)
+        assertEquals(11u, paginator.startContextPage)
+        assertEquals(13u, paginator.endContextPage)
+
+        paginator.findNearContextPage(startPoint = 9u, endPoint = 20u)
+        assertEquals(21u, paginator.startContextPage)
+        assertEquals(23u, paginator.endContextPage)
     }
 }
 

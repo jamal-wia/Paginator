@@ -82,3 +82,11 @@ inline infix fun PageState<*>.far(other: PageState<*>): Boolean =
 @Suppress("NOTHING_TO_INLINE")
 inline infix fun PageState<*>.gap(other: PageState<*>): UInt =
     maxOf(this.page, other.page) - minOf(this.page, other.page)
+
+@Suppress("NOTHING_TO_INLINE")
+internal inline infix fun PageState<*>.gap(other: UInt): UInt =
+    maxOf(this.page, other) - minOf(this.page, other)
+
+@Suppress("NOTHING_TO_INLINE")
+internal inline infix fun UInt.gap(other: PageState<*>): UInt =
+    maxOf(this, other.page) - minOf(this, other.page)

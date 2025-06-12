@@ -7,29 +7,28 @@ import com.jamal_aliev.paginator.exception.LockedException.GoPreviousPageWasLock
 import com.jamal_aliev.paginator.exception.LockedException.JumpWasLockedException
 import com.jamal_aliev.paginator.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.exception.LockedException.RestartWasLockedException
-import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
-import com.jamal_aliev.paginator.page.PageState.SuccessPage
-import com.jamal_aliev.paginator.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.page.PageState.ErrorPage
+import com.jamal_aliev.paginator.extension.far
+import com.jamal_aliev.paginator.extension.gap
 import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
-import com.jamal_aliev.paginator.extension.far
 import com.jamal_aliev.paginator.extension.smartForEach
 import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.page.PageState.EmptyPage
+import com.jamal_aliev.paginator.page.PageState.ErrorPage
+import com.jamal_aliev.paginator.page.PageState.ProgressPage
+import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.runBlocking
 import kotlin.math.max
 
 open class MutablePaginator<T>(
@@ -94,78 +93,147 @@ open class MutablePaginator<T>(
         require(endPoint >= startPoint) { "endPoint must be greater than startPoint" }
 
         fun find(sPont: UInt, ePoint: UInt) {
-            var fromLeftToLeft = sPont
-            var fromRightToRight = ePoint
-            var fromLeftToRight = sPont
-            var fromRightToLeft = ePoint
-            val max = cache.lastKey()
-            while (fromLeftToRight <= fromRightToLeft ||
-                fromLeftToLeft >= 1u || fromRightToRight <= max
-            ) {
-                if (fromLeftToRight < fromRightToLeft) {
-                    if (isValidSuccessState(getPageState(fromLeftToRight))) {
-                        startContextPage = fromLeftToRight
-                        endContextPage = fromLeftToRight
-                        expandEndContextPage(getPageState(fromLeftToRight + 1u))
-                        break
-                    }
-                    if (isValidSuccessState(getPageState(fromRightToLeft))) {
-                        startContextPage = fromRightToLeft
-                        endContextPage = fromRightToLeft
-                        expandStartContextPage(getPageState(fromRightToLeft - 1u))
-                        break
-                    }
-                } else if (fromLeftToRight == fromRightToLeft) {
-                    val fromLeftToRightState = getPageState(fromLeftToRight)
-                    if (isValidSuccessState(fromLeftToRightState)) {
-                        startContextPage = fromLeftToRight
-                        endContextPage = fromLeftToRight
-                        break
-                    }
-                }
-                if (fromLeftToLeft >= 1u) {
-                    if (isValidSuccessState(getPageState(fromLeftToLeft))) {
-                        startContextPage = fromLeftToLeft
-                        endContextPage = fromLeftToLeft
-                        expandStartContextPage(getPageState(fromLeftToLeft - 1u))
-                        break
-                    }
-                }
-                if (fromRightToRight <= max) {
-                    if (isValidSuccessState(getPageState(fromRightToRight))) {
-                        startContextPage = fromRightToRight
-                        endContextPage = fromRightToRight
-                        expandEndContextPage(getPageState(fromRightToRight + 1u))
-                        break
-                    }
-                }
+            // example 1(0), 2(1), 3(2), 21(3), 22(4), 23(5)
+            val validStates = this.pageStates.filter(::isValidSuccessState)
+            if (validStates.isEmpty()) {
+                startContextPage = 0u
+                endContextPage = 0u
+                return
+            }
 
-                if (fromLeftToLeft > 1u) fromLeftToLeft--
-                if (fromRightToRight < max) fromRightToRight++
-                if (fromLeftToRight < fromRightToLeft) {
-                    fromLeftToRight++
-                    fromRightToLeft--
+            var startPoint = 1u
+            if (sPont > 0u) startPoint = sPont
+            var endPoint = validStates[validStates.lastIndex].page
+            if (ePoint < endPoint) endPoint = ePoint
+
+            var ltlPoint = startPoint
+            var ltlIndex = -1
+            var ltlCost = UInt.MAX_VALUE
+
+            var ltrPoint = startPoint
+            var ltrIndex = -1
+            var ltrCost = UInt.MAX_VALUE
+
+            var rtlPoint = endPoint
+            var rtlIndex = -1
+            var rtlCost = UInt.MAX_VALUE
+
+            var rtrPoint = endPoint
+            var rtrIndex = -1
+            var rtrCost = UInt.MAX_VALUE
+
+            var sIndex = validStates.binarySearch { it.page.compareTo(startPoint) }
+            var eIndex: Int = if (startPoint == endPoint) sIndex
+            else validStates.binarySearch { it.page.compareTo(endPoint) }
+
+            if (sIndex >= 0) {
+                val pivot = validStates[sIndex]
+                expandStartContextPage(pivot)
+                expandEndContextPage(pivot)
+                return
+            } else if (eIndex >= 0) {
+                val pivot = validStates[eIndex]
+                expandStartContextPage(pivot)
+                expandEndContextPage(pivot)
+                return
+            }
+
+            var startPivotIndex = -(sIndex + 1)
+            if (startPivotIndex > validStates.lastIndex) startPivotIndex = validStates.lastIndex
+            val startPivotState = validStates[startPivotIndex]
+            if (startPivotState.page < startPoint) {
+                val leftPivotState = startPivotState
+                ltlPoint = leftPivotState.page
+                ltlIndex = startPivotIndex
+                ltlCost = leftPivotState gap startPoint
+                val rightPivotState = validStates.getOrNull(startPivotIndex + 1)
+                if (rightPivotState != null) {
+                    ltrPoint = rightPivotState.page
+                    ltrIndex = startPivotIndex + 1
+                    ltrCost = startPoint gap rightPivotState
+                }
+            } else { // sPont < leftPivot.page (not equal)
+                val rightPivotState = startPivotState
+                ltrPoint = rightPivotState.page
+                ltrIndex = startPivotIndex
+                ltrCost = startPoint gap rightPivotState
+                val leftPivotState = validStates.getOrNull(startPivotIndex - 1)
+                if (leftPivotState != null) {
+                    ltlPoint = leftPivotState.page
+                    ltlIndex = startPivotIndex - 1
+                    ltlCost = leftPivotState gap startPoint
                 }
             }
+
+            var endPivotIndex = -(eIndex + 1)
+            if (endPivotIndex > validStates.lastIndex) endPivotIndex = validStates.lastIndex
+            val endPivotState = validStates[endPivotIndex]
+            if (endPivotState.page < endPoint) {
+                val leftPivotState = endPivotState
+                rtlPoint = leftPivotState.page
+                rtlIndex = endPivotIndex
+                rtlCost = leftPivotState gap endPoint
+                val rightPivotState = validStates.getOrNull(endPivotIndex + 1)
+                if (rightPivotState != null) {
+                    rtrPoint = rightPivotState.page
+                    rtrIndex = endPivotIndex + 1
+                    rtrCost = endPoint gap rightPivotState
+                }
+            } else { // ePoint < leftPivot.page (not equal)
+                val rightPivotState = endPivotState
+                rtrPoint = rightPivotState.page
+                rtrIndex = endPivotIndex
+                rtrCost = endPoint gap rightPivotState
+                val leftPivotState = validStates.getOrNull(endPivotIndex - 1)
+                if (leftPivotState != null) {
+                    rtlPoint = leftPivotState.page
+                    rtlIndex = endPivotIndex - 1
+                    rtlCost = leftPivotState gap endPoint
+                }
+            }
+
+            var minCost = ltlCost
+            var minIndex = ltlIndex
+
+            if (ltrCost < minCost) {
+                minCost = ltrCost
+                minIndex = ltrIndex
+            }
+            if (rtlCost < minCost) {
+                minCost = rtlCost
+                minIndex = rtlIndex
+            }
+            if (rtrCost < minCost) {
+                minCost = rtrCost
+                minIndex = rtrIndex
+            }
+
+            val nearestPage = validStates[minIndex]
+            expandStartContextPage(nearestPage)
+            expandEndContextPage(nearestPage)
         }
 
         if (size == 0) {
             startContextPage = 0u
             endContextPage = 0u
             return
+        } else if (startPoint != endPoint) {
+            return find(startPoint, endPoint)
         }
 
-        if (startPoint != endPoint) return find(startPoint, endPoint)
-
         val pointState = getPageState(startPoint)
-        if (!isValidSuccessState(pointState))
-            return find(startPoint - 1u, endPoint + 1u)
-
-        pointState!!
-        startContextPage = startPoint
-        endContextPage = startPoint
-        expandStartContextPage(getPageState(pointState.page - 1u))
-        expandEndContextPage(getPageState(pointState.page + 1u))
+        if (isValidSuccessState(pointState)) {
+            pointState!!
+            startContextPage = startPoint
+            endContextPage = startPoint
+            expandStartContextPage(getPageState(pointState.page - 1u))
+            expandEndContextPage(getPageState(pointState.page + 1u))
+        } else {
+            find(
+                sPont = startPoint - 1u,
+                ePoint = endPoint + 1u
+            )
+        }
     }
 
     val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkUInt(page = 1u))
@@ -419,11 +487,10 @@ open class MutablePaginator<T>(
         var pivotContextPageState: PageState<T>? = cache[pivotContextPage]
         val isPivotContextPageValid: Boolean = isValidSuccessState(pivotContextPageState)
         if (isPivotContextPageValid) {
-            fastSearchPageAfter(cache[pivotContextPage + 1u]) { isValidSuccessState(it) }
-                ?.also {
-                    pivotContextPage = it.page
-                    pivotContextPageState = it
-                    endContextPage = pivotContextPage
+            expandEndContextPage(getPageState(pivotContextPage + 1u))
+                ?.also { expanded ->
+                    pivotContextPage = expanded.page
+                    pivotContextPageState = expanded
                 }
         }
 
@@ -432,7 +499,7 @@ open class MutablePaginator<T>(
             else pivotContextPage
         val nextPageState: PageState<T>? =
             if (nextPage == pivotContextPage) pivotContextPageState
-            else cache[nextPage]
+            else getPageState(nextPage)
 
         if (nextPageState.isProgressState())
             return@coroutineScope nextPageState!!
@@ -445,12 +512,8 @@ open class MutablePaginator<T>(
                     state = initProgressState.invoke(page, pageState?.data.orEmpty()),
                     silently = true,
                 )
-                if (enableCacheFlow) {
-                    repeatCacheFlow()
-                }
-                if (!silentlyLoading) {
-                    snapshot()
-                }
+                if (enableCacheFlow) repeatCacheFlow()
+                if (!silentlyLoading) snapshot()
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
@@ -464,13 +527,10 @@ open class MutablePaginator<T>(
                 && isValidSuccessState(resultPageState)
             ) {
                 endContextPage = nextPage
+                expandEndContextPage(getPageState(nextPage + 1u))
             }
-            if (enableCacheFlow) {
-                repeatCacheFlow()
-            }
-            if (!silentlyResult) {
-                snapshot()
-            }
+            if (enableCacheFlow) repeatCacheFlow()
+            if (!silentlyResult) snapshot()
 
             return@coroutineScope resultPageState
         }
@@ -510,11 +570,10 @@ open class MutablePaginator<T>(
         var pivotContextPageState = cache[pivotContextPage]
         val pivotContextPageValid = isValidSuccessState(pivotContextPageState)
         if (pivotContextPageValid) {
-            fastSearchPageBefore(cache[pivotContextPage - 1u]) { isValidSuccessState(it) }
-                ?.also { beforePageState ->
-                    pivotContextPage = beforePageState.page
-                    pivotContextPageState = beforePageState
-                    startContextPage = pivotContextPage
+            expandStartContextPage(getPageState(pivotContextPage - 1u))
+                ?.also { expanded ->
+                    pivotContextPage = expanded.page
+                    pivotContextPageState = expanded
                 }
         }
 
@@ -524,7 +583,7 @@ open class MutablePaginator<T>(
         check(previousPage > 0u) { "previousPage is 0. you can't go to 0" }
         val previousPageState: PageState<T>? =
             if (previousPage == pivotContextPage) pivotContextPageState
-            else cache[previousPage]
+            else getPageState(previousPage)
 
         if (previousPageState.isProgressState())
             return@coroutineScope previousPageState!!
@@ -537,12 +596,8 @@ open class MutablePaginator<T>(
                     state = initProgressState(page, pageState?.data.orEmpty()),
                     silently = true
                 )
-                if (enableCacheFlow) {
-                    repeatCacheFlow()
-                }
-                if (!silentlyLoading) {
-                    snapshot()
-                }
+                if (enableCacheFlow) repeatCacheFlow()
+                if (!silentlyLoading) snapshot()
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
@@ -556,13 +611,10 @@ open class MutablePaginator<T>(
                 && isValidSuccessState(resultPageState)
             ) {
                 startContextPage = previousPage
+                expandStartContextPage(getPageState(previousPage - 1u))
             }
-            if (enableCacheFlow) {
-                repeatCacheFlow()
-            }
-            if (!silentlyResult) {
-                snapshot()
-            }
+            if (enableCacheFlow) repeatCacheFlow()
+            if (!silentlyResult) snapshot()
 
             return@coroutineScope resultPageState
         }
@@ -609,12 +661,8 @@ open class MutablePaginator<T>(
                     state = initProgressState.invoke(page, pageState?.data.orEmpty()),
                     silently = true
                 )
-                if (enableCacheFlow) {
-                    repeatCacheFlow()
-                }
-                if (!silentlyLoading) {
-                    snapshot(1u..1u)
-                }
+                if (enableCacheFlow) repeatCacheFlow()
+                if (!silentlyLoading) snapshot(1u..1u)
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
@@ -624,12 +672,8 @@ open class MutablePaginator<T>(
                 state = resultPageState,
                 silently = true
             )
-            if (enableCacheFlow) {
-                repeatCacheFlow()
-            }
-            if (!silentlyResult) {
-                snapshot(1u..1u)
-            }
+            if (enableCacheFlow) repeatCacheFlow()
+            if (!silentlyResult) snapshot(1u..1u)
         }
     }
 
@@ -669,12 +713,8 @@ open class MutablePaginator<T>(
                 silently = true
             )
         }
-        if (enableCacheFlow) {
-            repeatCacheFlow()
-        }
-        if (!loadingSilently) {
-            snapshot()
-        }
+        if (enableCacheFlow) repeatCacheFlow()
+        if (!loadingSilently) snapshot()
 
         pages.map { page ->
             async {
@@ -693,12 +733,8 @@ open class MutablePaginator<T>(
             }
         }.forEach { it.await() }
 
-        if (enableCacheFlow) {
-            repeatCacheFlow()
-        }
-        if (!finalSilently) {
-            snapshot()
-        }
+        if (enableCacheFlow) repeatCacheFlow()
+        if (!finalSilently) snapshot()
     }
 
     /**
@@ -789,7 +825,6 @@ open class MutablePaginator<T>(
                 current = getPageState(current.page - 1u)!!
                 setPageState(state = collapsed, silently = true)
             }
-
         }
 
         fun recalculateContext(removedPage: UInt) {
