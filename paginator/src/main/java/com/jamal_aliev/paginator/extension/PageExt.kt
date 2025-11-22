@@ -5,71 +5,118 @@ import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.contract
 
 /**
  * Checks if the PageState is in progress state.
  *
  * @return True if the PageState is ProgressPage, false otherwise.
  */
+@OptIn(ExperimentalContracts::class)
 @Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isProgressState() = this is ProgressPage<*>
+inline fun PageState<*>?.isProgressState(): Boolean {
+    contract {
+        returns(true) implies (this@isProgressState is ProgressPage)
+    }
+    return this is ProgressPage<*>
+}
 
 /**
  * Checks if the PageState is a real progress state.
  *
  * @return True if the PageState is ProgressPage of type T, false otherwise.
  */
-inline fun <reified T> PageState<*>.isRealProgressState(): Boolean =
-    this.isProgressState() && this::class == T::class
+@OptIn(ExperimentalContracts::class)
+inline fun <reified T> PageState<*>.isRealProgressState(): Boolean {
+    contract {
+        returns(true) implies (this@isRealProgressState is ProgressPage)
+    }
+    return this.isProgressState() && this::class == T::class
+}
 
 /**
  * Checks if the PageState is in empty state.
  *
  * @return True if the PageState is EmptyPage, false otherwise.
  */
+@OptIn(ExperimentalContracts::class)
 @Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isEmptyState() = this is EmptyPage<*>
+inline fun PageState<*>?.isEmptyState(): Boolean {
+    contract {
+        returns(true) implies (this@isEmptyState is EmptyPage)
+    }
+    return this is EmptyPage<*>
+}
 
 /**
  * Checks if the PageState is a real empty state.
  *
  * @return True if the PageState is EmptyPage of type T, false otherwise.
  */
-inline fun <reified T> PageState<*>.isRealEmptyState(): Boolean =
-    this.isEmptyState() && this::class == T::class
+@OptIn(ExperimentalContracts::class)
+inline fun <reified T> PageState<*>.isRealEmptyState(): Boolean {
+    contract {
+        returns(true) implies (this@isRealEmptyState is EmptyPage)
+    }
+    return this.isEmptyState() && this::class == T::class
+}
 
 /**
  * Checks if the PageState is in success state.
  *
  * @return True if the PageState is SuccessPage and not EmptyPage, false otherwise.
  */
+@OptIn(ExperimentalContracts::class)
 @Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isSuccessState(): Boolean =
-    this is SuccessPage<*> && this !is EmptyPage<*>
+inline fun PageState<*>?.isSuccessState(): Boolean {
+    contract {
+        returns(true) implies (this@isSuccessState is SuccessPage<*>
+                && this@isSuccessState !is EmptyPage<*>)
+        returns(false) implies (this@isSuccessState is EmptyPage<*>)
+    }
+    return this is SuccessPage<*> && this !is EmptyPage<*>
+}
 
 /**
  * Checks if the PageState is a real success state.
  *
  * @return True if the PageState is SuccessPage of type T, false otherwise.
  */
-inline fun <reified T> PageState<*>.isRealSuccessState(): Boolean =
-    this.isSuccessState() && this::class == T::class
+@OptIn(ExperimentalContracts::class)
+inline fun <reified T> PageState<*>.isRealSuccessState(): Boolean {
+    contract {
+        returns(true) implies (this@isRealSuccessState is SuccessPage)
+    }
+    return this.isSuccessState() && this::class == T::class
+}
 
 /**
  * Checks if the PageState is in error state.
  *
  * @return True if the PageState is ErrorPage, false otherwise.
  */
+@OptIn(ExperimentalContracts::class)
 @Suppress("NOTHING_TO_INLINE")
-inline fun PageState<*>?.isErrorState() = this is ErrorPage<*>
+inline fun PageState<*>?.isErrorState(): Boolean {
+    contract {
+        returns(true) implies (this@isErrorState is ErrorPage)
+    }
+    return this is ErrorPage<*>
+}
 
 /**
  * Checks if the PageState is a real error state.
  *
  * @return True if the PageState is ErrorPage of type T, false otherwise.
  */
-inline fun <reified T> PageState<*>.isRealErrorState(): Boolean =
-    this.isErrorState() && this::class == T::class
+@OptIn(ExperimentalContracts::class)
+inline fun <reified T> PageState<*>.isRealErrorState(): Boolean {
+    contract {
+        returns(true) implies (this@isRealErrorState is ErrorPage)
+    }
+    return this.isErrorState() && this::class == T::class
+}
 
 @Suppress("NOTHING_TO_INLINE")
 inline infix fun PageState<*>.near(other: PageState<*>): Boolean =

@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.contract
 import kotlin.math.max
 
 open class MutablePaginator<T>(
@@ -122,9 +124,10 @@ open class MutablePaginator<T>(
             var rtrIndex = -1
             var rtrCost = UInt.MAX_VALUE
 
-            var sIndex = validStates.binarySearch { it.page.compareTo(startPoint) }
-            var eIndex: Int = if (startPoint == endPoint) sIndex
-            else validStates.binarySearch { it.page.compareTo(endPoint) }
+            val sIndex = validStates.binarySearch { it.page.compareTo(startPoint) }
+            val eIndex: Int =
+                if (startPoint == endPoint) sIndex
+                else validStates.binarySearch { it.page.compareTo(endPoint) }
 
             if (sIndex >= 0) {
                 val pivot = validStates[sIndex]
@@ -223,7 +226,6 @@ open class MutablePaginator<T>(
 
         val pointState = getPageState(startPoint)
         if (isValidSuccessState(pointState)) {
-            pointState!!
             startContextPage = startPoint
             endContextPage = startPoint
             expandStartContextPage(getPageState(pointState.page - 1u))
@@ -403,7 +405,7 @@ open class MutablePaginator<T>(
             expandStartContextPage(probablySuccessBookmarkPage)
             expandEndContextPage(probablySuccessBookmarkPage)
             if (!silentlyResult) snapshot()
-            return probablySuccessBookmarkPage!! to bookmark
+            return probablySuccessBookmarkPage to bookmark
         }
 
         startContextPage = bookmark.page
@@ -502,7 +504,7 @@ open class MutablePaginator<T>(
             else getPageState(nextPage)
 
         if (nextPageState.isProgressState())
-            return@coroutineScope nextPageState!!
+            return@coroutineScope nextPageState
 
         loadOrGetPageState(
             page = nextPage,
@@ -586,7 +588,7 @@ open class MutablePaginator<T>(
             else getPageState(previousPage)
 
         if (previousPageState.isProgressState())
-            return@coroutineScope previousPageState!!
+            return@coroutineScope previousPageState
 
         loadOrGetPageState(
             page = previousPage,
@@ -795,7 +797,7 @@ open class MutablePaginator<T>(
     ): PageState<T> {
         return try {
             val cachedState = if (forceLoading) null else getPageState(page)
-            if (isValidSuccessState(cachedState)) return cachedState!!
+            if (isValidSuccessState(cachedState)) return cachedState
             loading.invoke(page, cachedState)
             val data: MutableList<T> =
                 source.invoke(this, page)
@@ -1236,8 +1238,12 @@ open class MutablePaginator<T>(
      * @return True if the PageState is a SuccessPage with a size equal to capacity, false otherwise.
      *         Returns false if the PageState is an EmptyPage.
      */
+    @OptIn(ExperimentalContracts::class)
     @Suppress("NOTHING_TO_INLINE")
     inline fun isValidSuccessState(pageState: PageState<T>?): Boolean {
+        contract {
+            returns(true) implies (pageState is SuccessPage)
+        }
         if (pageState is EmptyPage) return false
         if (pageState !is SuccessPage) return false
         if (ignoreCapacity) return true
