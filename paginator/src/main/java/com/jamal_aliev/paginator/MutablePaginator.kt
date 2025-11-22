@@ -1242,7 +1242,7 @@ open class MutablePaginator<T>(
     @Suppress("NOTHING_TO_INLINE")
     inline fun isValidSuccessState(pageState: PageState<T>?): Boolean {
         contract {
-            returns(true) implies (pageState is SuccessPage)
+            returns(true) implies (pageState is SuccessPage<T>)
         }
         if (pageState is EmptyPage) return false
         if (pageState !is SuccessPage) return false

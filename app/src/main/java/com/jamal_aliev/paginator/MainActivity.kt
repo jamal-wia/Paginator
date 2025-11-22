@@ -123,7 +123,6 @@ class MainActivity : ComponentActivity() {
                     pageState.isEmptyState() -> {}
 
                     pageState.isErrorState() -> {
-                        pageState as PageState.ErrorPage
                         item {
                             Column(
                                 modifier = Modifier
