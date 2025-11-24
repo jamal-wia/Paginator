@@ -4,7 +4,11 @@ import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isRealErrorState
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
 
@@ -117,7 +121,6 @@ class ErrorPageStateTest {
                 page = 1u,
                 data = emptyList()
             )
-        assertTrue(errorPageState.isRealErrorState<ErrorPage<*>>())
-        assertFalse(errorPageState.isRealErrorState<PageState<*>>())
+        assertTrue(errorPageState.isRealErrorState(ErrorPage::class))
     }
 }

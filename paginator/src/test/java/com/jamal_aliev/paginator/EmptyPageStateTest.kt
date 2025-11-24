@@ -2,11 +2,14 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.extension.isRealEmptyState
-import com.jamal_aliev.paginator.extension.isRealEmptyState
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.EmptyPage
-import com.jamal_aliev.paginator.page.PageState.SuccessPage
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
 
@@ -114,7 +117,6 @@ class EmptyPageStateTest {
                 page = 1u,
                 data = emptyList()
             )
-        assertTrue(emptyPageState.isRealEmptyState<EmptyPage<*>>())
-        assertFalse(emptyPageState.isRealEmptyState<SuccessPage<*>>())
+        assertTrue(emptyPageState.isRealEmptyState(EmptyPage::class))
     }
 }

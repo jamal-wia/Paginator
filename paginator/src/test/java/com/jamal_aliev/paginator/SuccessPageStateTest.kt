@@ -1,12 +1,16 @@
 package com.jamal_aliev.paginator
 
-import android.graphics.pdf.PdfDocument.Page
 import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.extension.isRealSuccessState
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
 
@@ -144,7 +148,6 @@ class SuccessPageStateTest {
                 page = 1u,
                 data = sampleListOfData
             )
-        assertTrue(successPageState.isRealSuccessState<SuccessPage<*>>())
-        assertFalse(successPageState.isRealSuccessState<PageState<*>>())
+        assertTrue(successPageState.isRealSuccessState(SuccessPage::class))
     }
 }

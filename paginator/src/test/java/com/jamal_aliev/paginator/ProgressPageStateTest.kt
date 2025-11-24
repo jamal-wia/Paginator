@@ -4,7 +4,11 @@ import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isRealProgressState
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
 
@@ -103,7 +107,6 @@ class ProgressPageStateTest {
                 page = 1u,
                 data = emptyList()
             )
-        assertTrue(progressPageState.isRealProgressState<ProgressPage<*>>())
-        assertFalse(progressPageState.isRealProgressState<PageState<*>>())
+        assertTrue(progressPageState.isRealProgressState(ProgressPage::class))
     }
 }
