@@ -290,7 +290,7 @@ open class MutablePaginator<T>(
         initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
         initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
         initErrorState: InitializerErrorPage<T> = initializerErrorPage
-    ): Pair<PageState<T>, Bookmark>? {
+    ): Pair<Bookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
 
         var bookmark: Bookmark? =
@@ -342,7 +342,7 @@ open class MutablePaginator<T>(
         initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = initializerErrorPage
-    ): Pair<PageState<T>, Bookmark>? {
+    ): Pair<Bookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
 
         var bookmark = bookmarkIterator
@@ -395,7 +395,7 @@ open class MutablePaginator<T>(
         initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = initializerErrorPage
-    ): Pair<PageState<T>, Bookmark> {
+    ): Pair<Bookmark, PageState<T>> {
         if (lockJump) throw JumpWasLockedException()
 
         check(bookmark.page > 0u) { "bookmark.page should be greater than 0" }
@@ -405,7 +405,7 @@ open class MutablePaginator<T>(
             expandStartContextPage(probablySuccessBookmarkPage)
             expandEndContextPage(probablySuccessBookmarkPage)
             if (!silentlyResult) snapshot()
-            return probablySuccessBookmarkPage to bookmark
+            return bookmark to probablySuccessBookmarkPage
         }
 
         startContextPage = bookmark.page
@@ -444,7 +444,7 @@ open class MutablePaginator<T>(
                 snapshot()
             }
 
-            return resultPageState to bookmark
+            return bookmark to resultPageState
         }
     }
 
@@ -473,7 +473,7 @@ open class MutablePaginator<T>(
     ): PageState<T> = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
         if (!isStarted) {
-            return@coroutineScope jump(
+            val pageState: PageState<T> = jump(
                 bookmark = BookmarkUInt(page = 1u),
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
@@ -482,7 +482,8 @@ open class MutablePaginator<T>(
                 initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
-            ).first
+            ).second
+            return@coroutineScope pageState
         }
 
         var pivotContextPage: UInt = endContextPage
@@ -1257,7 +1258,7 @@ open class MutablePaginator<T>(
      * @throws IllegalStateException if startContextPage or endContextPage is zero, or if min or max values are null.
      */
     fun snapshot(pageRange: UIntRange? = null) {
-        (pageRange ?: kotlin.run {
+        (pageRange ?: run {
             if (!isStarted) return@run null
             val min = fastSearchPageBefore(cache[startContextPage])?.page
             val max = fastSearchPageAfter(cache[endContextPage])?.page
@@ -1277,7 +1278,7 @@ open class MutablePaginator<T>(
      * @throws IllegalStateException if startContextPage or endContextPage is zero, or if min or max values are null.
      */
     fun scan(
-        pagesRange: UIntRange = kotlin.run {
+        pagesRange: UIntRange = run {
             check(startContextPage != 0u) { "You cannot scan because startContextPage is 0" }
             check(endContextPage != 0u) { "You cannot scan because endContextPage is 0" }
             val min = fastSearchPageBefore(cache[startContextPage])?.page
