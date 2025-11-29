@@ -153,8 +153,10 @@ inline fun <T> PageState<T>.isRealErrorState(
  * @return `true` if the gap is within `[0u, 1u]`, otherwise `false`.
  */
 @Suppress("NOTHING_TO_INLINE")
-inline infix fun PageState<*>.near(other: PageState<*>): Boolean =
-    this.gap(other) in 0u..1u
+inline infix fun PageState<*>.near(other: PageState<*>): Boolean {
+    val gap: UInt = this.gap(other)
+    return gap == 0u || gap == 1u
+}
 
 /**
  * Determines whether this `PageState` is not adjacent to, and not identical with,
@@ -176,8 +178,10 @@ inline infix fun PageState<*>.near(other: PageState<*>): Boolean =
  * @return `true` if the gap is outside the range `[0u, 1u]`, otherwise `false`.
  */
 @Suppress("NOTHING_TO_INLINE")
-inline infix fun PageState<*>.far(other: PageState<*>): Boolean =
-    this.gap(other) !in 0u..1u
+inline infix fun PageState<*>.far(other: PageState<*>): Boolean {
+    val gap: UInt = this.gap(other)
+    return gap != 0u && gap != 1u
+}
 
 /**
  * Computes the unsigned distance between this `PageState` and another `PageState`.
