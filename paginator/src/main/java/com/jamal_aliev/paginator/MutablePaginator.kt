@@ -72,7 +72,7 @@ open class MutablePaginator<T>(
         private set
 
     protected fun expandStartContextPage(pageState: PageState<T>?): PageState<T>? {
-        return fastSearchPageBefore(pageState, ::isValidSuccessState)
+        return walkBackwardWhile(pageState, ::isValidSuccessState)
             ?.also { startContextPage = it.page }
     }
 
@@ -83,7 +83,7 @@ open class MutablePaginator<T>(
         private set
 
     protected fun expandEndContextPage(pageState: PageState<T>?): PageState<T>? {
-        return fastSearchPageAfter(pageState, ::isValidSuccessState)
+        return walkForwardWhile(pageState, ::isValidSuccessState)
             ?.also { endContextPage = it.page }
     }
 
@@ -1049,8 +1049,8 @@ open class MutablePaginator<T>(
         }
 
         if (!silently) {
-            val pageBefore = fastSearchPageBefore(cache[startContextPage])!!
-            val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
+            val pageBefore = walkBackwardWhile(cache[startContextPage])!!
+            val pageAfter = walkForwardWhile(cache[endContextPage])!!
             val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
                 snapshot(rangeSnapshot)
@@ -1145,10 +1145,14 @@ open class MutablePaginator<T>(
         }
 
         if (!silently) {
-            val pageBefore = fastSearchPageBefore(cache[startContextPage])!!
-            val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
-            val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
+            val pageBefore: PageState<T> = checkNotNull(
+                walkBackwardWhile(getPageState(startContextPage))
+            ) { "startContextPage is broken so snapshot is imposable" }
+            val pageAfter: PageState<T> = checkNotNull(
+                walkForwardWhile(getPageState(endContextPage))
+            ) { "endContextPage is broken so snapshot is imposable" }
+            val rangeSnapshot: UIntRange = pageBefore.page..pageAfter.page
                 snapshot(rangeSnapshot)
             }
         }
@@ -1273,8 +1277,8 @@ open class MutablePaginator<T>(
         )
 
         if (!silently) {
-            val pageBefore = fastSearchPageBefore(cache[startContextPage])!!
-            val pageAfter = fastSearchPageAfter(cache[endContextPage])!!
+            val pageBefore = walkBackwardWhile(cache[startContextPage])!!
+            val pageAfter = walkForwardWhile(cache[endContextPage])!!
             val rangeSnapshot = pageBefore.page..pageAfter.page
             if (page in rangeSnapshot) {
                 snapshot(rangeSnapshot)
@@ -1310,8 +1314,8 @@ open class MutablePaginator<T>(
     fun snapshot(pageRange: UIntRange? = null) {
         (pageRange ?: run {
             if (!isStarted) return@run null
-            val min = fastSearchPageBefore(cache[startContextPage])?.page
-            val max = fastSearchPageAfter(cache[endContextPage])?.page
+            val min = walkBackwardWhile(cache[startContextPage])?.page
+            val max = walkForwardWhile(cache[endContextPage])?.page
             return@run if (min != null && max != null) min..max
             else null
         })?.let { mPageRange: UIntRange ->
@@ -1331,8 +1335,8 @@ open class MutablePaginator<T>(
         pagesRange: UIntRange = run {
             check(startContextPage != 0u) { "You cannot scan because startContextPage is 0" }
             check(endContextPage != 0u) { "You cannot scan because endContextPage is 0" }
-            val min = fastSearchPageBefore(cache[startContextPage])?.page
-            val max = fastSearchPageAfter(cache[endContextPage])?.page
+            val min = walkBackwardWhile(cache[startContextPage])?.page
+            val max = walkForwardWhile(cache[endContextPage])?.page
             checkNotNull(min) { "min is null the data structure is broken!" }
             checkNotNull(max) { "max is null the data structure is broken!" }
             return@run min..max
@@ -1348,47 +1352,75 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Searches for the first PageState after the given pivotPage that matches the predicate.
+     * Walks forward from the given [pivotPage] through consecutive pages
+     * that satisfy the [predicate], and returns the last page in that chain.
      *
-     * @param pivotPage The page to start searching from.
-     * @param predicate A function to test each PageState.
-     * @return The first PageState after the pivotPage that matches the predicate, or null if none found.
+     * This function:
+     * - Starts at [pivotPage].
+     * - Moves to the next page (`page + 1`) as long as the page exists in the cache
+     *   and satisfies the [predicate].
+     * - Stops at the last consecutive page that satisfies the predicate.
+     *
+     * @param pivotPage The initial page from which forward traversal begins.
+     * If null or does not satisfy [predicate], the function returns null.
+     *
+     * @param predicate A condition that each traversed page must satisfy.
+     * Defaults to always true, allowing traversal through all consecutive next pages.
+     *
+     * @return The last PageState encountered while moving forward that still satisfies [predicate],
+     * or null if the starting page is null or fails the predicate.
      */
-    inline fun fastSearchPageAfter(
+    inline fun walkForwardWhile(
         pivotPage: PageState<T>?,
         predicate: (PageState<T>) -> Boolean = { true }
     ): PageState<T>? {
         if (pivotPage == null || !predicate(pivotPage)) return null
-        var result: PageState<T> = pivotPage
+        var resultState: PageState<T> = pivotPage
         while (true) {
-            val pageState = getPageState(result.page + 1u)
-            if (pageState != null && predicate(pageState)) {
-                result = pageState
+            val state: PageState<T>? = getPageState(resultState.page + 1u)
+            if (state != null && predicate(state)) {
+                resultState = state
             } else {
-                return result
+                return resultState
             }
         }
     }
 
     /**
-     * Searches for the first PageState before the given pivotPage that matches the predicate.
+     * Walks backward from the given [pivotPage], following consecutive previous pages,
+     * and returns the first page in that backward chain that does *not* satisfy the [predicate].
      *
-     * @param pivotPage The page to start searching from.
-     * @param predicate A function to test each PageState.
-     * @return The first PageState before the pivotPage that matches the predicate, or null if none found.
+     * In other words, this function:
+     * - Starts at [pivotPage].
+     * - Moves to the previous page (`page - 1`) as long as:
+     *   - The page exists in the cache, and
+     *   - The page satisfies the [predicate].
+     * - Stops at the last page that satisfied the predicate.
+     *
+     * This effectively finds the earliest consecutive page before [pivotPage]
+     * that still matches [predicate].
+     *
+     * @param pivotPage The initial page from which backward traversal begins.
+     * If null or does not satisfy [predicate], the function returns null.
+     *
+     * @param predicate A condition that each traversed page must satisfy.
+     * Defaults to always true, allowing traversal through all consecutive previous pages.
+     *
+     * @return The last PageState encountered while moving backward that still satisfies [predicate],
+     * or null if the starting page is null or fails the predicate.
      */
-    inline fun fastSearchPageBefore(
+    inline fun walkBackwardWhile(
         pivotPage: PageState<T>?,
         predicate: (PageState<T>) -> Boolean = { true }
     ): PageState<T>? {
         if (pivotPage == null || !predicate(pivotPage)) return null
-        var result: PageState<T> = pivotPage
+        var resultState: PageState<T> = pivotPage
         while (true) {
-            val pageState = getPageState(result.page - 1u)
-            if (pageState != null && predicate(pageState)) {
-                result = pageState
+            val state: PageState<T>? = getPageState(resultState.page - 1u)
+            if (state != null && predicate(state)) {
+                resultState = state
             } else {
-                return result
+                return resultState
             }
         }
     }
@@ -1415,14 +1447,14 @@ open class MutablePaginator<T>(
 
         if (resize && capacity > 0) {
             val firstSuccessPageState: PageState<T>? =
-                fastSearchPageAfter(
+                walkForwardWhile(
                     pivotPage = cache[startContextPage],
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()
                     }
                 )
             val lastSuccessPageState: PageState<T>? =
-                fastSearchPageBefore(
+                walkBackwardWhile(
                     pivotPage = cache[endContextPage],
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()
