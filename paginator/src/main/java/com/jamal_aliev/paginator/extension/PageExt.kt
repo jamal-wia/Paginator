@@ -169,7 +169,7 @@ inline infix fun PageState<*>.near(other: PageState<*>): Boolean =
  * This is the logical inverse of the `near` function and provides a readable
  * way to express non-proximity between `PageState` instances.
  *
- * Note: If you want to know **exactly how far apart** two page states are,
+ * Note: If you want to know **exactly how far apart** two-page states are,
  * use [gap] instead of `far`.
  *
  * @param other The other `PageState` to compare with.
