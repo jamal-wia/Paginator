@@ -840,15 +840,15 @@ open class MutablePaginator<T>(
     ): PageState<T>? {
 
         fun collapse(startPage: UInt, compression: Int) {
-            var current: PageState<T> = checkNotNull(
+            var currentState: PageState<T> = checkNotNull(
                 value = cache.remove(startPage)
             ) { "it's imposable to start collapse from this page" }
             var remaining: Int = compression
             while (remaining > 0) {
-                val collapsed = current.copy(page = current.page - 1u)
-                val previousPage = getPageState(current.page - 1u) ?: break
-                setPageState(state = collapsed, silently = true)
-                current = previousPage
+                val collapsedState: PageState<T> = currentState.copy(page = currentState.page - 1u)
+                val pageState: PageState<T> = getPageState(currentState.page - 1u) ?: break
+                setPageState(state = collapsedState, silently = true)
+                currentState = pageState
                 remaining--
             }
         }
