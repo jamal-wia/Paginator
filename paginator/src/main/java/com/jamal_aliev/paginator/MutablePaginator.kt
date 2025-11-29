@@ -811,91 +811,141 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Removes the state of a page and sets its state to empty.
+     * Removes the state of the specified page from the cache and adjusts surrounding pages and context.
      *
-     * @param page The page number to remove the state.
-     * @param silently If true, the change will not trigger snapshot update.
-     * @return The removed page state, or null if it was not found.
+     * This function handles both simple removals and complex cases where pages are non-contiguous:
+     * - Finds the state of the page [pageToRemove] in the cache.
+     * - If the page exists, removes it and, if necessary, collapses consecutive pages to maintain
+     *   correct page numbering.
+     * - Detects gaps in the page sequence and ensures context boundaries ([startContextPage] and [endContextPage])
+     *   are updated correctly.
+     * - Handles edge cases such as removing the first page, last page, or pages in the middle of a gap.
+     * - If [silently] is false, takes a snapshot of the current paginator state via [snapshot].
+     *
+     * The function works in both started and non-started states of the paginator:
+     * - In a non-started state, the page is simply removed from the cache.
+     * - In a started state, it iterates over all page states using [smartForEach], collapsing pages and
+     *   recalculating context boundaries as needed.
+     *
+     * @param pageToRemove The page number whose state should be removed.
+     * @param silently If true, removal will not trigger a snapshot update.
+     * @return The removed page state ([PageState<T>]), or null if the page was not found.
+     *
+     * see inner fun collapse
+     * see inner fun recalculateContext
      */
     fun removePageState(
-        page: UInt,
+        pageToRemove: UInt,
         silently: Boolean = false,
     ): PageState<T>? {
+
         fun collapse(startPage: UInt, compression: Int) {
-            var current: PageState<T> = cache.remove(startPage)!!
-            for (i in 1..compression) {
+            var current: PageState<T> = checkNotNull(
+                value = cache.remove(startPage)
+            ) { "it's imposable to start collapse from this page" }
+            var remaining: Int = compression
+            while (remaining > 0) {
                 val collapsed = current.copy(page = current.page - 1u)
-                current = getPageState(current.page - 1u)!!
+                val previousPage = getPageState(current.page - 1u) ?: break
                 setPageState(state = collapsed, silently = true)
+                current = previousPage
+                remaining--
             }
         }
 
         fun recalculateContext(removedPage: UInt) {
-            if (removedPage in startContextPage..endContextPage) {
-                if (endContextPage - startContextPage > 0u) endContextPage--
-                else if (removedPage == 1u) findNearContextPage()
-                else findNearContextPage(removedPage - 1u, removedPage + 1u)
+            // Using explicit comparison for performance: avoid creating a UIntRange object
+            if (startContextPage <= removedPage && removedPage <= endContextPage) {
+                if (endContextPage - startContextPage > 0u) {
+                    // Just shrink the context by one page
+                    endContextPage--
+                } else if (removedPage == 1u) {
+                    // If the first page was removed, find the nearest page
+                    findNearContextPage()
+                } else {
+                    // Otherwise, find the nearest pages around the removed page
+                    findNearContextPage(removedPage - 1u, removedPage + 1u)
+                }
             }
         }
 
-        var pageStateToRemove: PageState<T>? = null
-        if (!isStarted) pageStateToRemove = cache.remove(page)
-        else {
-            pageStateToRemove = getPageState(page) ?: return null
-            var prev: PageState<*>? = null
-            var pageToRemoveIndex = -1
-            var startContextIndex = -1
-            var wasRemoved = false
+        var pageStateWillRemove: PageState<T>?
+        if (!isStarted) {
+            pageStateWillRemove = cache.remove(pageToRemove)
+        } else {
+            pageStateWillRemove = getPageState(pageToRemove) ?: return null
+            var indexOfPageWillRemove = -1
+            var indexOfStartContext = -1
+            var haveRemoved = false
+            var previousPageState: PageState<T>? = null
             smartForEach(
-                startIndex = { list ->
-                    pageToRemoveIndex = list.binarySearch { it.page.compareTo(page) }
-                    startContextIndex = pageToRemoveIndex
-                    return@smartForEach pageToRemoveIndex
+                initialIndex = { states: List<PageState<T>> ->
+                    indexOfPageWillRemove =
+                        states.binarySearch { state: PageState<T> ->
+                            state.compareTo(pageStateWillRemove)
+                        }
+                    indexOfStartContext = indexOfPageWillRemove
+                    return@smartForEach indexOfPageWillRemove
                 }
-            ) { list, index, current ->
-                val previous = prev ?: current
-                if (previous far current) {
-                    if (!wasRemoved) {
-                        if (index - 1 == pageToRemoveIndex) {
-                            cache.remove(page)
-                            recalculateContext(page)
+            ) { states: List<PageState<T>>, index: Int, currentState: PageState<T> ->
+                previousPageState = previousPageState ?: currentState
+                if (previousPageState far currentState) {
+                    // pages example: 1,2,3 gap 11,12,13
+                    // A contextual gap is detected, we need to handle it
+                    if (!haveRemoved) {
+                        if (index - 1 == indexOfPageWillRemove) {
+                            // For example, Just remove the 3 page and recalculate the context
+                            cache.remove(pageStateWillRemove.page)
+                            recalculateContext(pageStateWillRemove.page)
                         } else {
-                            collapse(previous.page, index - 1 - pageToRemoveIndex)
-                            recalculateContext(previous.page)
+                            // Remove page (2) by collapse method and recalculate the context
+                            collapse(previousPageState.page, index - 1 - indexOfPageWillRemove)
+                            recalculateContext(previousPageState.page)
                         }
-                        if (index == list.lastIndex) {
-                            cache.remove(current.page)
-                            recalculateContext(current.page)
+                        if (index == states.lastIndex) {
+                            // pages example: 1,2 gap 11
+                            // We need to delete the 11 page because we removed 3
+                            // And we need to recalculate the context
+                            cache.remove(currentState.page)
+                            recalculateContext(currentState.page)
                         }
-                        wasRemoved = true
+                        haveRemoved = true
                     } else {
-                        collapse(previous.page, index - 1 - startContextIndex)
-                        recalculateContext(previous.page)
+                        // The pageStateWillRemove have already removed
+                        // And we need to collapse others page contexts
+                        collapse(previousPageState.page, index - 1 - indexOfStartContext)
+                        recalculateContext(previousPageState.page)
                     }
-                    startContextIndex = index
-                } else if (index == list.lastIndex) {
-                    if (!wasRemoved) {
-                        if (index == pageToRemoveIndex) {
-                            cache.remove(page)
-                            recalculateContext(page)
+                    indexOfStartContext = index
+                } else if (index == states.lastIndex) {
+                    // pages example: 1,2,3 gap 11,12,13
+                    // The final page context is founded, and we need to handle it
+                    if (!haveRemoved) {
+                        if (index == indexOfPageWillRemove) {
+                            // For example, Just remove the 13 page and recalculate the context
+                            cache.remove(pageStateWillRemove.page)
+                            recalculateContext(pageStateWillRemove.page)
                         } else {
-                            collapse(current.page, index - pageToRemoveIndex)
-                            recalculateContext(current.page)
+                            // Remove page (12) by collapse method and recalculate the context
+                            collapse(currentState.page, index - indexOfPageWillRemove)
+                            recalculateContext(currentState.page)
                         }
-                        wasRemoved = true
+                        haveRemoved = true
                     } else {
-                        collapse(current.page, index - startContextIndex)
-                        recalculateContext(current.page)
+                        // The pageStateWillRemove have already removed
+                        // And we need to collapse the final page context
+                        collapse(currentState.page, index - indexOfStartContext)
+                        recalculateContext(currentState.page)
                     }
                 }
-                prev = current
+                previousPageState = currentState
                 return@smartForEach true
             }
         }
-        if (!silently && pageStateToRemove != null) {
+        if (!silently && pageStateWillRemove != null) {
             snapshot()
         }
-        return pageStateToRemove
+        return pageStateWillRemove
     }
 
     /**
