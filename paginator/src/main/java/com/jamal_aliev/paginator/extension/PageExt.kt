@@ -146,6 +146,9 @@ inline fun <T> PageState<T>.isRealErrorState(
  * This is a convenience infix function for expressing proximity between
  * two `PageState` instances in a clear and readable way.
  *
+ * Note: If you want to know **exactly how far apart** two-page states are,
+ * use [gap] instead of `near`.
+ *
  * @param other The other `PageState` to compare with.
  * @return `true` if the gap is within `[0u, 1u]`, otherwise `false`.
  */
@@ -165,6 +168,9 @@ inline infix fun PageState<*>.near(other: PageState<*>): Boolean =
  *
  * This is the logical inverse of the `near` function and provides a readable
  * way to express non-proximity between `PageState` instances.
+ *
+ * Note: If you want to know **exactly how far apart** two page states are,
+ * use [gap] instead of `far`.
  *
  * @param other The other `PageState` to compare with.
  * @return `true` if the gap is outside the range `[0u, 1u]`, otherwise `false`.
