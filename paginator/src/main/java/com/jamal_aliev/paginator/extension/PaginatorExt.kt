@@ -17,22 +17,52 @@ inline fun <T> MutablePaginator<T>.foreEach(
 }
 
 /**
- * Iterates through each PageState in the paginator safely and performs the given action on it.
+ * Iterates safely over all `PageState` items contained in this `MutablePaginator`,
+ * allowing full control over how iteration starts, progresses, and stops.
  *
- * @param action The action to be performed on each PageState.
+ * This function provides customizable strategies for:
+ * - selecting the initial index,
+ * - determining how the index changes on each step,
+ * - defining the conditions under which iteration continues.
+ *
+ * This enables flexible traversal patterns such as forward or backward iteration,
+ * skipping elements, conditional early termination, or implementing custom stepping logic.
+ *
+ * Iteration proceeds as long as:
+ * - the index stays within the bounds of the state list, and
+ * - `actionAndContinue` returns `true`.
+ *
+ * @param initialIndex A function that determines the starting index for iteration.
+ * Defaults to `0` (beginning of the list).
+ *
+ * @param nextIndex A function that defines how to compute the next index value.
+ * Defaults to incrementing by 1.
+ *
+ * @param actionAndContinue A callback invoked for each visited `PageState`.
+ * Receives the full list of states, the current index, and the current state.
+ * Returns `true` to continue iterating, or `false` to stop.
+ *
+ * @return The original list of page states (`pageStates`) after iteration completes.
  */
 inline fun <T> MutablePaginator<T>.smartForEach(
-    startIndex: (list: List<PageState<T>>) -> Int = { 0 },
-    step: (index: Int) -> Int = { it + 1 },
-    action: (list: List<PageState<T>>, index: Int, pageState: PageState<T>) -> Boolean
+    initialIndex: (list: List<PageState<T>>) -> Int = { 0 },
+    nextIndex: (index: Int) -> Int = { it + 1 },
+    actionAndContinue: (
+        states: List<PageState<T>>,
+        index: Int,
+        currentState: PageState<T>
+    ) -> Boolean
 ): List<PageState<T>> {
-    val pageStateList = this.pageStates
-    var index = startIndex(pageStateList)
-    while (index in pageStateList.indices) {
-        if (!action(pageStateList, index, pageStateList[index])) break
-        index = step(index)
+    val states: List<PageState<T>> = this.pageStates
+    var index = initialIndex.invoke(states)
+    while (0 <= index && index < states.size) {
+        val currentState: PageState<T> = states[index]
+        if (!actionAndContinue.invoke(states, index, currentState)) {
+            break
+        }
+        index = nextIndex.invoke(index)
     }
-    return pageStateList
+    return states
 }
 
 /**
