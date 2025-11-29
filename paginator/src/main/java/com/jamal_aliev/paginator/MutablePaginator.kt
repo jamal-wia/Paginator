@@ -1038,7 +1038,7 @@ open class MutablePaginator<T>(
 
         if (updatedData.isEmpty()) {
             removePageState(
-                page = page,
+                pageToRemove = page,
                 silently = true
             )
         } else {
