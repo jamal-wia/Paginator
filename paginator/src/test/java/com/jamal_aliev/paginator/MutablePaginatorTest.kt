@@ -256,7 +256,7 @@ class MutablePaginatorTest {
     }
 }
 
-data object Source {
+private data object Source {
 
     private val data = MutableList(10_000) { "data of $it" }
 
