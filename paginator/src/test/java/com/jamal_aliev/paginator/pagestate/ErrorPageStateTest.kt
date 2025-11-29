@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator
+package com.jamal_aliev.paginator.pagestate
 
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isRealErrorState

@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator
+package com.jamal_aliev.paginator.pagestate
 
 import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isRealProgressState
