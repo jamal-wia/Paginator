@@ -137,7 +137,7 @@ class MutablePaginatorTest {
         assertEquals(11u, paginator.startContextPage)
         assertEquals(13u, paginator.endContextPage)
 
-        assertEquals(data[1], paginator.removePageState(targetPage = 2u))
+        assertEquals(data[1], paginator.removePageState(pageToRemove = 2u))
         assertEquals(data[0], paginator[1u])
         assertEquals(data[2], paginator[2u])
         assertNull(paginator[3u])
@@ -150,7 +150,7 @@ class MutablePaginatorTest {
         assertEquals(11u, paginator.startContextPage)
         assertEquals(12u, paginator.endContextPage)
 
-        assertEquals(data[8], paginator.removePageState(targetPage = 22u))
+        assertEquals(data[8], paginator.removePageState(pageToRemove = 22u))
         assertEquals(data[0], paginator[1u])
         assertEquals(data[2], paginator[2u])
         assertNull(paginator[3u])
@@ -163,7 +163,7 @@ class MutablePaginatorTest {
         assertEquals(11u, paginator.startContextPage)
         assertEquals(12u, paginator.endContextPage)
 
-        assertEquals(data[5], paginator.removePageState(targetPage = 12u))
+        assertEquals(data[5], paginator.removePageState(pageToRemove = 12u))
         assertEquals(data[0], paginator[1u])
         assertEquals(data[2], paginator[2u])
         assertNull(paginator[3u])
@@ -176,7 +176,7 @@ class MutablePaginatorTest {
         assertEquals(11u, paginator.startContextPage)
         assertEquals(11u, paginator.endContextPage)
 
-        assertEquals(data[0], paginator.removePageState(targetPage = 1u))
+        assertEquals(data[0], paginator.removePageState(pageToRemove = 1u))
         assertEquals(data[2], paginator[1u])
         assertNull(paginator[2u])
         assertNull(paginator[3u])
@@ -189,7 +189,7 @@ class MutablePaginatorTest {
         assertEquals(1u, paginator.startContextPage)
         assertEquals(1u, paginator.endContextPage)
 
-        assertEquals(data[2], paginator.removePageState(targetPage = 1u))
+        assertEquals(data[2], paginator.removePageState(pageToRemove = 1u))
         assertNull(paginator[1u])
         assertNull(paginator[2u])
         assertNull(paginator[3u])
