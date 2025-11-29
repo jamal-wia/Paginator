@@ -133,22 +133,85 @@ inline fun <T> PageState<T>.isRealErrorState(
     return this.isErrorState() && clazz.isInstance(this)
 }
 
+/**
+ * Determines whether this `PageState` is adjacent to, or identical with, another `PageState`
+ * based on their positional gap.
+ *
+ * Two states are considered "near" if the unsigned distance between them
+ * (as returned by `gap(other)`) is either `0u` or `1u`, meaning:
+ *
+ * - `0u` — both states refer to the same position;
+ * - `1u` — the states are directly next to each other.
+ *
+ * This is a convenience infix function for expressing proximity between
+ * two `PageState` instances in a clear and readable way.
+ *
+ * @param other The other `PageState` to compare with.
+ * @return `true` if the gap is within `[0u, 1u]`, otherwise `false`.
+ */
 @Suppress("NOTHING_TO_INLINE")
 inline infix fun PageState<*>.near(other: PageState<*>): Boolean =
     this.gap(other) in 0u..1u
 
+/**
+ * Determines whether this `PageState` is not adjacent to, and not identical with,
+ * another `PageState` based on their positional gap.
+ *
+ * Two states are considered "far" if the unsigned distance between them
+ * (as returned by `gap(other)`) is greater than `1u`, meaning:
+ *
+ * - the states do not represent the same position (`gap != 0u`), and
+ * - they are not immediate neighbors (`gap != 1u`).
+ *
+ * This is the logical inverse of the `near` function and provides a readable
+ * way to express non-proximity between `PageState` instances.
+ *
+ * @param other The other `PageState` to compare with.
+ * @return `true` if the gap is outside the range `[0u, 1u]`, otherwise `false`.
+ */
 @Suppress("NOTHING_TO_INLINE")
 inline infix fun PageState<*>.far(other: PageState<*>): Boolean =
     this.gap(other) !in 0u..1u
 
+/**
+ * Computes the unsigned distance between this `PageState` and another `PageState`.
+ *
+ * The gap represents how far apart the two pages are, ignoring direction.
+ * It is calculated as the difference between the larger and smaller page numbers:
+ *
+ *     gap = if (this.page >= other.page) this.page - other.page else other.page - this.page
+ *
+ * Examples:
+ * - States on the same page → `0u`
+ * - Adjacent pages → `1u`
+ * - Two pages apart → `2u`, and so on.
+ *
+ * This function is used by helpers like `near` and `far` to determine relative proximity
+ * between page states.
+ *
+ * @param other The other `PageState` to measure the distance to.
+ * @return A `UInt` representing the absolute page difference.
+ */
 @Suppress("NOTHING_TO_INLINE")
 inline infix fun PageState<*>.gap(other: PageState<*>): UInt =
-    maxOf(this.page, other.page) - minOf(this.page, other.page)
+    if (this.page >= other.page) {
+        this.page - other.page
+    } else {
+        other.page - this.page
+    }
 
 @Suppress("NOTHING_TO_INLINE")
 internal inline infix fun PageState<*>.gap(other: UInt): UInt =
-    maxOf(this.page, other) - minOf(this.page, other)
+    if (this.page >= other) {
+        this.page - other
+    } else {
+        other - this.page
+    }
 
 @Suppress("NOTHING_TO_INLINE")
 internal inline infix fun UInt.gap(other: PageState<*>): UInt =
-    maxOf(this, other.page) - minOf(this, other.page)
+    if (this >= other.page) {
+        this - other.page
+    } else {
+        other.page - this
+    }
