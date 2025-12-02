@@ -1344,16 +1344,16 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Walks forward from the given [pivotPage] through consecutive pages
+     * Walks forward from the given [pivotState] through consecutive pages
      * that satisfy the [predicate], and returns the last page in that chain.
      *
      * This function:
-     * - Starts at [pivotPage].
+     * - Starts at [pivotState].
      * - Moves to the next page (`page + 1`) as long as the page exists in the cache
      *   and satisfies the [predicate].
      * - Stops at the last consecutive page that satisfies the predicate.
      *
-     * @param pivotPage The initial page from which forward traversal begins.
+     * @param pivotState The initial page from which forward traversal begins.
      * If null or does not satisfy [predicate], the function returns null.
      *
      * @param predicate A condition that each traversed page must satisfy.
@@ -1363,36 +1363,35 @@ open class MutablePaginator<T>(
      * or null if the starting page is null or fails the predicate.
      */
     inline fun walkForwardWhile(
-        pivotPage: PageState<T>?,
+        pivotState: PageState<T>?,
         predicate: (PageState<T>) -> Boolean = { true }
     ): PageState<T>? {
-        if (pivotPage == null || !predicate(pivotPage)) return null
-        var resultState: PageState<T> = pivotPage
-        while (true) {
-            val state: PageState<T>? = getPageState(resultState.page + 1u)
-            if (state != null && predicate(state)) {
-                resultState = state
-            } else {
-                return resultState
+        return walkWhile(
+            pivotState = pivotState,
+            next = { currentPage: UInt ->
+                return@walkWhile currentPage + 1u
+            },
+            predicate = { state: PageState<T> ->
+                return@walkWhile predicate.invoke(state)
             }
-        }
+        )
     }
 
     /**
-     * Walks backward from the given [pivotPage], following consecutive previous pages,
+     * Walks backward from the given [pivotState], following consecutive previous pages,
      * and returns the first page in that backward chain that does *not* satisfy the [predicate].
      *
      * In other words, this function:
-     * - Starts at [pivotPage].
+     * - Starts at [pivotState].
      * - Moves to the previous page (`page - 1`) as long as:
      *   - The page exists in the cache, and
      *   - The page satisfies the [predicate].
      * - Stops at the last page that satisfied the predicate.
      *
-     * This effectively finds the earliest consecutive page before [pivotPage]
+     * This effectively finds the earliest consecutive page before [pivotState]
      * that still matches [predicate].
      *
-     * @param pivotPage The initial page from which backward traversal begins.
+     * @param pivotState The initial page from which backward traversal begins.
      * If null or does not satisfy [predicate], the function returns null.
      *
      * @param predicate A condition that each traversed page must satisfy.
@@ -1402,14 +1401,59 @@ open class MutablePaginator<T>(
      * or null if the starting page is null or fails the predicate.
      */
     inline fun walkBackwardWhile(
-        pivotPage: PageState<T>?,
+        pivotState: PageState<T>?,
         predicate: (PageState<T>) -> Boolean = { true }
     ): PageState<T>? {
-        if (pivotPage == null || !predicate(pivotPage)) return null
-        var resultState: PageState<T> = pivotPage
+        return walkWhile(
+            pivotState = pivotState,
+            next = { currentPage: UInt ->
+                return@walkWhile currentPage - 1u
+            },
+            predicate = { state: PageState<T> ->
+                return@walkWhile predicate.invoke(state)
+            }
+        )
+    }
+
+    /**
+     * Traverses pages starting from [pivotState], repeatedly applying [next]
+     * to compute the next page number, as long as:
+     *  - the computed page exists in the cache, and
+     *  - the corresponding PageState satisfies [predicate].
+     *
+     * Traversal stops when:
+     *  - the next page does not exist, or
+     *  - its state does not satisfy [predicate].
+     *
+     * @param pivotState The first page to start traversal from.
+     * If null or does not satisfy [predicate], the function returns null.
+     *
+     * @param next A function that receives the current page number and returns
+     * the next page number to traverse to. The caller is responsible for ensuring
+     * that the returned value is a valid page number (e.g., non-negative within range).
+     *
+     * @param predicate A condition that each visited PageState must satisfy.
+     *
+     * @return The last PageState encountered that satisfies [predicate],
+     * or null if [pivotState] is null or does not satisfy [predicate].
+     */
+    inline fun walkWhile(
+        pivotState: PageState<T>?,
+        next: (current: UInt) -> UInt,
+        predicate: (PageState<T>) -> Boolean = { true }
+    ): PageState<T>? {
+        if (pivotState == null) {
+            return null
+        }
+        if (!predicate.invoke(pivotState)) {
+            return null
+        }
+
+        var resultState: PageState<T> = pivotState
         while (true) {
-            val state: PageState<T>? = getPageState(resultState.page - 1u)
-            if (state != null && predicate(state)) {
+            val nextPage: UInt = next.invoke(resultState.page)
+            val state: PageState<T>? = getPageState(nextPage)
+            if (state != null && predicate.invoke(state)) {
                 resultState = state
             } else {
                 return resultState
@@ -1440,14 +1484,14 @@ open class MutablePaginator<T>(
         if (resize && capacity > 0) {
             val firstSuccessPageState: PageState<T>? =
                 walkForwardWhile(
-                    pivotPage = cache[startContextPage],
+                    pivotState = cache[startContextPage],
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()
                     }
                 )
             val lastSuccessPageState: PageState<T>? =
                 walkBackwardWhile(
-                    pivotPage = cache[endContextPage],
+                    pivotState = cache[endContextPage],
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()
                     }
