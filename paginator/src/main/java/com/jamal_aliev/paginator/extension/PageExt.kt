@@ -154,7 +154,7 @@ inline fun <T> PageState<T>.isRealErrorState(
  */
 @Suppress("NOTHING_TO_INLINE")
 inline infix fun PageState<*>.near(other: PageState<*>): Boolean {
-    val gap: UInt = this.gap(other)
+    val gap: UInt = this gap other
     return gap == 0u || gap == 1u
 }
 
@@ -179,7 +179,7 @@ inline infix fun PageState<*>.near(other: PageState<*>): Boolean {
  */
 @Suppress("NOTHING_TO_INLINE")
 inline infix fun PageState<*>.far(other: PageState<*>): Boolean {
-    val gap: UInt = this.gap(other)
+    val gap: UInt = this gap other
     return gap != 0u && gap != 1u
 }
 
@@ -203,25 +203,26 @@ inline infix fun PageState<*>.far(other: PageState<*>): Boolean {
  * @return A `UInt` representing the absolute page difference.
  */
 @Suppress("NOTHING_TO_INLINE")
-inline infix fun PageState<*>.gap(other: PageState<*>): UInt =
-    if (this.page >= other.page) {
-        this.page - other.page
-    } else {
-        other.page - this.page
-    }
+inline infix fun PageState<*>.gap(other: PageState<*>): UInt {
+    return gapInternal(this.page, other.page)
+}
 
 @Suppress("NOTHING_TO_INLINE")
-internal inline infix fun PageState<*>.gap(other: UInt): UInt =
-    if (this.page >= other) {
-        this.page - other
-    } else {
-        other - this.page
-    }
+internal inline infix fun PageState<*>.gap(other: UInt): UInt {
+    return gapInternal(this.page, other)
+}
 
 @Suppress("NOTHING_TO_INLINE")
-internal inline infix fun UInt.gap(other: PageState<*>): UInt =
-    if (this >= other.page) {
-        this - other.page
+internal inline infix fun UInt.gap(other: PageState<*>): UInt {
+    return gapInternal(this, other.page)
+}
+
+@PublishedApi
+@Suppress("NOTHING_TO_INLINE")
+internal inline fun gapInternal(first: UInt, second: UInt): UInt {
+    return if (first >= second) {
+        first - second
     } else {
-        other.page - this
+        second - first
     }
+}
