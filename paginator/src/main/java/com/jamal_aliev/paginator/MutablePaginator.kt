@@ -108,23 +108,20 @@ open class MutablePaginator<T>(
             var endPoint = validStates[validStates.lastIndex].page
             if (ePoint < endPoint) endPoint = ePoint
 
-            var ltlPoint = startPoint
             var ltlIndex = -1
             var ltlCost = UInt.MAX_VALUE
 
-            var ltrPoint = startPoint
             var ltrIndex = -1
             var ltrCost = UInt.MAX_VALUE
 
-            var rtlPoint = endPoint
             var rtlIndex = -1
             var rtlCost = UInt.MAX_VALUE
 
-            var rtrPoint = endPoint
             var rtrIndex = -1
             var rtrCost = UInt.MAX_VALUE
 
-            val sIndex = validStates.binarySearch { it.page.compareTo(startPoint) }
+            val sIndex: Int =
+                validStates.binarySearch { it.page.compareTo(startPoint) }
             val eIndex: Int =
                 if (startPoint == endPoint) sIndex
                 else validStates.binarySearch { it.page.compareTo(endPoint) }
@@ -145,24 +142,19 @@ open class MutablePaginator<T>(
             if (startPivotIndex > validStates.lastIndex) startPivotIndex = validStates.lastIndex
             val startPivotState = validStates[startPivotIndex]
             if (startPivotState.page < startPoint) {
-                val leftPivotState = startPivotState
-                ltlPoint = leftPivotState.page
                 ltlIndex = startPivotIndex
-                ltlCost = leftPivotState gap startPoint
+                ltlCost = startPivotState gap startPoint
                 val rightPivotState = validStates.getOrNull(startPivotIndex + 1)
                 if (rightPivotState != null) {
-                    ltrPoint = rightPivotState.page
                     ltrIndex = startPivotIndex + 1
                     ltrCost = startPoint gap rightPivotState
                 }
             } else { // sPont < leftPivot.page (not equal)
                 val rightPivotState = startPivotState
-                ltrPoint = rightPivotState.page
                 ltrIndex = startPivotIndex
                 ltrCost = startPoint gap rightPivotState
                 val leftPivotState = validStates.getOrNull(startPivotIndex - 1)
                 if (leftPivotState != null) {
-                    ltlPoint = leftPivotState.page
                     ltlIndex = startPivotIndex - 1
                     ltlCost = leftPivotState gap startPoint
                 }
@@ -172,31 +164,26 @@ open class MutablePaginator<T>(
             if (endPivotIndex > validStates.lastIndex) endPivotIndex = validStates.lastIndex
             val endPivotState = validStates[endPivotIndex]
             if (endPivotState.page < endPoint) {
-                val leftPivotState = endPivotState
-                rtlPoint = leftPivotState.page
                 rtlIndex = endPivotIndex
-                rtlCost = leftPivotState gap endPoint
+                rtlCost = endPivotState gap endPoint
                 val rightPivotState = validStates.getOrNull(endPivotIndex + 1)
                 if (rightPivotState != null) {
-                    rtrPoint = rightPivotState.page
                     rtrIndex = endPivotIndex + 1
                     rtrCost = endPoint gap rightPivotState
                 }
             } else { // ePoint < leftPivot.page (not equal)
                 val rightPivotState = endPivotState
-                rtrPoint = rightPivotState.page
                 rtrIndex = endPivotIndex
                 rtrCost = endPoint gap rightPivotState
                 val leftPivotState = validStates.getOrNull(endPivotIndex - 1)
                 if (leftPivotState != null) {
-                    rtlPoint = leftPivotState.page
                     rtlIndex = endPivotIndex - 1
                     rtlCost = leftPivotState gap endPoint
                 }
             }
 
-            var minCost = ltlCost
-            var minIndex = ltlIndex
+            var minCost: UInt = ltlCost
+            var minIndex: Int = ltlIndex
 
             if (ltrCost < minCost) {
                 minCost = ltrCost
@@ -211,7 +198,7 @@ open class MutablePaginator<T>(
                 minIndex = rtrIndex
             }
 
-            val nearestPage = validStates[minIndex]
+            val nearestPage: PageState<T> = validStates[minIndex]
             expandStartContextPage(nearestPage)
             expandEndContextPage(nearestPage)
         }
@@ -221,16 +208,21 @@ open class MutablePaginator<T>(
             endContextPage = 0u
             return
         } else if (startPoint != endPoint) {
+            // we should find the nearest valid page state with specific start and end points
             return find(startPoint, endPoint)
         }
-
+        // else (size > 0 && startPoint == endPoint)
         val pointState = getPageState(startPoint)
         if (isValidSuccessState(pointState)) {
+            // startPoint (== endPoint) is a valid page state,
+            // so we can just expand the context
             startContextPage = startPoint
             endContextPage = startPoint
             expandStartContextPage(getPageState(pointState.page - 1u))
             expandEndContextPage(getPageState(pointState.page + 1u))
         } else {
+            // startPoint (== endPoint) is not a valid page state,
+            // so we need to find around it the nearest valid page state
             find(
                 sPont = startPoint - 1u,
                 ePoint = endPoint + 1u
@@ -1020,10 +1012,12 @@ open class MutablePaginator<T>(
         if (updatedData.size < capacity && !ignoreCapacity) {
             val nextPageState = cache[page + 1u]
             if (nextPageState != null
-                && nextPageState::class == pageState::class
+                &&
+                nextPageState::class == pageState::class
             ) {
                 while (updatedData.size < capacity
-                    && nextPageState.data.isNotEmpty()
+                    &&
+                    nextPageState.data.isNotEmpty()
                 ) {
                     updatedData.add(
                         removeElement(
@@ -1080,7 +1074,7 @@ open class MutablePaginator<T>(
     ) {
         return addAllElements(
             elements = listOf(element),
-            page = page,
+            targetPage = page,
             index = index,
             silently = silently,
             initPageState = initPageState
@@ -1091,7 +1085,7 @@ open class MutablePaginator<T>(
      * Adds a list of elements at a specific index within a page.
      *
      * @param elements The elements to add.
-     * @param page The page number where the elements should be added.
+     * @param targetPage The page number where the elements should be added.
      * @param index The index within the page where the elements should be added.
      * @param silently If true, the change will not trigger snapshot update.
      * @param initPageState An optional function to initialize a page state if it doesn't exist.
@@ -1099,60 +1093,58 @@ open class MutablePaginator<T>(
      */
     fun addAllElements(
         elements: List<T>,
-        page: UInt,
+        targetPage: UInt,
         index: Int,
         silently: Boolean = false,
         initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ) {
-        val pageState: PageState<T> =
-            (cache[page] ?: initPageState?.invoke(page, emptyList()))
+        val targetState: PageState<T> =
+            (getPageState(targetPage) ?: initPageState?.invoke(targetPage, mutableListOf()))
                 ?: throw IndexOutOfBoundsException(
-                    "page-$page was not created"
+                    "page-$targetPage was not created"
                 )
 
-        val updatedData: MutableList<T> =
-            pageState.data.let { it as MutableList }
-                .also { it.addAll(index, elements) }
-
+        val dataOfTargetState: MutableList<T> = checkNotNull(
+            targetState.data as? MutableList
+        ) { "data of target page state is not mutable" }
+        dataOfTargetState.addAll(index, elements)
         val extraElements: MutableList<T>? =
-            if (updatedData.size > capacity && !ignoreCapacity) {
-                MutableList(size = updatedData.size - capacity) {
-                    updatedData.removeAt(updatedData.lastIndex)
+            if (dataOfTargetState.size > capacity && !ignoreCapacity) {
+                MutableList(size = dataOfTargetState.size - capacity) {
+                    dataOfTargetState.removeAt(dataOfTargetState.lastIndex)
                 }.apply(MutableList<T>::reverse)
-            } else null
-
-        setPageState(
-            state = pageState.copy(data = updatedData),
-            silently = true,
-        )
+            } else {
+                null
+            }
 
         if (!extraElements.isNullOrEmpty()) {
-            val nextPageState = cache[page + 1u]
-            if ((nextPageState != null && nextPageState::class == pageState::class)
-                || (nextPageState == null && initPageState != null)
+            val nextPageState: PageState<T>? = getPageState(targetPage + 1u)
+            if ((nextPageState != null && nextPageState::class == targetState::class)
+                ||
+                (nextPageState == null && initPageState != null)
             ) {
                 addAllElements(
                     elements = extraElements,
-                    page = page + 1u,
+                    targetPage = targetPage + 1u,
                     index = 0,
                     silently = true,
                     initPageState = initPageState
                 )
             } else {
-                val rangePageInvalidated: UIntRange = (page + 1u)..cache.keys.last()
+                val rangePageInvalidated: UIntRange = (targetPage + 1u)..cache.keys.last()
                 rangePageInvalidated.forEach(cache::remove)
             }
         }
 
         if (!silently) {
-            if (page in rangeSnapshot) {
-            val pageBefore: PageState<T> = checkNotNull(
+            val startState: PageState<T> = checkNotNull(
                 walkBackwardWhile(getPageState(startContextPage))
             ) { "startContextPage is broken so snapshot is imposable" }
-            val pageAfter: PageState<T> = checkNotNull(
+            val endState: PageState<T> = checkNotNull(
                 walkForwardWhile(getPageState(endContextPage))
             ) { "endContextPage is broken so snapshot is imposable" }
-            val rangeSnapshot: UIntRange = pageBefore.page..pageAfter.page
+            val rangeSnapshot: UIntRange = startState.page..endState.page
+            if (targetPage in rangeSnapshot) {
                 snapshot(rangeSnapshot)
             }
         }
