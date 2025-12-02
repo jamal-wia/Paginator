@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose") // <-- new plugin
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -55,6 +55,7 @@ dependencies {
 
     // UI - Compose
     implementation(platform("androidx.compose:compose-bom:2025.11.01"))
+    implementation("androidx.compose.runtime:runtime:1.9.5")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.11.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
