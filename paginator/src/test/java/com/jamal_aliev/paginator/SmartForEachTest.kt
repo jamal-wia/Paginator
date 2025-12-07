@@ -47,7 +47,7 @@ class SmartForEachTest {
 
         paginator.smartForEach(
             initialIndex = { it.lastIndex },
-            nextIndex = { it - 1 }
+            step = { it - 1 }
         ) { _, index, _ ->
             visited += index
             true
@@ -62,7 +62,7 @@ class SmartForEachTest {
         val visited = mutableListOf<Int>()
 
         paginator.smartForEach(
-            nextIndex = { it + 2 } // step = 2
+            step = { it + 2 } // step = 2
         ) { _, index, _ ->
             visited += index
             true

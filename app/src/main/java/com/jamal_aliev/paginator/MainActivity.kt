@@ -37,6 +37,10 @@ import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.ui.theme.PaginatorTheme
 
+//            S         E
+// snapshot: 1(s),2(s),3(s),4(e),5(e) ... 10(s)
+// goNext
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel by viewModels<MainViewModel> { MainViewModel.Factory() }

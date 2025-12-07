@@ -45,6 +45,11 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    // 1,2,3 ... 11,12,13
+    // 0,1,2     3 ,4 ,5
+
+    //
+
 
     fun endReached() {
         viewModelScope.launch {
