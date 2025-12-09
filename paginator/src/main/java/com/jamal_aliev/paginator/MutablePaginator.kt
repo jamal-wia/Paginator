@@ -50,7 +50,8 @@ open class MutablePaginator<T>(
     val pageStates: List<PageState<T>> get() = cache.values.toList()
     val size: Int get() = cache.size
 
-    private var enableCacheFlow = false
+    var enableCacheFlow = false
+        private set
     private val _cacheFlow = MutableStateFlow(false to cache)
     fun asFlow(): Flow<Map<UInt, PageState<T>>> {
         enableCacheFlow = true
@@ -409,7 +410,7 @@ open class MutablePaginator<T>(
             page = bookmark.page,
             forceLoading = true,
             loading = { page, pageState ->
-                setPageState(
+                setState(
                     state = initProgressState.invoke(page, pageState?.data.orEmpty()),
                     silently = true,
                 )
@@ -424,7 +425,7 @@ open class MutablePaginator<T>(
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { resultPageState ->
-            setPageState(
+            setState(
                 state = resultPageState,
                 silently = true
             )
@@ -505,7 +506,7 @@ open class MutablePaginator<T>(
             page = nextPage,
             forceLoading = true,
             loading = { page, pageState ->
-                setPageState(
+                setState(
                     state = initProgressState.invoke(page, pageState?.data.orEmpty()),
                     silently = true,
                 )
@@ -516,7 +517,7 @@ open class MutablePaginator<T>(
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { resultPageState ->
-            setPageState(
+            setState(
                 state = resultPageState,
                 silently = true
             )
@@ -589,7 +590,7 @@ open class MutablePaginator<T>(
             page = previousPage,
             forceLoading = true,
             loading = { page, pageState ->
-                setPageState(
+                setState(
                     state = initProgressState(page, pageState?.data.orEmpty()),
                     silently = true
                 )
@@ -600,7 +601,7 @@ open class MutablePaginator<T>(
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { resultPageState ->
-            setPageState(
+            setState(
                 state = resultPageState,
                 silently = true
             )
@@ -643,7 +644,7 @@ open class MutablePaginator<T>(
 
         val firstPage = cache.getValue(1u)
         cache.clear()
-        setPageState(
+        setState(
             state = firstPage,
             silently = true
         )
@@ -654,7 +655,7 @@ open class MutablePaginator<T>(
             page = 1u,
             forceLoading = true,
             loading = { page, pageState ->
-                setPageState(
+                setState(
                     state = initProgressState.invoke(page, pageState?.data.orEmpty()),
                     silently = true
                 )
@@ -665,7 +666,7 @@ open class MutablePaginator<T>(
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
         ).also { resultPageState ->
-            setPageState(
+            setState(
                 state = resultPageState,
                 silently = true
             )
@@ -705,7 +706,7 @@ open class MutablePaginator<T>(
         if (lockRefresh) throw RefreshWasLockedException()
 
         pages.forEach { page ->
-            setPageState(
+            setState(
                 state = initProgressState.invoke(page, cache[page]?.data.orEmpty()),
                 silently = true
             )
@@ -722,7 +723,7 @@ open class MutablePaginator<T>(
                     initSuccessState = initSuccessState,
                     initErrorState = initErrorState
                 ).also { finalPageState ->
-                    setPageState(
+                    setState(
                         state = finalPageState,
                         silently = true
                     )
@@ -732,40 +733,6 @@ open class MutablePaginator<T>(
 
         if (enableCacheFlow) repeatCacheFlow()
         if (!finalSilently) snapshot()
-    }
-
-    /**
-     * Refreshes all pages in the cache by setting their state to a progress state, loading their data,
-     * and then updating their state based on the loaded data.
-     *
-     * @param loadingSilently If true, the loading state will not trigger snapshot updates.
-     * @param finalSilently If true, the final state will not trigger snapshot updates.
-     * @param initProgressState Initializer for the progress state.
-     * @param initEmptyState Initializer for the empty state.
-     * @param initSuccessState Initializer for the success state.
-     * @param initErrorState Initializer for the error state.
-     * @throws RefreshWasLockedException if the refresh operation is locked.
-     */
-    suspend fun refreshAll(
-        loadingSilently: Boolean = false,
-        finalSilently: Boolean = false,
-        enableCacheFlow: Boolean = this.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T> = this.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
-    ) {
-        if (lockRefresh) throw RefreshWasLockedException()
-        return refresh(
-            pages = cache.keys.toList(),
-            loadingSilently = loadingSilently,
-            finalSilently = finalSilently,
-            enableCacheFlow = enableCacheFlow,
-            initProgressState = initProgressState,
-            initEmptyState = initEmptyState,
-            initSuccessState = initSuccessState,
-            initErrorState = initErrorState
-        )
     }
 
     /**
@@ -805,6 +772,32 @@ open class MutablePaginator<T>(
     }
 
     /**
+     * Retrieves the state of a page from the cache.
+     *
+     * @param page The page number to retrieve the state.
+     * @return The state of the page, or null if not found.
+     */
+    fun getStateOf(page: UInt): PageState<T>? {
+        return cache[page]
+    }
+
+    /**
+     * Sets the state of a page and updates the cache.
+     *
+     * @param state The new state of the page.
+     * @param silently If true, the change will not trigger snapshot update.
+     */
+    fun setState(
+        state: PageState<T>,
+        silently: Boolean = false
+    ) {
+        cache[state.page] = state
+        if (!silently) {
+            snapshot()
+        }
+    }
+
+    /**
      * Removes the state of the specified page from the cache and adjusts surrounding pages and context.
      *
      * This function handles both simple removals and complex cases where pages are non-contiguous:
@@ -828,7 +821,7 @@ open class MutablePaginator<T>(
      * see inner fun collapse
      * see inner fun recalculateContext
      */
-    fun removePageState(
+    fun removeState(
         pageToRemove: UInt,
         silently: Boolean = false,
     ): PageState<T>? {
@@ -841,7 +834,7 @@ open class MutablePaginator<T>(
             while (remaining > 0) {
                 val collapsedState: PageState<T> = currentState.copy(page = currentState.page - 1u)
                 val pageState: PageState<T> = getStateOf(currentState.page - 1u) ?: break
-                setPageState(state = collapsedState, silently = true)
+                setState(state = collapsedState, silently = true)
                 currentState = pageState
                 remaining--
             }
@@ -943,28 +936,52 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Retrieves the state of a page from the cache.
+     * Retrieves an element at a specific index within a page.
      *
-     * @param page The page number to retrieve the state.
-     * @return The state of the page, or null if not found.
+     * @param page The page number where the element is located.
+     * @param index The index within the page where the element is located.
+     * @return The element at the specified page and index, or null if not found.
      */
-    fun getStateOf(page: UInt): PageState<T>? {
-        return cache[page]
+    fun getElement(
+        page: UInt,
+        index: Int,
+    ): T? {
+        return getStateOf(page)
+            ?.data?.get(index)
     }
 
     /**
-     * Sets the state of a page and updates the cache.
+     * Sets an element at a specific index within a page.
      *
-     * @param state The new state of the page.
+     * @param element The element to set.
+     * @param page The page number where the element should be set.
+     * @param index The index within the page where the element should be set.
      * @param silently If true, the change will not trigger snapshot update.
+     * @throws NoSuchElementException if the page is not found in the cache.
      */
-    fun setPageState(
-        state: PageState<T>,
+    fun setElement(
+        element: T,
+        page: UInt,
+        index: Int,
         silently: Boolean = false
     ) {
-        cache[state.page] = state
+        val pageState = cache.getValue(page)
+        setState(
+            state = pageState.copy(
+                data = pageState.data
+                    .let { it as MutableList }
+                    .also { it[index] = element }
+            ),
+            silently = true
+        )
+
         if (!silently) {
-            snapshot()
+            val pageBefore = walkBackwardWhile(cache[startContextPage])!!
+            val pageAfter = walkForwardWhile(cache[endContextPage])!!
+            val rangeSnapshot = pageBefore.page..pageAfter.page
+            if (page in rangeSnapshot) {
+                snapshot(rangeSnapshot)
+            }
         }
     }
 
@@ -1013,12 +1030,12 @@ open class MutablePaginator<T>(
         }
 
         if (updatedData.isEmpty()) {
-            removePageState(
+            removeState(
                 pageToRemove = page,
                 silently = true
             )
         } else {
-            setPageState(
+            setState(
                 state = pageState.copy(data = updatedData),
                 silently = true
             )
@@ -1034,33 +1051,6 @@ open class MutablePaginator<T>(
         }
 
         return removed
-    }
-
-    fun addElement(
-        element: T,
-        silently: Boolean = false,
-        initSuccessPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
-    ): Boolean {
-        val lastPage: UInt = cache.keys.maxOrNull() ?: return false
-        val lastIndex: Int = cache.getValue(lastPage).data.lastIndex
-        addElement(element, lastPage, lastIndex, silently, initSuccessPageState)
-        return true
-    }
-
-    fun addElement(
-        element: T,
-        page: UInt,
-        index: Int,
-        silently: Boolean = false,
-        initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
-    ) {
-        return addAllElements(
-            elements = listOf(element),
-            targetPage = page,
-            index = index,
-            silently = silently,
-            initPageState = initPageState
-        )
     }
 
     /**
@@ -1136,35 +1126,6 @@ open class MutablePaginator<T>(
         }
     }
 
-    inline fun getElement(
-        predicate: (T) -> Boolean
-    ): T? {
-        this.smartForEach { _, _, pageState: PageState<T> ->
-            for (element in pageState.data) {
-                if (predicate(element)) {
-                    return element
-                }
-            }
-            return@smartForEach true
-        }
-        return null
-    }
-
-    /**
-     * Retrieves an element at a specific index within a page.
-     *
-     * @param page The page number where the element is located.
-     * @param index The index within the page where the element is located.
-     * @return The element at the specified page and index, or null if not found.
-     */
-    fun getElement(
-        page: UInt,
-        index: Int,
-    ): T? {
-        return getStateOf(page)
-            ?.data?.get(index)
-    }
-
     /**
      * Replaces all elements within the paginator based on a provider and predicate.
      *
@@ -1198,69 +1159,12 @@ open class MutablePaginator<T>(
                         )
                     }
                 }
-                ++index
+                index++
             }
             return@smartForEach true
         }
         if (!silently) {
             snapshot()
-        }
-    }
-
-    inline fun setElement(
-        element: T,
-        silently: Boolean = false,
-        predicate: (T) -> Boolean
-    ) {
-        this.smartForEach { _, _, pageState ->
-            var index = 0
-            while (index < pageState.data.size) {
-                if (predicate(pageState.data[index++])) {
-                    setElement(
-                        element = element,
-                        page = pageState.page,
-                        index = index,
-                        silently = silently
-                    )
-                    return
-                }
-            }
-            return@smartForEach true
-        }
-    }
-
-    /**
-     * Sets an element at a specific index within a page.
-     *
-     * @param element The element to set.
-     * @param page The page number where the element should be set.
-     * @param index The index within the page where the element should be set.
-     * @param silently If true, the change will not trigger snapshot update.
-     * @throws NoSuchElementException if the page is not found in the cache.
-     */
-    fun setElement(
-        element: T,
-        page: UInt,
-        index: Int,
-        silently: Boolean = false
-    ) {
-        val pageState = cache.getValue(page)
-        setPageState(
-            state = pageState.copy(
-                data = pageState.data
-                    .let { it as MutableList }
-                    .also { it[index] = element }
-            ),
-            silently = true
-        )
-
-        if (!silently) {
-            val pageBefore = walkBackwardWhile(cache[startContextPage])!!
-            val pageAfter = walkForwardWhile(cache[endContextPage])!!
-            val rangeSnapshot = pageBefore.page..pageAfter.page
-            if (page in rangeSnapshot) {
-                snapshot(rangeSnapshot)
-            }
         }
     }
 
@@ -1396,7 +1300,7 @@ open class MutablePaginator<T>(
         initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage
     ) {
         if (this.capacity == capacity) return
-        check(capacity >= 0) { "capacity must be greater or equal than zero" }
+        require(capacity >= 0) { "capacity must be greater or equal than zero" }
         this.capacity = capacity
 
         if (resize && capacity > 0) {
@@ -1430,7 +1334,7 @@ open class MutablePaginator<T>(
                     successData.add(items.removeAt(0))
                 }
 
-                setPageState(
+                setState(
                     state = initSuccessState.invoke(pageIndex++, successData),
                     silently = true
                 )
@@ -1478,14 +1382,14 @@ open class MutablePaginator<T>(
     operator fun contains(pageState: PageState<T>): Boolean = getStateOf(pageState.page) != null
 
     operator fun minusAssign(page: UInt) {
-        removePageState(page)
+        removeState(page)
     }
 
     operator fun minusAssign(pageState: PageState<T>) {
-        removePageState(pageState.page)
+        removeState(pageState.page)
     }
 
-    operator fun plusAssign(pageState: PageState<T>): Unit = setPageState(pageState)
+    operator fun plusAssign(pageState: PageState<T>): Unit = setState(pageState)
 
     operator fun get(page: UInt): PageState<T>? = getStateOf(page)
 

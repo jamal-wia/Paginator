@@ -38,9 +38,9 @@ class MainViewModel : ViewModel() {
             val pageState1 = async1.await()
             val pageState2 = async2.await()
             val pageState3 = async3.await()
-            paginator.setPageState(state = pageState1, silently = true)
-            paginator.setPageState(state = pageState2, silently = true)
-            paginator.setPageState(state = pageState3, silently = true)
+            paginator.setState(state = pageState1, silently = true)
+            paginator.setState(state = pageState2, silently = true)
+            paginator.setState(state = pageState3, silently = true)
             paginator.jumpForward()
         }
     }

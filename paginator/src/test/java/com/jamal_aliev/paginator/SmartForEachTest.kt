@@ -111,7 +111,7 @@ class SmartForEachTest {
 private fun createPaginatorWith(n: Int): MutablePaginator<String> {
     val paginator = MutablePaginator<String> { emptyList() }
     repeat(n) { index ->
-        paginator.setPageState(
+        paginator.setState(
             createRandomPageState(page = index.toUInt(), data = listOf("data $index")),
             silently = true
         )

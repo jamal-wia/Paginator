@@ -24,7 +24,7 @@ class MutablePaginatorTest {
                 createRandomPageState(page = index.toUInt(), listOf("$index page"))
             }
         pageStates.shuffled().forEach { pageState: PageState<String> ->
-            paginator.setPageState(pageState, silently = true)
+            paginator.setState(pageState, silently = true)
         }
 
         assertEquals(pageStates.size, paginator.size)
@@ -35,7 +35,7 @@ class MutablePaginatorTest {
             assertEquals(pageState, paginator[pageState.page])
         }
         pageStates.forEach { pageState: PageState<String> ->
-            val removed = paginator.removePageState(pageState.page, silently = true)!!
+            val removed = paginator.removeState(pageState.page, silently = true)!!
             assertEquals(pageState.page, removed.page)
             assertEquals(pageState.data, removed.data)
         }
@@ -121,7 +121,7 @@ class MutablePaginatorTest {
 
         assertFalse(paginator.isStarted)
         assertEquals(0, paginator.size)
-        data.forEach(paginator::setPageState)
+        data.forEach(paginator::setState)
         assertEquals(data.size, paginator.size)
         paginator.jump(BookmarkUInt(page = 13u))
         assertTrue(paginator.isStarted)
@@ -137,7 +137,7 @@ class MutablePaginatorTest {
         assertEquals(11u, paginator.startContextPage)
         assertEquals(13u, paginator.endContextPage)
 
-        assertEquals(data[1], paginator.removePageState(pageToRemove = 2u))
+        assertEquals(data[1], paginator.removeState(pageToRemove = 2u))
         assertEquals(data[0], paginator[1u])
         assertEquals(data[2], paginator[2u])
         assertNull(paginator[3u])
@@ -150,7 +150,7 @@ class MutablePaginatorTest {
         assertEquals(11u, paginator.startContextPage)
         assertEquals(12u, paginator.endContextPage)
 
-        assertEquals(data[8], paginator.removePageState(pageToRemove = 22u))
+        assertEquals(data[8], paginator.removeState(pageToRemove = 22u))
         assertEquals(data[0], paginator[1u])
         assertEquals(data[2], paginator[2u])
         assertNull(paginator[3u])
@@ -163,7 +163,7 @@ class MutablePaginatorTest {
         assertEquals(11u, paginator.startContextPage)
         assertEquals(12u, paginator.endContextPage)
 
-        assertEquals(data[5], paginator.removePageState(pageToRemove = 12u))
+        assertEquals(data[5], paginator.removeState(pageToRemove = 12u))
         assertEquals(data[0], paginator[1u])
         assertEquals(data[2], paginator[2u])
         assertNull(paginator[3u])
@@ -176,7 +176,7 @@ class MutablePaginatorTest {
         assertEquals(11u, paginator.startContextPage)
         assertEquals(11u, paginator.endContextPage)
 
-        assertEquals(data[0], paginator.removePageState(pageToRemove = 1u))
+        assertEquals(data[0], paginator.removeState(pageToRemove = 1u))
         assertEquals(data[2], paginator[1u])
         assertNull(paginator[2u])
         assertNull(paginator[3u])
@@ -189,7 +189,7 @@ class MutablePaginatorTest {
         assertEquals(1u, paginator.startContextPage)
         assertEquals(1u, paginator.endContextPage)
 
-        assertEquals(data[2], paginator.removePageState(pageToRemove = 1u))
+        assertEquals(data[2], paginator.removeState(pageToRemove = 1u))
         assertNull(paginator[1u])
         assertNull(paginator[2u])
         assertNull(paginator[3u])
@@ -223,7 +223,7 @@ class MutablePaginatorTest {
         )
         assertFalse(paginator.isStarted)
         assertEquals(0, paginator.size)
-        data.forEach(paginator::setPageState)
+        data.forEach(paginator::setState)
         assertEquals(data.size, paginator.size)
 
         paginator.findNearContextPage(startPoint = 1u)

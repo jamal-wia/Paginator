@@ -1,6 +1,11 @@
 package com.jamal_aliev.paginator.extension
 
 import com.jamal_aliev.paginator.MutablePaginator
+import com.jamal_aliev.paginator.exception.LockedException.RefreshWasLockedException
+import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
+import com.jamal_aliev.paginator.initializer.InitializerErrorPage
+import com.jamal_aliev.paginator.initializer.InitializerProgressPage
+import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.page.PageState
 
 /**
@@ -234,4 +239,102 @@ fun <T> MutablePaginator<T>.removeElement(page: UInt, predicate: (T) -> Boolean)
     }
     return null
 }
+
+fun <T> MutablePaginator<T>.addElement(
+    element: T,
+    silently: Boolean = false,
+    initSuccessPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
+): Boolean {
+    val lastPage: UInt = pages.lastOrNull() ?: return false
+    val lastIndex: Int = getStateOf(lastPage)?.data?.lastIndex ?: return false
+    addElement(element, lastPage, lastIndex, silently, initSuccessPageState)
+    return true
+}
+
+fun <T> MutablePaginator<T>.addElement(
+    element: T,
+    page: UInt,
+    index: Int,
+    silently: Boolean = false,
+    initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
+) {
+    return addAllElements(
+        elements = listOf(element),
+        targetPage = page,
+        index = index,
+        silently = silently,
+        initPageState = initPageState
+    )
+}
+
+inline fun <T> MutablePaginator<T>.getElement(
+    predicate: (T) -> Boolean
+): T? {
+    this.smartForEach { _, _, pageState: PageState<T> ->
+        for (element in pageState.data) {
+            if (predicate(element)) {
+                return element
+            }
+        }
+        return@smartForEach true
+    }
+    return null
+}
+
+inline fun <T> MutablePaginator<T>.setElement(
+    element: T,
+    silently: Boolean = false,
+    predicate: (T) -> Boolean
+) {
+    this.smartForEach { _, _, pageState ->
+        var index = 0
+        while (index < pageState.data.size) {
+            if (predicate(pageState.data[index++])) {
+                setElement(
+                    element = element,
+                    page = pageState.page,
+                    index = index,
+                    silently = silently
+                )
+                return
+            }
+        }
+        return@smartForEach true
+    }
+}
+
+/**
+ * Refreshes all pages in the cache by setting their state to a progress state, loading their data,
+ * and then updating their state based on the loaded data.
+ *
+ * @param loadingSilently If true, the loading state will not trigger snapshot updates.
+ * @param finalSilently If true, the final state will not trigger snapshot updates.
+ * @param initProgressState Initializer for the progress state.
+ * @param initEmptyState Initializer for the empty state.
+ * @param initSuccessState Initializer for the success state.
+ * @param initErrorState Initializer for the error state.
+ * @throws RefreshWasLockedException if the refresh operation is locked.
+ */
+suspend fun <T> MutablePaginator<T>.refreshAll(
+    loadingSilently: Boolean = false,
+    finalSilently: Boolean = false,
+    enableCacheFlow: Boolean = this.enableCacheFlow,
+    initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
+    initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
+    initSuccessState: InitializerSuccessPage<T> = this.initializerSuccessPage,
+    initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
+) {
+    if (lockRefresh) throw RefreshWasLockedException()
+    return refresh(
+        pages = this.pages,
+        loadingSilently = loadingSilently,
+        finalSilently = finalSilently,
+        enableCacheFlow = enableCacheFlow,
+        initProgressState = initProgressState,
+        initEmptyState = initEmptyState,
+        initSuccessState = initSuccessState,
+        initErrorState = initErrorState
+    )
+}
+
 
