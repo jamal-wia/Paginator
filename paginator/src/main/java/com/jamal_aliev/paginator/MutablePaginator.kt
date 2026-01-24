@@ -2,6 +2,7 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.Bookmark
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkUInt
+import com.jamal_aliev.paginator.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.exception.LockedException.GoNextPageWasLockedException
 import com.jamal_aliev.paginator.exception.LockedException.GoPreviousPageWasLockedException
 import com.jamal_aliev.paginator.exception.LockedException.JumpWasLockedException
@@ -89,8 +90,6 @@ open class MutablePaginator<T>(
         return walkForwardWhile(pageState, ::isFilledSuccessState)
             ?.also { endContextPage = it.page }
     }
-
-    val isStarted: Boolean get() = startContextPage > 0u && endContextPage > 0u
 
     fun findNearContextPage(startPoint: UInt = 1u, endPoint: UInt = startPoint) {
         require(startPoint >= 1u) { "startPoint must be greater than zero" }
@@ -233,6 +232,27 @@ open class MutablePaginator<T>(
         }
     }
 
+    val isStarted: Boolean get() = startContextPage > 0u && endContextPage > 0u
+
+    /**
+     * The Maximum page number allowed for pagination.
+     *
+     * Used as an upper border when pagination. If you try to paginate
+     * (e.g. via [goNextPage] or [jump]) the requested page number
+     * exceeds [finalPage], [FinalPageExceededException] will be thrown.
+     *
+     * The default value is [UInt.MAX_VALUE], which means there is no limit.
+     */
+    var finalPage: UInt = UInt.MAX_VALUE
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun exceedsFinal(
+        page: UInt,
+        finalPage: UInt = this.finalPage
+    ): Boolean {
+        return page > finalPage
+    }
+
     val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkUInt(page = 1u))
     var recyclingBookmark = false
     private var bookmarkIterator = bookmarks.listIterator()
@@ -280,6 +300,8 @@ open class MutablePaginator<T>(
         recycling: Boolean = recyclingBookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        finalPage: UInt = this.finalPage,
+        lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
@@ -288,10 +310,9 @@ open class MutablePaginator<T>(
     ): Pair<Bookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
 
-        var bookmark: Bookmark? =
-            bookmarkIterator
-                .takeIf { it.hasNext() }
-                ?.next()
+        var bookmark: Bookmark? = bookmarkIterator
+            .takeIf { it.hasNext() }
+            ?.next()
 
         if (bookmark != null || recycling) {
             if (bookmark == null) {
@@ -304,6 +325,7 @@ open class MutablePaginator<T>(
                 bookmark = bookmark,
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
+                finalPage = finalPage,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
                 initEmptyState = initEmptyState,
@@ -332,6 +354,8 @@ open class MutablePaginator<T>(
         recycling: Boolean = recyclingBookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        finalPage: UInt = this.finalPage,
+        lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
@@ -340,7 +364,7 @@ open class MutablePaginator<T>(
     ): Pair<Bookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
 
-        var bookmark = bookmarkIterator
+        var bookmark: Bookmark? = bookmarkIterator
             .takeIf { it.hasPrevious() }
             ?.previous()
 
@@ -355,6 +379,7 @@ open class MutablePaginator<T>(
                 bookmark = bookmark,
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
+                finalPage = finalPage,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
                 initEmptyState = initEmptyState,
@@ -380,11 +405,14 @@ open class MutablePaginator<T>(
      * @param initErrorState Custom initializer for error state.
      * @return The provided bookmark.
      * @throws JumpWasLockedException If jumping is locked.
+     * @throws FinalPageExceededException If the bookmark page exceeds [finalPage].
      */
     suspend fun jump(
         bookmark: Bookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        finalPage: UInt = this.finalPage,
+        lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
@@ -393,7 +421,14 @@ open class MutablePaginator<T>(
     ): Pair<Bookmark, PageState<T>> {
         if (lockJump) throw JumpWasLockedException()
 
-        check(bookmark.page > 0u) { "bookmark.page should be greater than 0" }
+        require(bookmark.page > 0u) { "bookmark.page should be greater than 0" }
+
+        if (exceedsFinal(bookmark.page, finalPage)) {
+            throw FinalPageExceededException(
+                attemptedPage = bookmark.page,
+                finalPage = finalPage
+            )
+        }
 
         val probablySuccessBookmarkPage = cache[bookmark.page]
         if (isFilledSuccessState(probablySuccessBookmarkPage)) {
@@ -456,10 +491,13 @@ open class MutablePaginator<T>(
      * @param initErrorState Custom initializer for error state.
      * @return The page number of the next page.
      * @throws GoNextPageWasLockedException If moving to the next page is locked.
+     * @throws FinalPageExceededException If the next page exceeds [finalPage].
      */
     suspend fun goNextPage(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        finalPage: UInt = this.finalPage,
+        lockGoNextPage: Boolean = this.lockGoNextPage,
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
@@ -495,6 +533,14 @@ open class MutablePaginator<T>(
         val nextPage: UInt =
             if (isPivotContextPageValid) pivotContextPage + 1u
             else pivotContextPage
+
+        if (exceedsFinal(nextPage, finalPage)) {
+            throw FinalPageExceededException(
+                attemptedPage = nextPage,
+                finalPage = finalPage
+            )
+        }
+
         val nextPageState: PageState<T>? =
             if (nextPage == pivotContextPage) pivotContextPageState
             else getStateOf(nextPage)
@@ -1076,7 +1122,7 @@ open class MutablePaginator<T>(
                     "page-$targetPage was not created"
                 )
 
-        val dataOfTargetState: MutableList<T> = checkNotNull(
+        val dataOfTargetState: MutableList<T> = requireNotNull(
             value = targetState.data as? MutableList
         ) { "data of target page state is not mutable" }
         dataOfTargetState.addAll(index, elements)
@@ -1362,6 +1408,7 @@ open class MutablePaginator<T>(
         bookmarkIterator = bookmarks.listIterator()
         startContextPage = 0u
         endContextPage = 0u
+        finalPage = UInt.MAX_VALUE
         if (!silently) _snapshot.update { true to emptyList() }
         resize(capacity, resize = false, silently = true)
         lockJump = false

@@ -1,6 +1,9 @@
 package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkUInt
+import com.jamal_aliev.paginator.exception.FinalPageExceededException
+import com.jamal_aliev.paginator.extension.isEmptyState
+import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
@@ -253,6 +256,118 @@ class MutablePaginatorTest {
         paginator.findNearContextPage(startPoint = 9u, endPoint = 20u)
         assertEquals(21u, paginator.startContextPage)
         assertEquals(23u, paginator.endContextPage)
+    }
+
+    @Test
+    fun `test finalPage with goNextPage`(): Unit = runBlocking {
+        val paginator = MutablePaginator { page: UInt ->
+            // Deterministic source - no random exceptions
+            List(this.capacity) { "item $it of page $page" }
+        }
+        paginator.finalPage = 3u
+
+        // Jump to page 1
+        val page1: PageState<String> = paginator.jump(BookmarkUInt(1u)).second
+        assertTrue(page1.isSuccessState())
+
+        // Go to page 2
+        val page2: PageState<String> = paginator.goNextPage()
+        assertTrue(page2.isSuccessState())
+        assertEquals(2u, page2.page)
+
+        // Go to page 3 (finalPage)
+        val page3: PageState<String> = paginator.goNextPage()
+        assertTrue(page3.isSuccessState())
+        assertEquals(3u, page3.page)
+
+        // Try to go to page 4 (should throw FinalPageExceededException)
+        try {
+            paginator.goNextPage()
+            assertTrue("Expected FinalPageExceededException for page exceeding finalPage", false)
+        } catch (e: FinalPageExceededException) {
+            assertEquals(4u, e.attemptedPage)
+            assertEquals(3u, e.finalPage)
+        }
+    }
+
+    @Test
+    fun `test finalPage with jump`(): Unit = runBlocking {
+        val paginator = MutablePaginator { page: UInt ->
+            // Deterministic source - no random exceptions
+            List(this.capacity) { "item $it of page $page" }
+        }
+        paginator.finalPage = 5u
+
+        // Jump to page 3 should work
+        val page3: PageState<String> = paginator.jump(BookmarkUInt(3u)).second
+        assertTrue(page3.isSuccessState())
+        assertEquals(3u, page3.page)
+
+        // Jump to page 5 (finalPage) should work
+        val page5: PageState<String> = paginator.jump(BookmarkUInt(5u)).second
+        assertTrue(page5.isSuccessState())
+        assertEquals(5u, page5.page)
+
+        // Try to jump to page 6 (exceeds finalPage) should throw FinalPageExceededException
+        try {
+            paginator.jump(BookmarkUInt(6u))
+            assertTrue("Expected FinalPageExceededException for page exceeding finalPage", false)
+        } catch (e: FinalPageExceededException) {
+            assertEquals(6u, e.attemptedPage)
+            assertEquals(5u, e.finalPage)
+        }
+    }
+
+    @Test
+    fun `test finalPage with refresh`(): Unit = runBlocking {
+        val paginator = MutablePaginator { page: UInt ->
+            // Deterministic source - no random exceptions
+            List(this.capacity) { "item $it of page $page" }
+        }
+        paginator.finalPage = 3u
+
+        // Load pages 1, 2, 3
+        paginator.jump(BookmarkUInt(1u))
+        paginator.goNextPage()
+        paginator.goNextPage()
+
+        // Try to refresh pages including page 4 (exceeds finalPage)
+        // Only pages 1, 2, 3 should be refreshed
+        paginator.refresh(listOf(1u, 2u, 3u, 4u, 5u), finalSilently = true)
+
+        // Verify pages 1, 2, 3 exist
+        assertTrue(paginator.getStateOf(1u).isSuccessState())
+        assertTrue(paginator.getStateOf(2u).isSuccessState())
+        assertTrue(paginator.getStateOf(3u).isSuccessState())
+
+        // Pages 4 and 5 should not exist
+        assertNull(paginator.getStateOf(4u))
+        assertNull(paginator.getStateOf(5u))
+    }
+
+    @Test
+    fun `test finalPage default allows unlimited pages`(): Unit = runBlocking {
+        val paginator = MutablePaginator { page: UInt ->
+            // Use a simple source that doesn't throw random exceptions
+            if (page <= 10u) {
+                List(this.capacity) { "item $it of page $page" }
+            } else {
+                emptyList()
+            }
+        }
+        // finalPage is UInt.MAX_VALUE by default (effectively unlimited)
+        assertEquals(UInt.MAX_VALUE, paginator.finalPage)
+
+        // Jump to a high page number should work (page 100)
+        val page100 = paginator.jump(BookmarkUInt(100u)).second
+        // Should be EmptyPage since our source returns empty list for page > 10
+        assertTrue(page100.isEmptyState())
+        assertEquals(100u, page100.page)
+
+        // Jump to a lower page should work fine
+        val page5 = paginator.jump(BookmarkUInt(5u)).second
+        assertTrue(page5.isSuccessState())
+        assertEquals(5u, page5.page)
     }
 }
 
