@@ -803,21 +803,22 @@ open class MutablePaginator<T>(
         noinline initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
         noinline initErrorState: InitializerErrorPage<T> = initializerErrorPage
     ): PageState<T> {
+        val cachedState: PageState<T>? = getStateOf(page)
+        if (!forceLoading && isFilledSuccessState(cachedState)) {
+            return cachedState
+        }
+        loading.invoke(page, cachedState)
         return try {
-            val cachedState: PageState<T>? = getStateOf(page)
-            if (!forceLoading && isFilledSuccessState(cachedState))
-                return cachedState
-
-            loading.invoke(page, cachedState)
-
             val data: MutableList<T> =
                 source.invoke(this, page)
                     .toMutableList()
-
-            if (data.isEmpty()) initEmptyState.invoke(page, data)
-            else initSuccessState.invoke(page, data)
+            if (data.isEmpty()) {
+                initEmptyState.invoke(page, data)
+            } else {
+                initSuccessState.invoke(page, data)
+            }
         } catch (exception: Exception) {
-            initErrorState.invoke(exception, page, emptyList())
+            initErrorState.invoke(exception, page, cachedState?.data.orEmpty())
         }
     }
 
