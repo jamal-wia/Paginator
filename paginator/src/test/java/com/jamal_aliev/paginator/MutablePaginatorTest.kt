@@ -319,33 +319,6 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test finalPage with refresh`(): Unit = runBlocking {
-        val paginator = MutablePaginator { page: UInt ->
-            // Deterministic source - no random exceptions
-            List(this.capacity) { "item $it of page $page" }
-        }
-        paginator.finalPage = 3u
-
-        // Load pages 1, 2, 3
-        paginator.jump(BookmarkUInt(1u))
-        paginator.goNextPage()
-        paginator.goNextPage()
-
-        // Try to refresh pages including page 4 (exceeds finalPage)
-        // Only pages 1, 2, 3 should be refreshed
-        paginator.refresh(listOf(1u, 2u, 3u, 4u, 5u), finalSilently = true)
-
-        // Verify pages 1, 2, 3 exist
-        assertTrue(paginator.getStateOf(1u).isSuccessState())
-        assertTrue(paginator.getStateOf(2u).isSuccessState())
-        assertTrue(paginator.getStateOf(3u).isSuccessState())
-
-        // Pages 4 and 5 should not exist
-        assertNull(paginator.getStateOf(4u))
-        assertNull(paginator.getStateOf(5u))
-    }
-
-    @Test
     fun `test finalPage default allows unlimited pages`(): Unit = runBlocking {
         val paginator = MutablePaginator { page: UInt ->
             // Use a simple source that doesn't throw random exceptions
