@@ -3,11 +3,14 @@ package com.jamal_aliev.paginator
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.jamal_aliev.paginator.MainViewState.DataState
-import com.jamal_aliev.paginator.MainViewState.ProgressState
+import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkUInt
+import com.jamal_aliev.paginator.exception.FinalPageExceededException
+import com.jamal_aliev.paginator.extension.isEmptyState
+import com.jamal_aliev.paginator.extension.isErrorState
+import com.jamal_aliev.paginator.extension.isProgressState
+import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.page.PageState
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
@@ -19,48 +22,157 @@ import kotlinx.coroutines.launch
 
 class MainViewModel : ViewModel() {
 
-    private val _state: MutableStateFlow<MainViewState> = MutableStateFlow(ProgressState)
+    private val _state = MutableStateFlow(MainViewState())
     val state = _state.asStateFlow()
 
-    private val paginator = MutablePaginator(source = { SampleRepository.loadPage(it.toInt()) })
+    val paginator = MutablePaginator<String>(source = { page ->
+        SampleRepository.loadPage(page.toInt())
+    }).apply {
+        resize(SampleRepository.PAGE_SIZE, resize = false, silently = true)
+        finalPage = SampleRepository.FINAL_PAGE.toUInt()
+        // Default bookmarks already has page 1, add more
+        bookmarks.addAll(
+            listOf(
+                BookmarkUInt(5u),
+                BookmarkUInt(10u),
+                BookmarkUInt(15u),
+            )
+        )
+        recyclingBookmark = true
+    }
 
     init {
         paginator.snapshot
             .filter { it.isNotEmpty() }
-            .onEach { data -> _state.update { DataState(data) } }
+            .onEach { data -> updateStateFromPaginator(data) }
             .flowOn(Dispatchers.Main)
             .launchIn(viewModelScope)
 
         viewModelScope.launch {
-            val async1 = async { paginator.loadOrGetPageState(1u, forceLoading = true) }
-            val async2 = async { paginator.loadOrGetPageState(2u, forceLoading = true) }
-            val async3 = async { paginator.loadOrGetPageState(3u, forceLoading = true) }
-            val pageState1 = async1.await()
-            val pageState2 = async2.await()
-            val pageState3 = async3.await()
-            paginator.setState(state = pageState1, silently = true)
-            paginator.setState(state = pageState2, silently = true)
-            paginator.setState(state = pageState3, silently = true)
-            paginator.jumpForward()
+            paginator.jump(bookmark = BookmarkUInt(1u))
+            _state.update { it.copy(isInitialLoading = false) }
         }
     }
 
-    // 1,2,3 ... 11,12,13
-    // 0,1,2     3 ,4 ,5
-
-    //
-
-
-    fun endReached() {
-        viewModelScope.launch {
-            paginator.goNextPage()
+    private fun updateStateFromPaginator(data: List<PageState<String>>? = null) {
+        val snapshotData = data ?: _state.value.data
+        _state.update { current ->
+            current.copy(
+                data = snapshotData,
+                startContextPage = paginator.startContextPage,
+                endContextPage = paginator.endContextPage,
+                finalPage = paginator.finalPage,
+                bookmarks = paginator.bookmarks.map { it.page },
+                cachedPages = paginator.pages.map { page ->
+                    val pageState = paginator.getStateOf(page)
+                    CachedPageInfo(
+                        page = page,
+                        type = when {
+                            pageState.isProgressState() -> "Progress"
+                            pageState.isErrorState() -> "Error"
+                            pageState.isEmptyState() -> "Empty"
+                            pageState.isSuccessState() -> "Success(${pageState.data.size})"
+                            else -> "Unknown"
+                        },
+                        itemCount = pageState?.data?.size ?: 0
+                    )
+                },
+                totalCachedItems = paginator.pageStates.sumOf { it.data.size },
+            )
         }
     }
 
-    fun refreshPage(pageState: PageState.ErrorPage<String>) {
+    fun goNextPage() {
         viewModelScope.launch {
-            paginator.refresh(pages = listOf(pageState.page))
+            try {
+                paginator.goNextPage()
+            } catch (e: FinalPageExceededException) {
+                _state.update { it.copy(errorMessage = "Reached final page ${e.finalPage}") }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = e.message) }
+            }
         }
+    }
+
+    fun goPreviousPage() {
+        viewModelScope.launch {
+            try {
+                paginator.goPreviousPage()
+            } catch (e: IllegalStateException) {
+                _state.update { it.copy(errorMessage = e.message) }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun jumpToPage(page: UInt) {
+        viewModelScope.launch {
+            try {
+                paginator.jump(bookmark = BookmarkUInt(page))
+            } catch (e: FinalPageExceededException) {
+                _state.update { it.copy(errorMessage = "Page ${e.attemptedPage} exceeds final page ${e.finalPage}") }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun jumpForward() {
+        viewModelScope.launch {
+            try {
+                val result = paginator.jumpForward()
+                if (result == null) {
+                    _state.update { it.copy(errorMessage = "No more bookmarks forward") }
+                }
+            } catch (e: FinalPageExceededException) {
+                _state.update { it.copy(errorMessage = "Bookmark exceeds final page ${e.finalPage}") }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun jumpBackward() {
+        viewModelScope.launch {
+            try {
+                val result = paginator.jumpBack()
+                if (result == null) {
+                    _state.update { it.copy(errorMessage = "No more bookmarks backward") }
+                }
+            } catch (e: FinalPageExceededException) {
+                _state.update { it.copy(errorMessage = "Bookmark exceeds final page ${e.finalPage}") }
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun restart() {
+        viewModelScope.launch {
+            _state.update { it.copy(isRefreshing = true) }
+            try {
+                paginator.restart()
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = e.message) }
+            } finally {
+                _state.update { it.copy(isRefreshing = false) }
+            }
+        }
+    }
+
+    fun refreshPage(page: UInt) {
+        viewModelScope.launch {
+            try {
+                paginator.refresh(pages = listOf(page))
+            } catch (e: Exception) {
+                _state.update { it.copy(errorMessage = e.message) }
+            }
+        }
+    }
+
+    fun clearError() {
+        _state.update { it.copy(errorMessage = null) }
     }
 
     override fun onCleared() {
@@ -70,6 +182,7 @@ class MainViewModel : ViewModel() {
 
     class Factory : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            @Suppress("UNCHECKED_CAST")
             return MainViewModel() as T
         }
     }
