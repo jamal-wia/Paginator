@@ -7,6 +7,10 @@ simple "load next page" patterns. It provides a full-featured page management sy
 for jumping to arbitrary pages, bidirectional navigation, bookmarks, page caching, element-level
 CRUD, incomplete page handling, capacity management, and reactive state via Kotlin Flows.
 
+---
+# AI Docs - https://deepwiki.com/jamal-wia/Paginator
+---
+
 [Telegram Community](https://t.me/+0eeAM-EJpqgwNGZi) | [YouTube Tutorial (RU)](https://www.youtube.com/watch?v=YsUX7-FgKgA)
 
 ---
