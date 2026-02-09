@@ -2,7 +2,7 @@
 
 [![Release](https://jitpack.io/v/jamal-wia/Paginator.svg)](https://jitpack.io/#jamal-wia/Paginator) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-[**📲 Download Demo APK**](PaginatorDemo.apk)
+## [**📲 Download Demo APK**](https://github.com/jamal-wia/Paginator/blob/master/PaginatorDemo.apk)
 
 **Paginator** is a powerful, flexible pagination library for Android (Kotlin) that goes far beyond
 simple "load next page" patterns. It provides a full-featured page management system with support
@@ -10,7 +10,7 @@ for jumping to arbitrary pages, bidirectional navigation, bookmarks, page cachin
 CRUD, incomplete page handling, capacity management, and reactive state via Kotlin Flows.
 
 ---
-# AI Docs - https://deepwiki.com/jamal-wia/Paginator
+## AI Docs - https://deepwiki.com/jamal-wia/Paginator
 ---
 
 [Telegram Community](https://t.me/+0eeAM-EJpqgwNGZi) | [YouTube Tutorial (RU)](https://www.youtube.com/watch?v=YsUX7-FgKgA)
