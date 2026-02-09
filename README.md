@@ -2,7 +2,8 @@
 
 [![Release](https://jitpack.io/v/jamal-wia/Paginator.svg)](https://jitpack.io/#jamal-wia/Paginator) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-## [**📲 Download Demo APK**](https://github.com/jamal-wia/Paginator/blob/master/PaginatorDemo.apk)
+## [**📲 Download Demo APK
+**](https://raw.githubusercontent.com/jamal-wia/Paginator/master/PaginatorDemo.apk)
 
 **Paginator** is a powerful, flexible pagination library for Android (Kotlin) that goes far beyond
 simple "load next page" patterns. It provides a full-featured page management system with support
