@@ -71,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
+import com.jamal_aliev.paginator.extension.isRealProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.ui.theme.PaginatorTheme
@@ -404,15 +405,28 @@ class MainActivity : ComponentActivity() {
                         }
 
                         pageState.isProgressState() -> {
+                            val isPrevious = pageState.isRealProgressState(PreviousProgressState::class)
+
                             if (pageState.data.isNotEmpty()) {
                                 item(key = "header_progress_data_${pageState.page}") {
                                     PageHeader(
                                         page = pageState.page,
-                                        label = "LOADING (with cached data)",
+                                        label = if (isPrevious)
+                                            "LOADING PREV (with cached data)"
+                                        else
+                                            "LOADING NEXT (with cached data)",
                                         itemCount = pageState.data.size,
                                         maxItems = SampleRepository.PAGE_SIZE,
                                         color = Color(0xFFE65100)
                                     )
+                                }
+                                if (isPrevious) {
+                                    item(key = "progress_indicator_before_data_${pageState.page}") {
+                                        ProgressCard(
+                                            page = pageState.page,
+                                            hasData = true
+                                        )
+                                    }
                                 }
                                 items(
                                     count = pageState.data.size,
@@ -423,22 +437,37 @@ class MainActivity : ComponentActivity() {
                                         index = index
                                     )
                                 }
-                                item(key = "progress_indicator_after_data_${pageState.page}") {
-                                    ProgressCard(
-                                        page = pageState.page,
-                                        hasData = true
-                                    )
+                                if (!isPrevious) {
+                                    item(key = "progress_indicator_after_data_${pageState.page}") {
+                                        ProgressCard(
+                                            page = pageState.page,
+                                            hasData = true
+                                        )
+                                    }
                                 }
                             } else {
                                 item(key = "progress_${pageState.page}") {
                                     PageHeader(
                                         page = pageState.page,
-                                        label = "LOADING",
+                                        label = if (isPrevious)
+                                            "LOADING PREV"
+                                        else
+                                            "LOADING",
                                         itemCount = 0,
                                         maxItems = SampleRepository.PAGE_SIZE,
                                         color = Color(0xFF1565C0)
                                     )
-                                    ProgressCard(page = pageState.page, hasData = false)
+                                    if (isPrevious) {
+                                        ProgressCard(
+                                            page = pageState.page,
+                                            hasData = false
+                                        )
+                                    } else {
+                                        ProgressCard(
+                                            page = pageState.page,
+                                            hasData = false
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -786,8 +815,14 @@ class MainActivity : ComponentActivity() {
                         Spacer(Modifier.height(8.dp))
                         state.data.forEach { pageState ->
                             val (emoji, label) = when {
-                                pageState.isProgressState() && pageState.data.isNotEmpty() ->
-                                    Color(0xFFE65100) to "p${pageState.page}: Loading (${pageState.data.size} cached items)"
+                                pageState.isRealProgressState(PreviousProgressState::class) && pageState.data.isNotEmpty() ->
+                                    Color(0xFFE65100) to "p${pageState.page}: Loading prev ↑ (${pageState.data.size} cached items)"
+
+                                pageState.isRealProgressState(PreviousProgressState::class) ->
+                                    Color(0xFF1565C0) to "p${pageState.page}: Loading prev ↑"
+
+                                pageState.isRealProgressState(NextProgressState::class) && pageState.data.isNotEmpty() ->
+                                    Color(0xFFE65100) to "p${pageState.page}: Loading next ↓ (${pageState.data.size} cached items)"
 
                                 pageState.isProgressState() ->
                                     Color(0xFF1565C0) to "p${pageState.page}: Loading..."

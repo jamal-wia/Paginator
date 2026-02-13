@@ -8,6 +8,7 @@ import com.jamal_aliev.paginator.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
+import com.jamal_aliev.paginator.extension.isRealProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.page.PageState
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +69,8 @@ class MainViewModel : ViewModel() {
                     CachedPageInfo(
                         page = page,
                         type = when {
+                            pageState != null && pageState.isRealProgressState(PreviousProgressState::class) -> "Progress ↑"
+                            pageState != null && pageState.isRealProgressState(NextProgressState::class) -> "Progress ↓"
                             pageState.isProgressState() -> "Progress"
                             pageState.isErrorState() -> "Error"
                             pageState.isEmptyState() -> "Empty"
@@ -85,7 +88,11 @@ class MainViewModel : ViewModel() {
     fun goNextPage() {
         viewModelScope.launch {
             try {
-                paginator.goNextPage()
+                paginator.goNextPage(
+                    initProgressState = { page: UInt, data: List<String> ->
+                        NextProgressState(page, data)
+                    }
+                )
             } catch (e: FinalPageExceededException) {
                 _state.update { it.copy(errorMessage = "Reached final page ${e.finalPage}") }
             } catch (e: Exception) {
@@ -97,7 +104,11 @@ class MainViewModel : ViewModel() {
     fun goPreviousPage() {
         viewModelScope.launch {
             try {
-                paginator.goPreviousPage()
+                paginator.goPreviousPage(
+                    initProgressState = { page: UInt, data: List<String> ->
+                        PreviousProgressState(page, data)
+                    }
+                )
             } catch (e: IllegalStateException) {
                 _state.update { it.copy(errorMessage = e.message) }
             } catch (e: Exception) {
@@ -187,3 +198,18 @@ class MainViewModel : ViewModel() {
         }
     }
 }
+
+class NextProgressState(
+    page: UInt, data: List<String>
+) : PageState.ProgressPage<String>(
+    page = page,
+    data = data,
+)
+
+
+class PreviousProgressState(
+    page: UInt, data: List<String>
+) : PageState.ProgressPage<String>(
+    page = page,
+    data = data,
+)
