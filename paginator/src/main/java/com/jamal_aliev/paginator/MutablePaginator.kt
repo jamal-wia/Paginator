@@ -1,8 +1,11 @@
 package com.jamal_aliev.paginator
 
+import com.jamal_aliev.paginator.MutablePaginator.Companion.DEFAULT_CAPACITY
+import com.jamal_aliev.paginator.MutablePaginator.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.bookmark.Bookmark
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkUInt
 import com.jamal_aliev.paginator.exception.FinalPageExceededException
+import com.jamal_aliev.paginator.exception.LoadGuardedException
 import com.jamal_aliev.paginator.exception.LockedException.GoNextPageWasLockedException
 import com.jamal_aliev.paginator.exception.LockedException.GoPreviousPageWasLockedException
 import com.jamal_aliev.paginator.exception.LockedException.JumpWasLockedException
@@ -36,24 +39,76 @@ import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 import kotlin.math.max
 
+/**
+ * A full-featured, reactive pagination manager for Kotlin/Android.
+ *
+ * `MutablePaginator` maintains a sorted cache of [PageState] objects keyed by page number,
+ * handles bidirectional navigation, bookmark-based jumping, element-level CRUD,
+ * capacity management, and emits state updates via Kotlin [Flow]s.
+ *
+ * **Key concepts:**
+ * - **Context window** ([startContextPage]..[endContextPage]): the contiguous range of
+ *   filled success pages visible to the UI via the [snapshot] flow.
+ * - **Capacity**: the expected number of items per page. Pages with fewer items are
+ *   considered "incomplete" and will be re-requested on the next navigation.
+ * - **Bookmarks**: predefined page targets for quick navigation via [jumpForward]/[jumpBack].
+ * - **Load guard**: an optional callback on navigation functions that can veto a page load
+ *   before the network request is made, throwing [LoadGuardedException] when rejected.
+ *
+ * @param T The type of elements contained in each page.
+ * @param source A suspending lambda that loads data for a given page number.
+ *   The receiver is the paginator itself, giving access to its properties during loading.
+ *
+ * @see PageState
+ * @see Bookmark
+ */
 open class MutablePaginator<T>(
     var source: suspend MutablePaginator<T>.(page: UInt) -> List<T>
 ) : Comparable<MutablePaginator<*>> {
 
+    /**
+     * The expected number of items per page.
+     *
+     * Set via [resize]. When a page contains fewer items than [capacity], it is considered
+     * "incomplete" and will be re-requested on the next [goNextPage] call.
+     * A value of [UNLIMITED_CAPACITY] (0) disables capacity checks entirely.
+     *
+     * Default: [DEFAULT_CAPACITY] (20).
+     */
     var capacity: Int = DEFAULT_CAPACITY
         private set
 
+    /**
+     * `true` if [capacity] equals [UNLIMITED_CAPACITY], meaning capacity checks are disabled.
+     */
     val isCapacityUnlimited: Boolean
         get() = capacity == UNLIMITED_CAPACITY
 
+    /** Internal sorted cache of page states, keyed by page number. */
     protected val cache = sortedMapOf<UInt, PageState<T>>()
+
+    /** All cached page numbers, sorted in ascending order. */
     val pages: List<UInt> get() = cache.keys.toList()
+
+    /** All cached page states, sorted by page number. */
     val pageStates: List<PageState<T>> get() = cache.values.toList()
+
+    /** The number of pages currently in the cache. */
     val size: Int get() = cache.size
 
+    /** Whether the full cache flow ([asFlow]) has been activated by a subscriber. */
     var enableCacheFlow = false
         private set
     private val _cacheFlow = MutableStateFlow(false to cache)
+
+    /**
+     * Returns a [Flow] that emits the **entire** cache map whenever it changes.
+     *
+     * This includes all pages — even those outside the current context window.
+     * Calling this method automatically enables cache flow updates ([enableCacheFlow] = `true`).
+     *
+     * For most UI use cases, prefer [snapshot] which emits only the visible pages.
+     */
     fun asFlow(): Flow<Map<UInt, PageState<T>>> {
         enableCacheFlow = true
         return _cacheFlow.asStateFlow()
@@ -62,35 +117,80 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * repeat emit the cache variable into _cacheFlow
-     * */
+     * Forces a re-emission of the current cache into [asFlow] subscribers.
+     *
+     * Emits a "reset" (false) followed by the current cache (true) to ensure
+     * that collectors receive the latest state, even if the map reference hasn't changed.
+     */
     fun repeatCacheFlow() {
         _cacheFlow.update { false to sortedMapOf() }
         _cacheFlow.update { true to cache }
     }
 
     /**
-     * This is variable that holds the left valid success page expect a jump situation
-     * */
+     * The left (lowest) boundary of the current context window.
+     *
+     * Together with [endContextPage], defines the contiguous range of filled success pages
+     * that are visible to the UI via the [snapshot] flow. A value of `0u` means the
+     * paginator has not been started yet.
+     *
+     * Updated automatically during navigation operations.
+     */
     var startContextPage = 0u
         private set
 
+    /**
+     * Walks backward from [pageState] through contiguous filled success pages
+     * and updates [startContextPage] to the earliest page found.
+     *
+     * @param pageState The starting page to expand backward from.
+     * @return The earliest filled success page found, or `null` if [pageState] is not valid.
+     */
     protected fun expandStartContextPage(pageState: PageState<T>?): PageState<T>? {
         return walkBackwardWhile(pageState, ::isFilledSuccessState)
             ?.also { startContextPage = it.page }
     }
 
     /**
-     * This is a variable that holds the right valid success page expect a jump situation
-     * */
+     * The right (highest) boundary of the current context window.
+     *
+     * Together with [startContextPage], defines the contiguous range of filled success pages
+     * that are visible to the UI via the [snapshot] flow. A value of `0u` means the
+     * paginator has not been started yet.
+     *
+     * Updated automatically during navigation operations.
+     */
     var endContextPage = 0u
         private set
 
+    /**
+     * Walks forward from [pageState] through contiguous filled success pages
+     * and updates [endContextPage] to the latest page found.
+     *
+     * @param pageState The starting page to expand forward from.
+     * @return The latest filled success page found, or `null` if [pageState] is not valid.
+     */
     protected fun expandEndContextPage(pageState: PageState<T>?): PageState<T>? {
         return walkForwardWhile(pageState, ::isFilledSuccessState)
             ?.also { endContextPage = it.page }
     }
 
+    /**
+     * Finds the nearest contiguous group of filled success pages to the given
+     * [startPoint]..[endPoint] range and sets [startContextPage]/[endContextPage] accordingly.
+     *
+     * Uses binary search over all valid (filled success) pages to efficiently locate
+     * the closest group. When the exact point is found, the context is expanded around it.
+     * When no exact match exists, the algorithm computes distances from up to four pivot
+     * candidates (left-of-start, right-of-start, left-of-end, right-of-end) and selects
+     * the nearest one.
+     *
+     * If the cache is empty, both context pages are reset to `0u`.
+     *
+     * @param startPoint The lower bound of the search range. Must be >= 1.
+     * @param endPoint The upper bound of the search range. Must be >= [startPoint].
+     * @throws IllegalArgumentException If [startPoint] or [endPoint] is 0, or if [endPoint] < [startPoint].
+     */
     fun findNearContextPage(startPoint: UInt = 1u, endPoint: UInt = startPoint) {
         require(startPoint >= 1u) { "startPoint must be greater than zero" }
         require(endPoint >= 1u) { "endPoint must be greater than zero" }
@@ -232,6 +332,10 @@ open class MutablePaginator<T>(
         }
     }
 
+    /**
+     * `true` if the paginator has been started, i.e., at least one [jump] has been performed
+     * and both [startContextPage] and [endContextPage] are non-zero.
+     */
     val isStarted: Boolean get() = startContextPage > 0u && endContextPage > 0u
 
     /**
@@ -253,11 +357,34 @@ open class MutablePaginator<T>(
         return page > finalPage
     }
 
+    /**
+     * Predefined page targets for quick navigation via [jumpForward] and [jumpBack].
+     *
+     * By default, contains a single bookmark pointing to page 1. You can add, remove, or
+     * replace bookmarks at any time. The internal iterator tracks the current position
+     * within this list.
+     */
     val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkUInt(page = 1u))
+
+    /**
+     * If `true`, bookmark navigation ([jumpForward]/[jumpBack]) wraps around when
+     * reaching the end/beginning of the [bookmarks] list. Default: `false`.
+     */
     var recyclingBookmark = false
     private var bookmarkIterator = bookmarks.listIterator()
 
     private val _snapshot = MutableStateFlow(false to emptyList<PageState<T>>())
+
+    /**
+     * A [Flow] that emits the list of [PageState] objects within the current context window
+     * whenever a navigation action completes.
+     *
+     * This is the primary reactive API for observing the paginator's visible state.
+     * Collect this flow in your UI layer (e.g., in a ViewModel) to update the screen.
+     *
+     * The emitted list includes pages from [startContextPage] to [endContextPage],
+     * plus any adjacent non-success pages (e.g., [ProgressPage] or [ErrorPage]).
+     */
     val snapshot: Flow<List<PageState<T>>>
         get() {
             return _snapshot.asStateFlow()
@@ -265,42 +392,79 @@ open class MutablePaginator<T>(
                 .map { it.second }
         }
 
+    /**
+     * Factory for creating [ProgressPage] instances during page loading.
+     * Override to provide custom progress page subclasses with additional metadata.
+     */
     var initializerProgressPage: InitializerProgressPage<T> =
         fun(page: UInt, data: List<T>): ProgressPage<T> {
             return ProgressPage(page = page, data = data)
         }
+
+    /**
+     * Factory for creating [SuccessPage] instances on successful load.
+     * Automatically delegates to [initializerEmptyPage] when the data list is empty.
+     * Override to provide custom success page subclasses.
+     */
     var initializerSuccessPage: InitializerSuccessPage<T> =
         fun(page: UInt, data: List<T>): SuccessPage<T> {
             return if (data.isEmpty()) initializerEmptyPage.invoke(page, data)
             else SuccessPage(page = page, data = data)
         }
+
+    /**
+     * Factory for creating [EmptyPage] instances when the source returns no data for a page.
+     * Override to provide custom empty page subclasses.
+     */
     var initializerEmptyPage: InitializerEmptyPage<T> =
         fun(page: UInt, data: List<T>): EmptyPage<T> {
             return EmptyPage(page = page, data = data)
         }
+
+    /**
+     * Factory for creating [ErrorPage] instances when the source throws an exception.
+     * The previously cached data (if any) is preserved in the error state.
+     * Override to provide custom error page subclasses.
+     */
     var initializerErrorPage: InitializerErrorPage<T> =
         fun(exception: Exception, page: UInt, data: List<T>): ErrorPage<T> {
             return ErrorPage(exception = exception, page = page, data = data)
         }
 
     /**
-     * Moves forward to the next bookmark in the list.
+     * Moves forward to the next bookmark in the [bookmarks] list and jumps to it.
      *
-     * @param recycling Whether to recycle bookmarks when reaching the end.
-     * @param silentlyLoading Whether to update the snapshot silently during loading.
-     * @param silentlyResult Whether to update the snapshot silently after loading.
-     * @param initProgressState Custom initializer for progress state.
-     * @param initSuccessState Custom initializer for success state.
-     * @param initEmptyState Custom initializer for empty state.
-     * @param initErrorState Custom initializer for error state.
-     * @return The next bookmark, or null if there are no more bookmarks.
-     * @throws JumpWasLockedException If jumping is locked.
+     * If the bookmark iterator has reached the end and [recycling] is `true`,
+     * the iterator resets to the beginning and continues from the first bookmark.
+     *
+     * This function delegates to [jump] for the actual page loading.
+     *
+     * @param recycling If `true`, wraps around to the first bookmark when the end is reached.
+     *   Defaults to [recyclingBookmark].
+     * @param silentlyLoading If `true`, the snapshot will **not** be emitted during loading.
+     * @param silentlyResult If `true`, the snapshot will **not** be emitted after loading.
+     * @param finalPage Upper page boundary. Defaults to [MutablePaginator.finalPage].
+     * @param loadGuard A guard callback invoked with `(page, currentState)` **before** the page
+     *   is loaded from the source. Return `true` to proceed, or `false` to abort.
+     *   When `false` is returned, [LoadGuardedException] is thrown.
+     *   Defaults to always allowing the load.
+     * @param lockJump If `true`, throws [JumpWasLockedException]. Defaults to [MutablePaginator.lockJump].
+     * @param enableCacheFlow If `true`, the full cache flow is also updated.
+     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
+     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initEmptyState Factory for creating [EmptyPage] instances when the source returns no data.
+     * @param initErrorState Factory for creating [ErrorPage] instances when the source throws.
+     * @return A [Pair] of the [Bookmark] and resulting [PageState], or `null` if no bookmark is available.
+     * @throws JumpWasLockedException If [lockJump] is `true`.
+     * @throws FinalPageExceededException If the bookmark page exceeds [finalPage].
+     * @throws LoadGuardedException If [loadGuard] returns `false`.
      */
     suspend fun jumpForward(
         recycling: Boolean = recyclingBookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         finalPage: UInt = this.finalPage,
+        loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = initializerProgressPage,
@@ -326,6 +490,7 @@ open class MutablePaginator<T>(
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
                 finalPage = finalPage,
+                loadGuard = loadGuard,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
                 initEmptyState = initEmptyState,
@@ -338,23 +503,39 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Moves backward to the previous bookmark in the list.
+     * Moves backward to the previous bookmark in the [bookmarks] list and jumps to it.
      *
-     * @param recycling Whether to recycle bookmarks when reaching the beginning.
-     * @param silentlyLoading Whether to update the snapshot silently during loading.
-     * @param silentlyResult Whether to update the snapshot silently after loading.
-     * @param initProgressState Custom initializer for progress state.
-     * @param initSuccessState Custom initializer for success state.
-     * @param initEmptyState Custom initializer for empty state.
-     * @param initErrorState Custom initializer for error state.
-     * @return The previous bookmark, or null if there are no more bookmarks.
-     * @throws JumpWasLockedException If jumping is locked.
+     * If the bookmark iterator has reached the beginning and [recycling] is `true`,
+     * the iterator resets to the last bookmark and continues backward.
+     *
+     * This function delegates to [jump] for the actual page loading.
+     *
+     * @param recycling If `true`, wraps around to the last bookmark when the beginning is reached.
+     *   Defaults to [recyclingBookmark].
+     * @param silentlyLoading If `true`, the snapshot will **not** be emitted during loading.
+     * @param silentlyResult If `true`, the snapshot will **not** be emitted after loading.
+     * @param finalPage Upper page boundary. Defaults to [MutablePaginator.finalPage].
+     * @param loadGuard A guard callback invoked with `(page, currentState)` **before** the page
+     *   is loaded from the source. Return `true` to proceed, or `false` to abort.
+     *   When `false` is returned, [LoadGuardedException] is thrown.
+     *   Defaults to always allowing the load.
+     * @param lockJump If `true`, throws [JumpWasLockedException]. Defaults to [MutablePaginator.lockJump].
+     * @param enableCacheFlow If `true`, the full cache flow is also updated.
+     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
+     * @param initEmptyState Factory for creating [EmptyPage] instances when the source returns no data.
+     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initErrorState Factory for creating [ErrorPage] instances when the source throws.
+     * @return A [Pair] of the [Bookmark] and resulting [PageState], or `null` if no bookmark is available.
+     * @throws JumpWasLockedException If [lockJump] is `true`.
+     * @throws FinalPageExceededException If the bookmark page exceeds [finalPage].
+     * @throws LoadGuardedException If [loadGuard] returns `false`.
      */
     suspend fun jumpBack(
         recycling: Boolean = recyclingBookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         finalPage: UInt = this.finalPage,
+        loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = initializerProgressPage,
@@ -380,6 +561,7 @@ open class MutablePaginator<T>(
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
                 finalPage = finalPage,
+                loadGuard = loadGuard,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
                 initEmptyState = initEmptyState,
@@ -391,27 +573,58 @@ open class MutablePaginator<T>(
         return null
     }
 
+    /**
+     * If `true`, all jump operations ([jump], [jumpForward], [jumpBack]) are blocked
+     * and will throw [JumpWasLockedException]. Reset to `false` on [release].
+     */
     var lockJump = false
 
     /**
-     * Jumps to a specific bookmark.
+     * Jumps directly to a specific page identified by [bookmark].
      *
-     * @param bookmark The bookmark to jump to.
-     * @param silentlyLoading Whether to update the snapshot silently during loading.
-     * @param silentlyResult Whether to update the snapshot silently after loading.
-     * @param initProgressState Custom initializer for progress state.
-     * @param initSuccessState Custom initializer for success state.
-     * @param initEmptyState Custom initializer for empty state.
-     * @param initErrorState Custom initializer for error state.
-     * @return The provided bookmark.
-     * @throws JumpWasLockedException If jumping is locked.
-     * @throws FinalPageExceededException If the bookmark page exceeds [finalPage].
+     * If the target page is already cached as a filled success page, it is returned
+     * immediately without reloading. Otherwise, the context window is reset to the
+     * target page and the page is loaded from the [source].
+     *
+     * **Behavior:**
+     * 1. Validates that [bookmark] page > 0 and does not exceed [finalPage].
+     * 2. If the target page is already a filled [SuccessPage], expands context
+     *    around it and returns immediately.
+     * 3. Invokes [loadGuard] — if it returns `false`, throws [LoadGuardedException],
+     *    aborting the load before the network request.
+     * 4. Resets [startContextPage] and [endContextPage] to the target page.
+     * 5. Sets the page to [ProgressPage], loads from [source], and updates the cache.
+     *
+     * @param bookmark The target page bookmark. Must have `page > 0`.
+     * @param silentlyLoading If `true`, the snapshot will **not** be emitted when the
+     *   page transitions to [ProgressPage].
+     * @param silentlyResult If `true`, the snapshot will **not** be emitted after the
+     *   page finishes loading.
+     * @param finalPage Upper page boundary for this call. Defaults to [MutablePaginator.finalPage].
+     * @param loadGuard A guard callback invoked with `(page, currentState)` **before** the page
+     *   is loaded from the source. Return `true` to proceed, or `false` to abort.
+     *   When `false` is returned, [LoadGuardedException] is thrown.
+     *   Not invoked if the page is already a filled success page (cache hit).
+     *   Defaults to always allowing the load.
+     * @param lockJump If `true`, the operation is blocked and [JumpWasLockedException]
+     *   is thrown immediately. Defaults to [MutablePaginator.lockJump].
+     * @param enableCacheFlow If `true`, the full cache flow ([asFlow]) is also updated.
+     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
+     * @param initEmptyState Factory for creating [EmptyPage] instances when the source returns no data.
+     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initErrorState Factory for creating [ErrorPage] instances when the source throws.
+     * @return A [Pair] of the [Bookmark] and the resulting [PageState].
+     * @throws JumpWasLockedException If [lockJump] is `true`.
+     * @throws FinalPageExceededException If [bookmark] page exceeds [finalPage].
+     * @throws LoadGuardedException If [loadGuard] returns `false`.
+     * @throws IllegalArgumentException If [bookmark] page is 0.
      */
     suspend fun jump(
         bookmark: Bookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         finalPage: UInt = this.finalPage,
+        loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = initializerProgressPage,
@@ -430,12 +643,16 @@ open class MutablePaginator<T>(
             )
         }
 
-        val probablySuccessBookmarkPage = cache[bookmark.page]
+        val probablySuccessBookmarkPage: PageState<T>? = getStateOf(bookmark.page)
         if (isFilledSuccessState(probablySuccessBookmarkPage)) {
             expandStartContextPage(probablySuccessBookmarkPage)
             expandEndContextPage(probablySuccessBookmarkPage)
             if (!silentlyResult) snapshot()
             return bookmark to probablySuccessBookmarkPage
+        }
+
+        if (!loadGuard.invoke(bookmark.page, probablySuccessBookmarkPage)) {
+            throw LoadGuardedException(attemptedPage = bookmark.page)
         }
 
         startContextPage = bookmark.page
@@ -444,9 +661,11 @@ open class MutablePaginator<T>(
         loadOrGetPageState(
             page = bookmark.page,
             forceLoading = true,
-            loading = { page, pageState ->
+            loading = { page: UInt, pageState: PageState<T>? ->
+                val data: List<T> = pageState?.data.orEmpty()
+                val progressState: ProgressPage<T> = initProgressState.invoke(page, data)
                 setState(
-                    state = initProgressState.invoke(page, pageState?.data.orEmpty()),
+                    state = progressState,
                     silently = true,
                 )
                 if (enableCacheFlow) {
@@ -459,9 +678,9 @@ open class MutablePaginator<T>(
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
-        ).also { resultPageState ->
+        ).also { resultState: PageState<T> ->
             setState(
-                state = resultPageState,
+                state = resultState,
                 silently = true
             )
             expandStartContextPage(getStateOf(startContextPage))
@@ -474,29 +693,60 @@ open class MutablePaginator<T>(
                 snapshot()
             }
 
-            return bookmark to resultPageState
+            return bookmark to resultState
         }
     }
 
+    /**
+     * If `true`, [goNextPage] is blocked and will throw [GoNextPageWasLockedException].
+     * Reset to `false` on [release].
+     */
     var lockGoNextPage: Boolean = false
 
     /**
-     * Loads the next page.
+     * Loads the next page after the current [endContextPage].
      *
-     * @param silentlyLoading Whether to update the snapshot silently during loading.
-     * @param silentlyResult Whether to update the snapshot silently after loading.
-     * @param initProgressState Custom initializer for progress state.
-     * @param initEmptyState Custom initializer for empty state.
-     * @param initSuccessState Custom initializer for success state.
-     * @param initErrorState Custom initializer for error state.
-     * @return The page number of the next page.
-     * @throws GoNextPageWasLockedException If moving to the next page is locked.
+     * If the paginator has not been started yet (i.e., no pages have been loaded),
+     * this function automatically performs a [jump] to page 1.
+     *
+     * **Behavior:**
+     * 1. Expands [endContextPage] forward through any contiguous filled success pages.
+     * 2. Determines the next page number to load.
+     * 3. If the next page exceeds [finalPage], throws [FinalPageExceededException].
+     * 4. If the next page is already in a [ProgressPage] state, returns it immediately
+     *    (deduplication — avoids double-loading).
+     * 5. Invokes [loadGuard] — if it returns `false`, throws [LoadGuardedException],
+     *    aborting the load before the network request.
+     * 6. Sets the page to [ProgressPage] (with any previously cached data),
+     *    loads from [source], and updates the cache.
+     *
+     * @param silentlyLoading If `true`, the snapshot will **not** be emitted when the
+     *   page transitions to [ProgressPage] (loading state). Useful for background preloading.
+     * @param silentlyResult If `true`, the snapshot will **not** be emitted after the
+     *   page finishes loading (success/error/empty). Useful for batch operations.
+     * @param finalPage Upper page boundary for this call. Defaults to [MutablePaginator.finalPage].
+     * @param loadGuard A guard callback invoked with `(page, currentState)` **before** the page
+     *   is loaded from the source. Return `true` to proceed with loading, or `false` to abort.
+     *   When `false` is returned, [LoadGuardedException] is thrown.
+     *   Defaults to always allowing the load.
+     * @param lockGoNextPage If `true`, the operation is blocked and [GoNextPageWasLockedException]
+     *   is thrown immediately. Defaults to [MutablePaginator.lockGoNextPage].
+     * @param enableCacheFlow If `true`, the full cache flow ([asFlow]) is also updated
+     *   during and after loading.
+     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
+     * @param initEmptyState Factory for creating [EmptyPage] instances when the source returns no data.
+     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initErrorState Factory for creating [ErrorPage] instances when the source throws.
+     * @return The resulting [PageState] of the loaded page.
+     * @throws GoNextPageWasLockedException If [lockGoNextPage] is `true`.
      * @throws FinalPageExceededException If the next page exceeds [finalPage].
+     * @throws LoadGuardedException If [loadGuard] returns `false`.
      */
     suspend fun goNextPage(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         finalPage: UInt = this.finalPage,
+        loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
         lockGoNextPage: Boolean = this.lockGoNextPage,
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
@@ -510,6 +760,7 @@ open class MutablePaginator<T>(
                 bookmark = BookmarkUInt(page = 1u),
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
+                finalPage = finalPage,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
                 initEmptyState = initEmptyState,
@@ -520,11 +771,11 @@ open class MutablePaginator<T>(
         }
 
         var pivotContextPage: UInt = endContextPage
-        var pivotContextPageState: PageState<T>? = cache[pivotContextPage]
+        var pivotContextPageState: PageState<T>? = getStateOf(pivotContextPage)
         val isPivotContextPageValid: Boolean = isFilledSuccessState(pivotContextPageState)
         if (isPivotContextPageValid) {
             expandEndContextPage(getStateOf(pivotContextPage + 1u))
-                ?.also { expanded ->
+                ?.also { expanded: PageState<T> ->
                     pivotContextPage = expanded.page
                     pivotContextPageState = expanded
                 }
@@ -548,55 +799,98 @@ open class MutablePaginator<T>(
         if (nextPageState.isProgressState())
             return@coroutineScope nextPageState
 
+        if (!loadGuard.invoke(nextPage, nextPageState)) {
+            throw LoadGuardedException(attemptedPage = nextPage)
+        }
+
         loadOrGetPageState(
             page = nextPage,
             forceLoading = true,
-            loading = { page, pageState ->
+            loading = { page: UInt, pageState: PageState<T>? ->
+                val data: List<T> = pageState?.data.orEmpty()
+                val progressState: ProgressPage<T> = initProgressState.invoke(page, data)
                 setState(
-                    state = initProgressState.invoke(page, pageState?.data.orEmpty()),
+                    state = progressState,
                     silently = true,
                 )
-                if (enableCacheFlow) repeatCacheFlow()
-                if (!silentlyLoading) snapshot()
+                if (enableCacheFlow) {
+                    repeatCacheFlow()
+                }
+                if (!silentlyLoading) {
+                    snapshot()
+                }
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
-        ).also { resultPageState ->
+        ).also { resultState ->
             setState(
-                state = resultPageState,
+                state = resultState,
                 silently = true
             )
             if (endContextPage == pivotContextPage
-                && isFilledSuccessState(resultPageState)
+                && isFilledSuccessState(resultState)
             ) {
                 endContextPage = nextPage
                 expandEndContextPage(getStateOf(nextPage + 1u))
             }
-            if (enableCacheFlow) repeatCacheFlow()
-            if (!silentlyResult) snapshot()
+            if (enableCacheFlow) {
+                repeatCacheFlow()
+            }
+            if (!silentlyResult) {
+                snapshot()
+            }
 
-            return@coroutineScope resultPageState
+            return@coroutineScope resultState
         }
     }
 
+    /**
+     * If `true`, [goPreviousPage] is blocked and will throw [GoPreviousPageWasLockedException].
+     * Reset to `false` on [release].
+     */
     var lockGoPreviousPage: Boolean = false
 
     /**
-     * Loads the previous page.
+     * Loads the page before the current [startContextPage].
      *
-     * @param silentlyLoading Whether to update the snapshot silently during loading.
-     * @param silentlyResult Whether to update the snapshot silently after loading.
-     * @param initProgressState Custom initializer for progress state.
-     * @param initEmptyState Custom initializer for empty state.
-     * @param initSuccessState Custom initializer for success state.
-     * @param initErrorState Custom initializer for error state.
-     * @return The page number of the previous page.
-     * @throws GoPreviousPageWasLockedException If moving to the previous page is locked.
+     * Requires the paginator to be started (i.e., at least one [jump] must have been performed).
+     * If the paginator is not started, an [IllegalStateException] is thrown.
+     *
+     * **Behavior:**
+     * 1. Expands [startContextPage] backward through any contiguous filled success pages.
+     * 2. Determines the previous page number to load.
+     * 3. If the previous page is `0`, throws [IllegalStateException] (page numbers start at 1).
+     * 4. If the previous page is already in a [ProgressPage] state, returns it immediately
+     *    (deduplication — avoids double-loading).
+     * 5. Invokes [loadGuard] — if it returns `false`, throws [LoadGuardedException],
+     *    aborting the load before the network request.
+     * 6. Sets the page to [ProgressPage] (with any previously cached data),
+     *    loads from [source], and updates the cache.
+     *
+     * @param silentlyLoading If `true`, the snapshot will **not** be emitted when the
+     *   page transitions to [ProgressPage]. Useful for background preloading.
+     * @param silentlyResult If `true`, the snapshot will **not** be emitted after the
+     *   page finishes loading. Useful for batch operations.
+     * @param loadGuard A guard callback invoked with `(page, currentState)` **before** the page
+     *   is loaded from the source. Return `true` to proceed with loading, or `false` to abort.
+     *   When `false` is returned, [LoadGuardedException] is thrown.
+     *   Defaults to always allowing the load.
+     * @param enableCacheFlow If `true`, the full cache flow ([asFlow]) is also updated
+     *   during and after loading.
+     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
+     * @param initEmptyState Factory for creating [EmptyPage] instances when the source returns no data.
+     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initErrorState Factory for creating [ErrorPage] instances when the source throws.
+     * @return The resulting [PageState] of the loaded page.
+     * @throws GoPreviousPageWasLockedException If [lockGoPreviousPage] is `true`.
+     * @throws LoadGuardedException If [loadGuard] returns `false`.
+     * @throws IllegalStateException If the paginator has not been started or the previous page is 0.
      */
     suspend fun goPreviousPage(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
@@ -611,7 +905,7 @@ open class MutablePaginator<T>(
         }
 
         var pivotContextPage = startContextPage
-        var pivotContextPageState = cache[pivotContextPage]
+        var pivotContextPageState = getStateOf(pivotContextPage)
         val pivotContextPageValid = isFilledSuccessState(pivotContextPageState)
         if (pivotContextPageValid) {
             expandStartContextPage(getStateOf(pivotContextPage - 1u))
@@ -632,54 +926,88 @@ open class MutablePaginator<T>(
         if (previousPageState.isProgressState())
             return@coroutineScope previousPageState
 
+        if (!loadGuard.invoke(previousPage, previousPageState)) {
+            throw LoadGuardedException(attemptedPage = previousPage)
+        }
+
         loadOrGetPageState(
             page = previousPage,
             forceLoading = true,
-            loading = { page, pageState ->
+            loading = { page: UInt, pageState: PageState<T>? ->
+                val data: List<T> = pageState?.data.orEmpty()
+                val progressState: ProgressPage<T> = initProgressState(page, data)
                 setState(
-                    state = initProgressState(page, pageState?.data.orEmpty()),
+                    state = progressState,
                     silently = true
                 )
-                if (enableCacheFlow) repeatCacheFlow()
-                if (!silentlyLoading) snapshot()
+                if (enableCacheFlow) {
+                    repeatCacheFlow()
+                }
+                if (!silentlyLoading) {
+                    snapshot()
+                }
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
-        ).also { resultPageState ->
+        ).also { resulState: PageState<T> ->
             setState(
-                state = resultPageState,
+                state = resulState,
                 silently = true
             )
             if (startContextPage == pivotContextPage
-                && isFilledSuccessState(resultPageState)
+                && isFilledSuccessState(resulState)
             ) {
                 startContextPage = previousPage
                 expandStartContextPage(getStateOf(previousPage - 1u))
             }
-            if (enableCacheFlow) repeatCacheFlow()
-            if (!silentlyResult) snapshot()
+            if (enableCacheFlow) {
+                repeatCacheFlow()
+            }
+            if (!silentlyResult) {
+                snapshot()
+            }
 
-            return@coroutineScope resultPageState
+            return@coroutineScope resulState
         }
     }
 
+    /**
+     * If `true`, [restart] is blocked and will throw [RestartWasLockedException].
+     * Reset to `false` on [release].
+     */
     var lockRestart: Boolean = false
 
     /**
      * Resets the paginator to its initial state and reloads the first page.
      *
-     * @param silentlyLoading Whether the loading state should be set silently.
-     * @param silentlyResult Whether the result state should be set silently.
-     * @param initProgressState Custom initializer for the progress state page.
-     * @param initEmptyState Custom initializer for the empty state page.
-     * @param initSuccessState Custom initializer for the success state page.
-     * @param initErrorState Custom initializer for the error state page.
-     * @throws RestartWasLockedException if the restart process is locked.
+     * Clears all cached pages except page 1's structure, resets the context window
+     * to page 1, and reloads it from the [source]. Ideal for swipe-to-refresh scenarios.
+     *
+     * **Behavior:**
+     * 1. Removes all pages from the cache except page 1.
+     * 2. Invokes [loadGuard] with page `1` — if it returns `false`, throws [LoadGuardedException].
+     * 3. Sets page 1 to [ProgressPage] and reloads from [source].
+     * 4. Updates the cache with the result.
+     *
+     * @param silentlyLoading If `true`, the snapshot will **not** be emitted during loading.
+     * @param silentlyResult If `true`, the snapshot will **not** be emitted after loading.
+     * @param loadGuard A guard callback invoked with `(page, currentState)` **before** page 1
+     *   is reloaded. Return `true` to proceed, or `false` to abort.
+     *   When `false` is returned, [LoadGuardedException] is thrown.
+     *   Defaults to always allowing the load.
+     * @param enableCacheFlow If `true`, the full cache flow ([asFlow]) is also updated.
+     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
+     * @param initEmptyState Factory for creating [EmptyPage] instances when the source returns no data.
+     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initErrorState Factory for creating [ErrorPage] instances when the source throws.
+     * @throws RestartWasLockedException If [lockRestart] is `true`.
+     * @throws LoadGuardedException If [loadGuard] returns `false`.
      */
     suspend fun restart(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
+        loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
@@ -694,6 +1022,10 @@ open class MutablePaginator<T>(
             state = firstPage,
             silently = true
         )
+
+        if (!loadGuard.invoke(1u, firstPage)) {
+            throw LoadGuardedException(attemptedPage = 1u)
+        }
 
         startContextPage = 1u
         endContextPage = 1u
@@ -722,27 +1054,47 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Indicates whether the refresh operation is locked. If true, any attempts to refresh will throw an exception.
+     * If `true`, [refresh] and `refreshAll` are blocked and will throw [RefreshWasLockedException].
+     * Reset to `false` on [release].
      */
     var lockRefresh: Boolean = false
 
     /**
-     * Refreshes the specified pages by setting their state to a progress state, loading their data,
-     * and then updating their state based on the loaded data.
+     * Refreshes the specified pages by reloading them from the [source] in parallel.
      *
-     * @param pages The list of pages to refresh.
-     * @param loadingSilently If true, the loading state will not trigger snapshot updates.
-     * @param finalSilently If true, the final state will not trigger snapshot updates.
-     * @param initProgressState Initializer for the progress state.
-     * @param initEmptyState Initializer for the empty state.
-     * @param initSuccessState Initializer for the success state.
-     * @param initErrorState Initializer for the error state.
-     * @throws RefreshWasLockedException if the refresh operation is locked.
+     * Each page is first set to [ProgressPage] (preserving any previously cached data),
+     * then all pages are reloaded concurrently. After all loads complete, the cache is
+     * updated with the results.
+     *
+     * **Behavior:**
+     * 1. Invokes [loadGuard] for each page — if it returns `false` for any page,
+     *    throws [LoadGuardedException] and **none** of the pages are refreshed.
+     * 2. Sets all specified pages to [ProgressPage].
+     * 3. Loads all pages concurrently from [source].
+     * 4. Updates the cache with results.
+     *
+     * @param pages The list of page numbers to refresh.
+     * @param loadingSilently If `true`, the snapshot will **not** be emitted after setting
+     *   pages to [ProgressPage].
+     * @param finalSilently If `true`, the snapshot will **not** be emitted after all pages
+     *   finish loading.
+     * @param loadGuard A guard callback invoked with `(page, currentState)` for **each** page
+     *   **before** any loading begins. Return `true` to proceed, or `false` to abort the
+     *   entire refresh. When `false` is returned, [LoadGuardedException] is thrown.
+     *   Defaults to always allowing the load.
+     * @param enableCacheFlow If `true`, the full cache flow ([asFlow]) is also updated.
+     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
+     * @param initEmptyState Factory for creating [EmptyPage] instances when the source returns no data.
+     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initErrorState Factory for creating [ErrorPage] instances when the source throws.
+     * @throws RefreshWasLockedException If [lockRefresh] is `true`.
+     * @throws LoadGuardedException If [loadGuard] returns `false` for any page.
      */
     suspend fun refresh(
         pages: List<UInt>,
         loadingSilently: Boolean = false,
         finalSilently: Boolean = false,
+        loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = this.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
         initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
@@ -750,6 +1102,12 @@ open class MutablePaginator<T>(
         initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
     ): Unit = coroutineScope {
         if (lockRefresh) throw RefreshWasLockedException()
+
+        pages.forEach { page ->
+            if (!loadGuard.invoke(page, cache[page])) {
+                throw LoadGuardedException(attemptedPage = page)
+            }
+        }
 
         pages.forEach { page ->
             setState(
@@ -782,17 +1140,27 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Loads or retrieves the state of a page. If forceLoading is true, the page state will be reloaded
-     * from the source, otherwise, it will return the cached state if it is valid.
+     * Loads a page from the [source] or returns the cached state if it is already a filled success page.
      *
-     * @param page The page number to load or get the state.
-     * @param forceLoading If true, the page state will be reloaded from the source.
-     * @param loading A callback invoked when the loading starts.
-     * @param source A suspend function that provides the data for the page.
-     * @param initEmptyState Initializer for the empty state.
-     * @param initSuccessState Initializer for the success state.
-     * @param initErrorState Initializer for the error state.
-     * @return The state of the page after loading or getting from the cache.
+     * This is the low-level loading primitive used internally by [goNextPage], [goPreviousPage],
+     * [jump], [restart], and [refresh]. It does **not** update context pages or emit snapshots —
+     * callers are responsible for that.
+     *
+     * **Behavior:**
+     * 1. If [forceLoading] is `false` and the cached state is a filled success page, returns it immediately.
+     * 2. Invokes the [loading] callback (used by callers to set [ProgressPage] and emit snapshots).
+     * 3. Calls [source] to fetch data.
+     * 4. Returns [SuccessPage], [EmptyPage], or [ErrorPage] based on the result.
+     *
+     * @param page The page number to load.
+     * @param forceLoading If `true`, always reloads from [source] even if a valid cached state exists.
+     * @param loading A callback invoked just before loading starts. Typically used to set the page
+     *   to [ProgressPage] and emit a snapshot.
+     * @param source The data source suspend function. Defaults to [MutablePaginator.source].
+     * @param initEmptyState Factory for [EmptyPage] when the source returns an empty list.
+     * @param initSuccessState Factory for [SuccessPage] when the source returns data.
+     * @param initErrorState Factory for [ErrorPage] when the source throws an exception.
+     * @return The resulting [PageState] after loading or from cache.
      */
     suspend inline fun loadOrGetPageState(
         page: UInt,
@@ -823,20 +1191,23 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Retrieves the state of a page from the cache.
+     * Retrieves the cached [PageState] for the given [page] number.
      *
-     * @param page The page number to retrieve the state.
-     * @return The state of the page, or null if not found.
+     * @param page The page number to look up.
+     * @return The cached [PageState], or `null` if the page is not in the cache.
      */
     fun getStateOf(page: UInt): PageState<T>? {
         return cache[page]
     }
 
     /**
-     * Sets the state of a page and updates the cache.
+     * Stores a [PageState] in the cache, replacing any existing state for that page number.
      *
-     * @param state The new state of the page.
-     * @param silently If true, the change will not trigger snapshot update.
+     * The page number is determined by [state]`.page`.
+     *
+     * @param state The page state to store.
+     * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
+     *   Set to `true` during batch operations to avoid redundant emissions.
      */
     fun setState(
         state: PageState<T>,
@@ -880,7 +1251,7 @@ open class MutablePaginator<T>(
         fun collapse(startPage: UInt, compression: Int) {
             var currentState: PageState<T> = checkNotNull(
                 value = cache.remove(startPage)
-            ) { "it's imposable to start collapse from this page" }
+            ) { "it's impossible to start collapse from this page" }
             var remaining: Int = compression
             while (remaining > 0) {
                 val collapsedState: PageState<T> = currentState.copy(page = currentState.page - 1u)
@@ -987,11 +1358,12 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Retrieves an element at a specific index within a page.
+     * Retrieves a single element by its position within a cached page.
      *
-     * @param page The page number where the element is located.
-     * @param index The index within the page where the element is located.
-     * @return The element at the specified page and index, or null if not found.
+     * @param page The page number containing the element.
+     * @param index The zero-based index of the element within the page's data list.
+     * @return The element at the specified position, or `null` if the page is not cached.
+     * @throws IndexOutOfBoundsException If [index] is out of range for the page's data.
      */
     fun getElement(
         page: UInt,
@@ -1002,13 +1374,18 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Sets an element at a specific index within a page.
+     * Replaces an element at a specific position within a cached page.
      *
-     * @param element The element to set.
-     * @param page The page number where the element should be set.
-     * @param index The index within the page where the element should be set.
-     * @param silently If true, the change will not trigger snapshot update.
-     * @throws NoSuchElementException if the page is not found in the cache.
+     * Creates a new [PageState] with the updated data and stores it in the cache.
+     * If [silently] is `false` and the page is within the current snapshot range,
+     * a snapshot is emitted to notify the UI.
+     *
+     * @param element The new element to place at the given position.
+     * @param page The page number containing the element.
+     * @param index The zero-based index of the element to replace within the page's data list.
+     * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
+     * @throws NoSuchElementException If [page] is not found in the cache.
+     * @throws IndexOutOfBoundsException If [index] is out of range for the page's data.
      */
     fun setElement(
         element: T,
@@ -1037,13 +1414,21 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Removes an element at a specific index within a page.
+     * Removes an element at a specific position within a cached page and rebalances if needed.
      *
-     * @param page The page number where the element should be removed.
-     * @param index The index within the page where the element should be removed.
-     * @param silently If true, the change will not trigger snapshot update.
+     * When removing an element causes the page to have fewer items than [capacity], elements
+     * are pulled from the **next** page (if it exists and is the same type) to fill the gap.
+     * This cascading rebalance continues until pages are full or no more adjacent pages exist.
+     *
+     * If the page becomes empty after removal, it is removed from the cache entirely
+     * via [removeState].
+     *
+     * @param page The page number containing the element.
+     * @param index The zero-based index of the element to remove within the page's data list.
+     * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
      * @return The removed element.
-     * @throws NoSuchElementException if the page is not found in the cache.
+     * @throws IllegalArgumentException If [page] is not found in the cache.
+     * @throws IndexOutOfBoundsException If [index] is out of range for the page's data.
      */
     fun removeElement(
         page: UInt,
@@ -1105,14 +1490,23 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Adds a list of elements at a specific index within a page.
+     * Inserts elements at a specific position within a cached page, with overflow cascading.
      *
-     * @param elements The elements to add.
-     * @param targetPage The page number where the elements should be added.
-     * @param index The index within the page where the elements should be added.
-     * @param silently If true, the change will not trigger snapshot update.
-     * @param initPageState An optional function to initialize a page state if it doesn't exist.
-     * @throws IndexOutOfBoundsException if the page is not found in the cache and initPageState is not provided.
+     * If inserting the elements causes the page to exceed [capacity], the excess elements
+     * are cascaded to the **next** page (recursively). This overflow only occurs when:
+     * - The next page exists and is the same [PageState] subclass, **or**
+     * - [initPageState] is provided (allowing creation of new pages for overflow).
+     *
+     * If overflow cannot be cascaded (no compatible next page and no [initPageState]),
+     * all pages after [targetPage] are removed from the cache.
+     *
+     * @param elements The elements to insert.
+     * @param targetPage The page number to insert into.
+     * @param index The zero-based position within the page's data list where elements are inserted.
+     * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
+     * @param initPageState Optional factory to create a new [PageState] for overflow pages that
+     *   don't exist yet. If `null` and overflow occurs with no next page, subsequent pages are removed.
+     * @throws IndexOutOfBoundsException If [targetPage] is not in the cache and [initPageState] is `null`.
      */
     fun addAllElements(
         elements: List<T>,
@@ -1166,10 +1560,10 @@ open class MutablePaginator<T>(
         if (!silently) {
             val startState: PageState<T> = checkNotNull(
                 walkBackwardWhile(getStateOf(startContextPage))
-            ) { "startContextPage is broken so snapshot is imposable" }
+            ) { "startContextPage is broken so snapshot is impossible" }
             val endState: PageState<T> = checkNotNull(
                 walkForwardWhile(getStateOf(endContextPage))
-            ) { "endContextPage is broken so snapshot is imposable" }
+            ) { "endContextPage is broken so snapshot is impossible" }
             val rangeSnapshot: UIntRange = startState.page..endState.page
             if (targetPage in rangeSnapshot) {
                 snapshot(rangeSnapshot)
@@ -1178,11 +1572,20 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Replaces all elements within the paginator based on a provider and predicate.
+     * Iterates over **all** elements across all cached pages and conditionally replaces or removes them.
      *
-     * @param providerElement A function that provides a new element based on the current element, pageState, and index.
-     * @param silently If true, the change will not trigger snapshot update.
-     * @param predicate A function that determines whether an element should be replaced.
+     * For each element where [predicate] returns `true`, the [providerElement] factory is called:
+     * - If it returns a **non-null** value, the element is replaced via [setElement].
+     * - If it returns `null`, the element is **removed** via [removeElement].
+     *
+     * All modifications are performed silently (no individual snapshots), and a single
+     * [snapshot] is emitted at the end (unless [silently] is `true`).
+     *
+     * @param providerElement Factory that produces the replacement element given the current element,
+     *   its [PageState], and its index within the page. Return `null` to remove the element.
+     * @param silently If `true`, no [snapshot] is emitted after the operation completes.
+     * @param predicate Determines whether an element should be processed. Receives the current element,
+     *   its [PageState], and its index within the page.
      */
     inline fun replaceAllElement(
         providerElement: (current: T, pageState: PageState<T>, index: Int) -> T?,
@@ -1243,10 +1646,16 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Updates the snapshot of the paginator within the given range.
+     * Emits the current visible state to [snapshot] subscribers.
      *
-     * @param pageRange The range of pages to include in the snapshot. Defaults to the range from startContextPage to endContextPage.
-     * @throws IllegalStateException if startContextPage or endContextPage is zero, or if min or max values are null.
+     * Collects all cached pages within the given [pageRange] (or the expanded context window
+     * if no range is specified) and emits them as a list via the [snapshot] flow.
+     *
+     * If the paginator is not started and no explicit [pageRange] is given, the emission is skipped.
+     *
+     * @param pageRange An explicit range of pages to include. If `null`, the range is computed
+     *   from [startContextPage] to [endContextPage], expanded outward through any adjacent
+     *   non-success pages (e.g., [ProgressPage] or [ErrorPage]).
      */
     fun snapshot(pageRange: UIntRange? = null) {
         (pageRange ?: run {
@@ -1262,11 +1671,16 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Scans and returns a list of PageState within the given range.
+     * Returns a list of [PageState] objects for all contiguous cached pages within [pagesRange].
      *
-     * @param pagesRange The range of pages to scan. Defaults to the range from startContextPage to endContextPage.
-     * @return A list of PageState within the specified range.
-     * @throws IllegalStateException if startContextPage or endContextPage is zero, or if min or max values are null.
+     * Iterates through the range and collects cached pages. Stops at the first gap
+     * (page not in the cache), ensuring only contiguous pages are returned.
+     *
+     * @param pagesRange The range of page numbers to scan. Defaults to the expanded
+     *   context window ([startContextPage]..[endContextPage] plus adjacent pages).
+     * @return A list of contiguous [PageState] objects within the range.
+     * @throws IllegalStateException If [startContextPage] or [endContextPage] is `0u`
+     *   (when using the default range).
      */
     fun scan(
         pagesRange: UIntRange = run {
@@ -1335,14 +1749,21 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Adjusts the capacity of the paginator and optionally resizes the cached pages.
+     * Changes the expected number of items per page and optionally redistributes existing data.
      *
-     * @param capacity The new capacity for each page. Must be greater or equal to zero.
-     * @param resize If true, the pages will be resized according to the new capacity.
-     * @param silently If true, the function will not trigger a snapshot update.
-     * @param initSuccessState An optional initializer for success page state.
+     * When [resize] is `true`, all success pages within the context window are collected,
+     * their items are flattened into a single list, and then re-distributed into new pages
+     * of size [capacity]. The cache is rebuilt from scratch with the redistributed data.
      *
-     * @throws IllegalArgumentException if the capacity is less than zero.
+     * If the new [capacity] equals the current one, this is a no-op.
+     *
+     * @param capacity The new capacity for each page. Must be >= 0.
+     *   Use [UNLIMITED_CAPACITY] (0) to disable capacity checks.
+     * @param resize If `true`, existing cached data is redistributed into pages of the new capacity.
+     *   If `false`, only the capacity value is updated without touching cached data.
+     * @param silently If `true`, no [snapshot] is emitted after the resize.
+     * @param initSuccessState Factory for creating new [SuccessPage] instances during redistribution.
+     * @throws IllegalArgumentException If [capacity] is negative.
      */
     fun resize(
         capacity: Int,
@@ -1398,10 +1819,16 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Releases the paginator by clearing the cache, resetting bookmarks, and resizing to the default capacity.
+     * Releases all resources and resets the paginator to its initial (unconfigured) state.
      *
-     * @param capacity The new capacity for each page after releasing. Defaults to DEFAULT_CAPACITY.
-     * @param silently If true, the function will not trigger a snapshot update.
+     * This clears the cache, resets bookmarks to `[page 1]`, resets the context window
+     * to `0u`, sets [finalPage] back to [UInt.MAX_VALUE], unlocks all lock flags,
+     * and resizes to [capacity].
+     *
+     * Call this method when the paginator is no longer needed (e.g., in `ViewModel.onCleared()`).
+     *
+     * @param capacity The capacity to set after release. Defaults to [DEFAULT_CAPACITY].
+     * @param silently If `true`, the empty snapshot is **not** emitted.
      */
     fun release(
         capacity: Int = DEFAULT_CAPACITY,

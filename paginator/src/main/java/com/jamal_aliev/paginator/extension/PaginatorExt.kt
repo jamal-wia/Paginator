@@ -1,6 +1,7 @@
 package com.jamal_aliev.paginator.extension
 
 import com.jamal_aliev.paginator.MutablePaginator
+import com.jamal_aliev.paginator.exception.LoadGuardedException
 import com.jamal_aliev.paginator.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
@@ -304,20 +305,31 @@ inline fun <T> MutablePaginator<T>.setElement(
 }
 
 /**
- * Refreshes all pages in the cache by setting their state to a progress state, loading their data,
- * and then updating their state based on the loaded data.
+ * Refreshes **all** currently cached pages by reloading them from the source in parallel.
  *
- * @param loadingSilently If true, the loading state will not trigger snapshot updates.
- * @param finalSilently If true, the final state will not trigger snapshot updates.
- * @param initProgressState Initializer for the progress state.
- * @param initEmptyState Initializer for the empty state.
- * @param initSuccessState Initializer for the success state.
- * @param initErrorState Initializer for the error state.
- * @throws RefreshWasLockedException if the refresh operation is locked.
+ * This is a convenience wrapper around [MutablePaginator.refresh] that passes all
+ * cached page numbers automatically.
+ *
+ * @param loadingSilently If `true`, the snapshot will **not** be emitted after setting
+ *   pages to progress state.
+ * @param finalSilently If `true`, the snapshot will **not** be emitted after all pages
+ *   finish loading.
+ * @param loadGuard A guard callback invoked with `(page, currentState)` for **each** page
+ *   **before** any loading begins. Return `true` to proceed, or `false` to abort the
+ *   entire refresh. When `false` is returned, [LoadGuardedException] is thrown.
+ *   Defaults to always allowing the load.
+ * @param enableCacheFlow If `true`, the full cache flow is also updated.
+ * @param initProgressState Factory for creating progress page instances during loading.
+ * @param initEmptyState Factory for creating empty page instances.
+ * @param initSuccessState Factory for creating success page instances.
+ * @param initErrorState Factory for creating error page instances.
+ * @throws RefreshWasLockedException If refresh is locked.
+ * @throws LoadGuardedException If [loadGuard] returns `false` for any page.
  */
 suspend fun <T> MutablePaginator<T>.refreshAll(
     loadingSilently: Boolean = false,
     finalSilently: Boolean = false,
+    loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
     enableCacheFlow: Boolean = this.enableCacheFlow,
     initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
     initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
@@ -329,6 +341,7 @@ suspend fun <T> MutablePaginator<T>.refreshAll(
         pages = this.pages,
         loadingSilently = loadingSilently,
         finalSilently = finalSilently,
+        loadGuard = loadGuard,
         enableCacheFlow = enableCacheFlow,
         initProgressState = initProgressState,
         initEmptyState = initEmptyState,
