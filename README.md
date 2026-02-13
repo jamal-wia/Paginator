@@ -91,7 +91,7 @@ repositories {
 Add the dependency to your module-level `build.gradle.kts`:
 
 ```kotlin
-implementation("com.github.jamal-wia:Paginator:5.1.2")
+implementation("com.github.jamal-wia:Paginator:5.2.0")
 ```
 
 ---
