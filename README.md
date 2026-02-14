@@ -42,6 +42,7 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - [Element-Level Operations](#element-level-operations)
 - [Custom PageState Subclasses](#custom-pagestate-subclasses)
 - [Lock Flags](#lock-flags)
+- [Logger](#logger)
 - [Extension Functions](#extension-functions)
     - [PageState Extensions](#pagestate-extensions)
     - [Paginator Extensions](#paginator-extensions)
@@ -73,6 +74,8 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - **Lock flags** -- prevent specific operations at runtime (`lockJump`, `lockGoNextPage`,
   `lockGoPreviousPage`, `lockRestart`, `lockRefresh`)
 - **Parallel loading** -- preload multiple pages concurrently with `loadOrGetPageState`
+- **Pluggable logging** -- implement the `Logger` interface to receive detailed logs about
+  navigation, state changes, and element-level operations. No logging by default (`NoOpLogger`)
 - **Context window** -- the paginator tracks a contiguous range of successfully loaded pages (
   `startContextPage..endContextPage`), which defines the visible snapshot
 
@@ -456,6 +459,60 @@ All locks are reset to `false` on `release()`.
 
 ---
 
+## Logger
+
+The paginator supports pluggable logging via the `Logger` interface. By default, no logging is
+performed (`NoOpLogger`). Implement the interface and assign it to `paginator.logger` to receive
+logs about navigation, state changes, and element-level operations.
+
+### Logger Interface
+
+```kotlin
+interface Logger {
+    fun log(tag: String, message: String)
+}
+```
+
+### Usage
+
+```kotlin
+import android.util.Log
+import com.jamal_aliev.paginator.logger.Logger
+
+object AndroidLogger : Logger {
+    override fun log(tag: String, message: String) {
+        Log.d(tag, message)
+    }
+}
+
+val paginator = MutablePaginator<String>(source = { page ->
+    api.fetchItems(page.toInt())
+}).apply {
+    logger = AndroidLogger
+}
+```
+
+### Logged Operations
+
+| Operation        | Example message                                   |
+|------------------|---------------------------------------------------|
+| `jump`           | `jump: page=5`                                    |
+| `jumpForward`    | `jumpForward: recycling=true`                     |
+| `jumpBack`       | `jumpBack: recycling=false`                       |
+| `goNextPage`     | `goNextPage: page=3 result=SuccessPage`           |
+| `goPreviousPage` | `goPreviousPage: page=1 result=SuccessPage`       |
+| `restart`        | `restart`                                         |
+| `refresh`        | `refresh: pages=[1, 2, 3]`                        |
+| `setState`       | `setState: page=2 type=SuccessPage silently=false` |
+| `setElement`     | `setElement: page=1 index=0`                      |
+| `removeElement`  | `removeElement: page=2 index=3`                   |
+| `addAllElements` | `addAllElements: targetPage=1 index=0 count=5`    |
+| `removeState`    | `removeState: page=3`                             |
+| `resize`         | `resize: capacity=10 resize=true`                 |
+| `release`        | `release`                                         |
+
+---
+
 ## Extension Functions
 
 ### PageState Extensions
@@ -524,6 +581,11 @@ class PaginatorViewModel : ViewModel() {
         finalPage = 20u
         bookmarks.addAll(listOf(BookmarkUInt(5u), BookmarkUInt(10u), BookmarkUInt(15u)))
         recyclingBookmark = true
+        logger = object : Logger {
+            override fun log(tag: String, message: String) {
+                Log.d(tag, message)
+            }
+        }
     }
 
     init {
@@ -626,6 +688,7 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | Property              | Type                                            | Description                                     |
 |-----------------------|-------------------------------------------------|-------------------------------------------------|
 | `source`              | `suspend MutablePaginator<T>.(UInt) -> List<T>` | Data source lambda                              |
+| `logger`              | `Logger`                                        | Logging interface (`NoOpLogger` by default)     |
 | `capacity`            | `Int` (read-only, set via `resize()`)           | Expected items per page                         |
 | `isCapacityUnlimited` | `Boolean`                                       | `true` if `capacity == 0`                       |
 | `pages`               | `List<UInt>`                                    | All cached page numbers (sorted)                |

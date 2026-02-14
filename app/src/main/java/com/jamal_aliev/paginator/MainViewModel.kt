@@ -1,5 +1,6 @@
 package com.jamal_aliev.paginator
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -10,6 +11,7 @@ import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isRealProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
+import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +42,7 @@ class MainViewModel : ViewModel() {
             )
         )
         recyclingBookmark = true
+        logger = AndroidLogger
     }
 
     init {
@@ -213,3 +216,9 @@ class PreviousProgressState(
     page = page,
     data = data,
 )
+
+object AndroidLogger : PaginatorLogger {
+    override fun log(tag: String, message: String) {
+        Log.d(tag, message)
+    }
+}

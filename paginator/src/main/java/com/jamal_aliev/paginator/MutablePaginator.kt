@@ -57,6 +57,7 @@ open class MutablePaginator<T>(
         pageToRemove: UInt,
         silently: Boolean = false,
     ): PageState<T>? {
+        logger.log(TAG, "removeState: page=$pageToRemove")
 
         fun collapse(startPage: UInt, compression: Int) {
             var currentState: PageState<T> = checkNotNull(
@@ -187,6 +188,7 @@ open class MutablePaginator<T>(
         index: Int,
         silently: Boolean = false
     ) {
+        logger.log(TAG, "setElement: page=$page index=$index")
         val pageState = cache.getValue(page)
         setState(
             state = pageState.copy(
@@ -229,6 +231,7 @@ open class MutablePaginator<T>(
         index: Int,
         silently: Boolean = false,
     ): T {
+        logger.log(TAG, "removeElement: page=$page index=$index")
         val pageState: PageState<T> = requireNotNull(
             value = getStateOf(page)
         ) { "page-$page was not created" }
@@ -309,6 +312,7 @@ open class MutablePaginator<T>(
         silently: Boolean = false,
         initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ) {
+        logger.log(TAG, "addAllElements: targetPage=$targetPage index=$index count=${elements.size}")
         val targetState: PageState<T> =
             (getStateOf(targetPage) ?: initPageState?.invoke(targetPage, mutableListOf()))
                 ?: throw IndexOutOfBoundsException(
@@ -441,6 +445,7 @@ open class MutablePaginator<T>(
     ) {
         if (this.capacity == capacity) return
         require(capacity >= 0) { "capacity must be greater or equal than zero" }
+        logger.log(TAG, "resize: capacity=$capacity resize=$resize")
         this.capacity = capacity
 
         if (resize && capacity > 0) {
@@ -486,6 +491,7 @@ open class MutablePaginator<T>(
         }
     }
 
+
     /**
      * Releases all resources and resets the paginator to its initial (unconfigured) state.
      *
@@ -502,6 +508,7 @@ open class MutablePaginator<T>(
         capacity: Int = DEFAULT_CAPACITY,
         silently: Boolean = false
     ) {
+        logger.log(TAG, "release")
         cache.clear()
         bookmarks.clear()
         bookmarks.add(BookmarkUInt(page = 1u))

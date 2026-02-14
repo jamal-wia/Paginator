@@ -20,6 +20,8 @@ import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.logger.NoOpLogger
+import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
@@ -67,6 +69,18 @@ import kotlin.math.max
 open class Paginator<T>(
     var source: suspend Paginator<T>.(page: UInt) -> List<T>
 ) : Comparable<Paginator<*>> {
+
+    /**
+     * Logger for observing paginator operations.
+     *
+     * Set a custom [PaginatorLogger] implementation to receive logs about navigation,
+     * state changes, and element-level operations. By default, [NoOpLogger] is used,
+     * which discards all messages (zero overhead).
+     *
+     * @see PaginatorLogger
+     * @see NoOpLogger
+     */
+    var logger: PaginatorLogger = NoOpLogger
 
     /**
      * The expected number of items per page.
@@ -475,6 +489,7 @@ open class Paginator<T>(
         initErrorState: InitializerErrorPage<T> = initializerErrorPage
     ): Pair<Bookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
+        logger.log(TAG, "jumpForward: recycling=$recycling")
 
         var bookmark: Bookmark? = bookmarkIterator
             .takeIf { it.hasNext() }
@@ -501,6 +516,7 @@ open class Paginator<T>(
             )
         }
 
+        logger.log(TAG, "jumpForward: no bookmark available")
         return null
     }
 
@@ -546,6 +562,7 @@ open class Paginator<T>(
         initErrorState: InitializerErrorPage<T> = initializerErrorPage
     ): Pair<Bookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
+        logger.log(TAG, "jumpBack: recycling=$recycling")
 
         var bookmark: Bookmark? = bookmarkIterator
             .takeIf { it.hasPrevious() }
@@ -572,6 +589,7 @@ open class Paginator<T>(
             )
         }
 
+        logger.log(TAG, "jumpBack: no bookmark available")
         return null
     }
 
@@ -637,6 +655,7 @@ open class Paginator<T>(
         if (lockJump) throw JumpWasLockedException()
 
         require(bookmark.page > 0u) { "bookmark.page should be greater than 0" }
+        logger.log(TAG, "jump: page=${bookmark.page}")
 
         if (exceedsFinal(bookmark.page, finalPage)) {
             throw FinalPageExceededException(
@@ -650,6 +669,7 @@ open class Paginator<T>(
             expandStartContextPage(probablySuccessBookmarkPage)
             expandEndContextPage(probablySuccessBookmarkPage)
             if (!silentlyResult) snapshot()
+            logger.log(TAG, "jump: page=${bookmark.page} cache hit")
             return bookmark to probablySuccessBookmarkPage
         }
 
@@ -695,6 +715,7 @@ open class Paginator<T>(
                 snapshot()
             }
 
+            logger.log(TAG, "jump: page=${bookmark.page} result=${resultState::class.simpleName}")
             return bookmark to resultState
         }
     }
@@ -757,7 +778,9 @@ open class Paginator<T>(
         initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
     ): PageState<T> = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
+        logger.log(TAG, "goNextPage: endContextPage=$endContextPage")
         if (!isStarted) {
+            logger.log(TAG, "goNextPage: not started, jumping to page 1")
             val pageState: PageState<T> = jump(
                 bookmark = BookmarkUInt(page = 1u),
                 silentlyLoading = silentlyLoading,
@@ -843,6 +866,7 @@ open class Paginator<T>(
                 snapshot()
             }
 
+            logger.log(TAG, "goNextPage: page=$nextPage result=${resultState::class.simpleName}")
             return@coroutineScope resultState
         }
     }
@@ -900,6 +924,7 @@ open class Paginator<T>(
         initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
     ): PageState<T> = coroutineScope {
         if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
+        logger.log(TAG, "goPreviousPage: startContextPage=$startContextPage")
         check(isStarted) {
             "startContextPage=0 or endContextPage=0 so paginator was not jumped (started). " +
                     "First of all paginator must be jumped (started). " +
@@ -970,6 +995,7 @@ open class Paginator<T>(
                 snapshot()
             }
 
+            logger.log(TAG, "goPreviousPage: page=$previousPage result=${resulState::class.simpleName}")
             return@coroutineScope resulState
         }
     }
@@ -1017,6 +1043,7 @@ open class Paginator<T>(
         initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
     ): Unit = coroutineScope {
         if (lockRestart) throw RestartWasLockedException()
+        logger.log(TAG, "restart")
 
         val firstPage = cache.getValue(1u)
         cache.clear()
@@ -1052,6 +1079,7 @@ open class Paginator<T>(
             )
             if (enableCacheFlow) repeatCacheFlow()
             if (!silentlyResult) snapshot(1u..1u)
+            logger.log(TAG, "restart: result=${resultPageState::class.simpleName}")
         }
     }
 
@@ -1104,6 +1132,7 @@ open class Paginator<T>(
         initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
     ): Unit = coroutineScope {
         if (lockRefresh) throw RefreshWasLockedException()
+        logger.log(TAG, "refresh: pages=$pages")
 
         pages.forEach { page ->
             if (!loadGuard.invoke(page, cache[page])) {
@@ -1117,8 +1146,12 @@ open class Paginator<T>(
                 silently = true
             )
         }
-        if (enableCacheFlow) repeatCacheFlow()
-        if (!loadingSilently) snapshot()
+        if (enableCacheFlow) {
+            repeatCacheFlow()
+        }
+        if (!loadingSilently) {
+            snapshot()
+        }
 
         pages.map { page ->
             async {
@@ -1139,6 +1172,7 @@ open class Paginator<T>(
 
         if (enableCacheFlow) repeatCacheFlow()
         if (!finalSilently) snapshot()
+        logger.log(TAG, "refresh: pages=$pages completed")
     }
 
     /**
@@ -1173,8 +1207,10 @@ open class Paginator<T>(
         noinline initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
         noinline initErrorState: InitializerErrorPage<T> = initializerErrorPage
     ): PageState<T> {
+        logger.log(TAG, "loadOrGetPageState: page=$page forceLoading=$forceLoading")
         val cachedState: PageState<T>? = getStateOf(page)
         if (!forceLoading && isFilledSuccessState(cachedState)) {
+            logger.log(TAG, "loadOrGetPageState: page=$page cachedState(isFilledSuccessState)=$cachedState")
             return cachedState
         }
         loading.invoke(page, cachedState)
@@ -1183,11 +1219,14 @@ open class Paginator<T>(
                 source.invoke(this, page)
                     .toMutableList()
             if (data.isEmpty()) {
+                logger.log(TAG, "loadOrGetPageState: page=$page data.isEmpty()")
                 initEmptyState.invoke(page, data)
             } else {
+                logger.log(TAG, "loadOrGetPageState: page=$page data.isNotEmpty()")
                 initSuccessState.invoke(page, data)
             }
         } catch (exception: Exception) {
+            logger.log(TAG, "loadOrGetPageState: page=$page exception=$exception")
             initErrorState.invoke(exception, page, cachedState?.data.orEmpty())
         }
     }
@@ -1199,6 +1238,7 @@ open class Paginator<T>(
      * @return The cached [PageState], or `null` if the page is not in the cache.
      */
     fun getStateOf(page: UInt): PageState<T>? {
+        logger.log(TAG, "getStateOf: page=$page")
         return cache[page]
     }
 
@@ -1215,6 +1255,7 @@ open class Paginator<T>(
         state: PageState<T>,
         silently: Boolean = false
     ) {
+        logger.log(TAG, "setState: page=${state.page}")
         cache[state.page] = state
         if (!silently) {
             snapshot()
@@ -1384,6 +1425,7 @@ open class Paginator<T>(
     override fun equals(other: Any?): Boolean = this === other
 
     companion object {
+        const val TAG = "Paginator"
         const val DEFAULT_CAPACITY = 20
         const val UNLIMITED_CAPACITY = 0
     }
