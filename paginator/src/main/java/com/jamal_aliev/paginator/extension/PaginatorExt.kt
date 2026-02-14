@@ -1,6 +1,7 @@
 package com.jamal_aliev.paginator.extension
 
 import com.jamal_aliev.paginator.MutablePaginator
+import com.jamal_aliev.paginator.Paginator
 import com.jamal_aliev.paginator.exception.LoadGuardedException
 import com.jamal_aliev.paginator.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
@@ -14,7 +15,7 @@ import com.jamal_aliev.paginator.page.PageState
  *
  * @param action The action to be performed on each PageState.
  */
-inline fun <T> MutablePaginator<T>.foreEach(
+inline fun <T> Paginator<T>.foreEach(
     action: (PageState<T>) -> Unit
 ) {
     for (state in this) {
@@ -50,7 +51,7 @@ inline fun <T> MutablePaginator<T>.foreEach(
  *
  * @return The original list of page states (`pageStates`) after iteration completes.
  */
-inline fun <T> MutablePaginator<T>.smartForEach(
+inline fun <T> Paginator<T>.smartForEach(
     initialIndex: (list: List<PageState<T>>) -> Int = { 0 },
     step: (index: Int) -> Int = { it + 1 },
     actionAndContinue: (
@@ -77,7 +78,7 @@ inline fun <T> MutablePaginator<T>.smartForEach(
  * @param predicate The predicate to match elements.
  * @return A pair containing the page number and index of the first matching element, or null if none found.
  */
-inline fun <T> MutablePaginator<T>.indexOfFirst(
+inline fun <T> Paginator<T>.indexOfFirst(
     predicate: (T) -> Boolean
 ): Pair<UInt, Int>? {
     for (page in pageStates) {
@@ -95,7 +96,7 @@ inline fun <T> MutablePaginator<T>.indexOfFirst(
  * @return A pair containing the page number and index of the first matching element, or null if none found.
  * @throws IllegalArgumentException if the page is not found.
  */
-inline fun <T> MutablePaginator<T>.indexOfFirst(
+inline fun <T> Paginator<T>.indexOfFirst(
     page: UInt,
     predicate: (T) -> Boolean
 ): Pair<UInt, Int>? {
@@ -114,7 +115,7 @@ inline fun <T> MutablePaginator<T>.indexOfFirst(
  * @param predicate The predicate to match elements.
  * @return A pair containing the page number and index of the last matching element, or null if none found.
  */
-inline fun <T> MutablePaginator<T>.indexOfLast(
+inline fun <T> Paginator<T>.indexOfLast(
     predicate: (T) -> Boolean
 ): Pair<UInt, Int>? {
     for (page in pageStates.reversed()) {
@@ -132,7 +133,7 @@ inline fun <T> MutablePaginator<T>.indexOfLast(
  * @return A pair containing the page number and index of the last matching element, or null if none found.
  * @throws IllegalArgumentException if the page is not found.
  */
-inline fun <T> MutablePaginator<T>.indexOfLast(
+inline fun <T> Paginator<T>.indexOfLast(
     page: UInt,
     predicate: (T) -> Boolean
 ): Pair<UInt, Int>? {
@@ -164,7 +165,7 @@ inline fun <T> MutablePaginator<T>.indexOfLast(
  * @return The last PageState encountered while moving forward that still satisfies [predicate],
  * or null if the starting page is null or fails the predicate.
  */
-inline fun <T> MutablePaginator<T>.walkForwardWhile(
+inline fun <T> Paginator<T>.walkForwardWhile(
     pivotState: PageState<T>?,
     predicate: (PageState<T>) -> Boolean = { true }
 ): PageState<T>? {
@@ -202,7 +203,7 @@ inline fun <T> MutablePaginator<T>.walkForwardWhile(
  * @return The last PageState encountered while moving backward that still satisfies [predicate],
  * or null if the starting page is null or fails the predicate.
  */
-inline fun <T> MutablePaginator<T>.walkBackwardWhile(
+inline fun <T> Paginator<T>.walkBackwardWhile(
     pivotState: PageState<T>?,
     predicate: (PageState<T>) -> Boolean = { true }
 ): PageState<T>? {
@@ -268,7 +269,7 @@ fun <T> MutablePaginator<T>.addElement(
     )
 }
 
-inline fun <T> MutablePaginator<T>.getElement(
+inline fun <T> Paginator<T>.getElement(
     predicate: (T) -> Boolean
 ): T? {
     this.smartForEach { _, _, pageState: PageState<T> ->
@@ -326,7 +327,7 @@ inline fun <T> MutablePaginator<T>.setElement(
  * @throws RefreshWasLockedException If refresh is locked.
  * @throws LoadGuardedException If [loadGuard] returns `false` for any page.
  */
-suspend fun <T> MutablePaginator<T>.refreshAll(
+suspend fun <T> Paginator<T>.refreshAll(
     loadingSilently: Boolean = false,
     finalSilently: Boolean = false,
     loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
