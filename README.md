@@ -24,7 +24,7 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - [Quick Start](#quick-start)
 - [Core Concepts](#core-concepts)
     - [PageState](#pagestate)
-    - [MutablePaginator](#mutablepaginator)
+    - [Paginator vs MutablePaginator](#paginator-vs-mutablepaginator)
     - [Context Window](#context-window)
     - [Bookmarks](#bookmarks)
     - [Capacity & Incomplete Pages](#capacity--incomplete-pages)
@@ -36,6 +36,7 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
     - [jumpForward / jumpBack](#jumpforward--jumpback)
     - [restart](#restart)
     - [refresh](#refresh)
+- [Dirty Pages](#dirty-pages)
 - [Reactive State](#reactive-state)
     - [Snapshot Flow](#snapshot-flow)
     - [Cache Flow](#cache-flow)
@@ -71,6 +72,11 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - **Capacity management** -- resize pages on the fly with automatic data redistribution
 - **Custom PageState subclasses** -- extend `SuccessPage`, `ErrorPage`, `ProgressPage`, or
   `EmptyPage` with your own types via initializer lambdas
+- **Dirty pages** -- mark pages as "dirty" so they are automatically refreshed (fire-and-forget) on
+  the next navigation (`goNextPage`, `goPreviousPage`, `jump`). CRUD operations can also mark pages
+  dirty via the `isDirty` flag
+- **Two-tier API** -- `Paginator` (read-only navigation, dirty tracking, release) and
+  `MutablePaginator` (element-level CRUD, resize, public `setState`)
 - **Lock flags** -- prevent specific operations at runtime (`lockJump`, `lockGoNextPage`,
   `lockGoPreviousPage`, `lockRestart`, `lockRefresh`)
 - **Parallel loading** -- preload multiple pages concurrently with `loadOrGetPageState`
@@ -186,13 +192,35 @@ class MyCustomProgress<T>(
 ) : PageState.ProgressPage<T>(page, data)
 ```
 
-### MutablePaginator
+### Paginator vs MutablePaginator
 
-`MutablePaginator<T>` is the main class. It manages a cache of `PageState<T>` objects keyed by page
-number, handles navigation logic, and emits state updates via Flows.
+The library provides two classes with different levels of access:
+
+| | `Paginator<T>` | `MutablePaginator<T>` |
+|---|---|---|
+| **Role** | Read-only base class | Full-featured mutable extension |
+| **Navigation** | `jump`, `goNextPage`, `goPreviousPage`, `restart`, `refresh` | Inherits all from `Paginator` |
+| **State access** | `getStateOf`, `getElement`, `scan`, `snapshot` | `setState` (public), `removeState` |
+| **CRUD** | -- | `setElement`, `removeElement`, `addAllElements`, `replaceAllElement` |
+| **Capacity** | Read-only `capacity` | `resize()` |
+| **Dirty pages** | `markDirty`, `clearDirty`, `isDirty` | Inherits + `isDirty` param on CRUD ops |
+| **Lifecycle** | `release()` | Inherits |
+
+**When to use `Paginator`:** Use it when you only need to navigate and observe pages (e.g., a
+read-only list screen). It keeps `setState` protected, preventing accidental cache mutations from
+outside the class hierarchy.
+
+**When to use `MutablePaginator`:** Use it when you need element-level CRUD, capacity resizing, or
+direct state manipulation. Most use cases will use this class.
 
 ```kotlin
+// Most common: full-featured paginator
 val paginator = MutablePaginator<String>(source = { page ->
+    api.fetchItems(page.toInt())
+})
+
+// Read-only: only navigation, no element mutations
+val readOnlyPaginator = Paginator<String>(source = { page ->
     api.fetchItems(page.toInt())
 })
 ```
@@ -344,6 +372,66 @@ Use the extension `refreshAll()` to refresh every cached page.
 
 ---
 
+## Dirty Pages
+
+Pages can be marked as **dirty** to indicate that their data is stale and needs to be refreshed.
+When a navigation function (`jump`, `goNextPage`, `goPreviousPage`) completes, it automatically
+checks for dirty pages within the current context window (`startContextPage..endContextPage`) and
+launches a **fire-and-forget** refresh for them in parallel.
+
+### Marking Pages Dirty
+
+```kotlin
+// Mark a single page
+paginator.markDirty(3u)
+
+// Mark multiple pages
+paginator.markDirty(listOf(1u, 2u, 3u))
+
+// CRUD operations can also mark the affected page as dirty
+paginator.setElement(updatedItem, page = 3u, index = 0, isDirty = true)
+paginator.removeElement(page = 3u, index = 2, isDirty = true)
+paginator.addAllElements(listOf(newItem), targetPage = 3u, index = 0, isDirty = true)
+```
+
+### Clearing Dirty Flags
+
+```kotlin
+// Clear a single page
+paginator.clearDirty(3u)
+
+// Clear multiple pages
+paginator.clearDirty(listOf(1u, 2u))
+
+// Clear all dirty flags
+paginator.clearAllDirty()
+```
+
+Dirty flags are also automatically cleared:
+- After `refresh()` completes for the refreshed pages
+- After `release()` resets the paginator
+
+### Querying Dirty State
+
+```kotlin
+paginator.isDirty(3u)     // true if page 3 is dirty
+paginator.dirtyPages      // Set<UInt> snapshot of all dirty page numbers
+```
+
+### How It Works
+
+When navigation completes (e.g., `goNextPage` loads page 5 successfully):
+
+1. The paginator checks `dirtyPages` for pages in `startContextPage..endContextPage`
+2. If any dirty pages are found, they are removed from the dirty set
+3. A `refresh(pages = dirtyInContext)` is launched in a separate coroutine (fire-and-forget)
+4. The navigation function returns immediately -- it does **not** wait for the dirty refresh
+
+This ensures the user sees the navigation result instantly while stale pages are silently refreshed
+in the background.
+
+---
+
 ## Reactive State
 
 ### Snapshot Flow
@@ -406,6 +494,10 @@ paginator.replaceAllElement(
 When removing elements causes a page to drop below `capacity`, items are pulled from the next page
 to fill the gap. When adding elements causes overflow beyond `capacity`, excess items cascade to
 subsequent pages.
+
+All mutating operations (`setElement`, `removeElement`, `addAllElements`) accept an optional
+`isDirty: Boolean = false` parameter. When set to `true`, the affected page is marked as dirty and
+will be automatically refreshed on the next navigation (see [Dirty Pages](#dirty-pages)).
 
 ---
 
@@ -494,22 +586,26 @@ val paginator = MutablePaginator<String>(source = { page ->
 
 ### Logged Operations
 
-| Operation        | Example message                                   |
-|------------------|---------------------------------------------------|
-| `jump`           | `jump: page=5`                                    |
-| `jumpForward`    | `jumpForward: recycling=true`                     |
-| `jumpBack`       | `jumpBack: recycling=false`                       |
-| `goNextPage`     | `goNextPage: page=3 result=SuccessPage`           |
-| `goPreviousPage` | `goPreviousPage: page=1 result=SuccessPage`       |
-| `restart`        | `restart`                                         |
-| `refresh`        | `refresh: pages=[1, 2, 3]`                        |
-| `setState`       | `setState: page=2 type=SuccessPage silently=false` |
-| `setElement`     | `setElement: page=1 index=0`                      |
-| `removeElement`  | `removeElement: page=2 index=3`                   |
-| `addAllElements` | `addAllElements: targetPage=1 index=0 count=5`    |
-| `removeState`    | `removeState: page=3`                             |
-| `resize`         | `resize: capacity=10 resize=true`                 |
-| `release`        | `release`                                         |
+| Operation                     | Example message                                            |
+|-------------------------------|------------------------------------------------------------|
+| `jump`                        | `jump: page=5`                                             |
+| `jumpForward`                 | `jumpForward: recycling=true`                              |
+| `jumpBack`                    | `jumpBack: recycling=false`                                |
+| `goNextPage`                  | `goNextPage: page=3 result=SuccessPage`                    |
+| `goPreviousPage`              | `goPreviousPage: page=1 result=SuccessPage`                |
+| `restart`                     | `restart`                                                  |
+| `refresh`                     | `refresh: pages=[1, 2, 3]`                                 |
+| `setState`                    | `setState: page=2`                                         |
+| `setElement`                  | `setElement: page=1 index=0 isDirty=false`                 |
+| `removeElement`               | `removeElement: page=2 index=3 isDirty=false`              |
+| `addAllElements`              | `addAllElements: targetPage=1 index=0 count=5 isDirty=false` |
+| `removeState`                 | `removeState: page=3`                                      |
+| `resize`                      | `resize: capacity=10 resize=true`                          |
+| `release`                     | `release`                                                  |
+| `markDirty`                   | `markDirty: page=3`                                        |
+| `clearDirty`                  | `clearDirty: page=3`                                       |
+| `clearAllDirty`               | `clearAllDirty`                                            |
+| `refreshDirtyPagesInContext`  | `refreshDirtyPagesInContext: pages=[2, 3]`                 |
 
 ---
 
@@ -683,68 +779,78 @@ fun PaginatedList(pages: List<PageState<String>>) {
 
 ## API Reference
 
-### MutablePaginator Properties
+### Paginator Properties
 
-| Property              | Type                                            | Description                                     |
-|-----------------------|-------------------------------------------------|-------------------------------------------------|
-| `source`              | `suspend MutablePaginator<T>.(UInt) -> List<T>` | Data source lambda                              |
-| `logger`              | `Logger`                                        | Logging interface (`NoOpLogger` by default)     |
-| `capacity`            | `Int` (read-only, set via `resize()`)           | Expected items per page                         |
-| `isCapacityUnlimited` | `Boolean`                                       | `true` if `capacity == 0`                       |
-| `pages`               | `List<UInt>`                                    | All cached page numbers (sorted)                |
-| `pageStates`          | `List<PageState<T>>`                            | All cached page states (sorted)                 |
-| `size`                | `Int`                                           | Number of cached pages                          |
-| `startContextPage`    | `UInt`                                          | Left boundary of visible context                |
-| `endContextPage`      | `UInt`                                          | Right boundary of visible context               |
-| `isStarted`           | `Boolean`                                       | `true` if context pages are set                 |
-| `finalPage`           | `UInt`                                          | Maximum allowed page (default `UInt.MAX_VALUE`) |
-| `bookmarks`           | `MutableList<Bookmark>`                         | Bookmark list (default: page 1)                 |
-| `recyclingBookmark`   | `Boolean`                                       | Wrap-around bookmark iteration                  |
-| `snapshot`            | `Flow<List<PageState<T>>>`                      | Visible page states flow                        |
-| `lockJump`            | `Boolean`                                       | Lock jump operations                            |
-| `lockGoNextPage`      | `Boolean`                                       | Lock forward navigation                         |
-| `lockGoPreviousPage`  | `Boolean`                                       | Lock backward navigation                        |
-| `lockRestart`         | `Boolean`                                       | Lock restart                                    |
-| `lockRefresh`         | `Boolean`                                       | Lock refresh                                    |
+| Property              | Type                           | Description                                     |
+|-----------------------|--------------------------------|-------------------------------------------------|
+| `source`              | `suspend Paginator<T>.(UInt) -> List<T>` | Data source lambda                    |
+| `logger`              | `PaginatorLogger`              | Logging interface (`NoOpLogger` by default)     |
+| `capacity`            | `Int` (read-only)              | Expected items per page                         |
+| `isCapacityUnlimited` | `Boolean`                      | `true` if `capacity == 0`                       |
+| `pages`               | `List<UInt>`                   | All cached page numbers (sorted)                |
+| `pageStates`          | `List<PageState<T>>`           | All cached page states (sorted)                 |
+| `size`                | `Int`                          | Number of cached pages                          |
+| `dirtyPages`          | `Set<UInt>`                    | Snapshot of all dirty page numbers              |
+| `startContextPage`    | `UInt`                         | Left boundary of visible context                |
+| `endContextPage`      | `UInt`                         | Right boundary of visible context               |
+| `isStarted`           | `Boolean`                      | `true` if context pages are set                 |
+| `finalPage`           | `UInt`                         | Maximum allowed page (default `UInt.MAX_VALUE`) |
+| `bookmarks`           | `MutableList<Bookmark>`        | Bookmark list (default: page 1)                 |
+| `recyclingBookmark`   | `Boolean`                      | Wrap-around bookmark iteration                  |
+| `snapshot`            | `Flow<List<PageState<T>>>`     | Visible page states flow                        |
+| `lockJump`            | `Boolean`                      | Lock jump operations                            |
+| `lockGoNextPage`      | `Boolean`                      | Lock forward navigation                         |
+| `lockGoPreviousPage`  | `Boolean`                      | Lock backward navigation                        |
+| `lockRestart`         | `Boolean`                      | Lock restart                                    |
+| `lockRefresh`         | `Boolean`                      | Lock refresh                                    |
 
-### MutablePaginator Methods
+### Paginator Methods
 
-| Method                                   | Returns                         | Description               |
-|------------------------------------------|---------------------------------|---------------------------|
-| `jump(bookmark)`                         | `Pair<Bookmark, PageState<T>>`  | Jump to a page            |
-| `jumpForward()`                          | `Pair<Bookmark, PageState<T>>?` | Next bookmark             |
-| `jumpBack()`                             | `Pair<Bookmark, PageState<T>>?` | Previous bookmark         |
-| `goNextPage()`                           | `PageState<T>`                  | Load next page            |
-| `goPreviousPage()`                       | `PageState<T>`                  | Load previous page        |
-| `restart()`                              | `Unit`                          | Reset and reload page 1   |
-| `refresh(pages)`                         | `Unit`                          | Reload specific pages     |
-| `loadOrGetPageState(page, forceLoading)` | `PageState<T>`                  | Load or get cached page   |
-| `getStateOf(page)`                       | `PageState<T>?`                 | Get cached page state     |
-| `setState(state, silently)`              | `Unit`                          | Set a page state          |
-| `removeState(page, silently)`            | `PageState<T>?`                 | Remove a page             |
-| `getElement(page, index)`                | `T?`                            | Get element by position   |
-| `setElement(element, page, index)`       | `Unit`                          | Replace element           |
-| `removeElement(page, index)`             | `T`                             | Remove element            |
-| `addAllElements(elements, page, index)`  | `Unit`                          | Insert elements           |
-| `replaceAllElement(provider, predicate)` | `Unit`                          | Bulk replace              |
-| `isFilledSuccessState(state)`            | `Boolean`                       | Check if page is complete |
-| `snapshot(pageRange?)`                   | `Unit`                          | Emit snapshot             |
-| `scan(pagesRange)`                       | `List<PageState<T>>`            | Get pages in range        |
-| `walkWhile(pivot, next, predicate)`      | `PageState<T>?`                 | Traverse pages            |
-| `findNearContextPage(start, end)`        | `Unit`                          | Find nearest context      |
-| `asFlow()`                               | `Flow<Map<UInt, PageState<T>>>` | Full cache flow           |
-| `resize(capacity, resize, silently)`     | `Unit`                          | Change capacity           |
-| `release(capacity, silently)`            | `Unit`                          | Full reset                |
+| Method                                   | Returns                         | Description                        |
+|------------------------------------------|---------------------------------|------------------------------------|
+| `jump(bookmark)`                         | `Pair<Bookmark, PageState<T>>`  | Jump to a page                     |
+| `jumpForward()`                          | `Pair<Bookmark, PageState<T>>?` | Next bookmark                      |
+| `jumpBack()`                             | `Pair<Bookmark, PageState<T>>?` | Previous bookmark                  |
+| `goNextPage()`                           | `PageState<T>`                  | Load next page                     |
+| `goPreviousPage()`                       | `PageState<T>`                  | Load previous page                 |
+| `restart()`                              | `Unit`                          | Reset and reload page 1            |
+| `refresh(pages)`                         | `Unit`                          | Reload specific pages              |
+| `loadOrGetPageState(page, forceLoading)` | `PageState<T>`                  | Load or get cached page            |
+| `getStateOf(page)`                       | `PageState<T>?`                 | Get cached page state              |
+| `getElement(page, index)`                | `T?`                            | Get element by position            |
+| `markDirty(page)` / `markDirty(pages)`   | `Unit`                          | Mark page(s) as dirty              |
+| `clearDirty(page)` / `clearDirty(pages)` | `Unit`                          | Remove dirty flag from page(s)     |
+| `clearAllDirty()`                        | `Unit`                          | Remove all dirty flags             |
+| `isDirty(page)`                          | `Boolean`                       | Check if page is dirty             |
+| `isFilledSuccessState(state)`            | `Boolean`                       | Check if page is complete          |
+| `snapshot(pageRange?)`                   | `Unit`                          | Emit snapshot                      |
+| `scan(pagesRange)`                       | `List<PageState<T>>`            | Get pages in range                 |
+| `walkWhile(pivot, next, predicate)`      | `PageState<T>?`                 | Traverse pages                     |
+| `findNearContextPage(start, end)`        | `Unit`                          | Find nearest context               |
+| `asFlow()`                               | `Flow<Map<UInt, PageState<T>>>` | Full cache flow                    |
+| `release(capacity, silently)`            | `Unit`                          | Full reset                         |
+
+### MutablePaginator Methods (additional)
+
+| Method                                   | Returns          | Description                              |
+|------------------------------------------|------------------|------------------------------------------|
+| `setState(state, silently)`              | `Unit`           | Set a page state (public)                |
+| `removeState(page, silently)`            | `PageState<T>?`  | Remove a page                            |
+| `setElement(element, page, index, isDirty)` | `Unit`        | Replace element (optionally mark dirty)  |
+| `removeElement(page, index, isDirty)`    | `T`              | Remove element (optionally mark dirty)   |
+| `addAllElements(elements, page, index, isDirty)` | `Unit`   | Insert elements (optionally mark dirty)  |
+| `replaceAllElement(provider, predicate)` | `Unit`           | Bulk replace                             |
+| `resize(capacity, resize, silently)`     | `Unit`           | Change capacity                          |
 
 ### Operators
 
-| Operator                 | Description          |
-|--------------------------|----------------------|
-| `paginator[page]`        | Get page state       |
-| `paginator[page, index]` | Get element          |
-| `paginator += pageState` | Set page state       |
-| `paginator -= page`      | Remove page          |
-| `page in paginator`      | Check if page exists |
+| Operator                 | Class               | Description          |
+|--------------------------|---------------------|----------------------|
+| `paginator[page]`        | `Paginator`         | Get page state       |
+| `paginator[page, index]` | `Paginator`         | Get element          |
+| `paginator += pageState` | `MutablePaginator`  | Set page state       |
+| `paginator -= page`      | `MutablePaginator`  | Remove page          |
+| `page in paginator`      | `Paginator`         | Check if page exists |
 
 ---
 

@@ -27,6 +27,7 @@ import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 import kotlin.math.max
@@ -651,7 +653,7 @@ open class Paginator<T>(
         initEmptyState: InitializerEmptyPage<T> = initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = initializerErrorPage
-    ): Pair<Bookmark, PageState<T>> {
+    ): Pair<Bookmark, PageState<T>> = coroutineScope {
         if (lockJump) throw JumpWasLockedException()
 
         require(bookmark.page > 0u) { "bookmark.page should be greater than 0" }
@@ -670,7 +672,8 @@ open class Paginator<T>(
             expandEndContextPage(probablySuccessBookmarkPage)
             if (!silentlyResult) snapshot()
             logger.log(TAG, "jump: page=${bookmark.page} cache hit")
-            return bookmark to probablySuccessBookmarkPage
+            refreshDirtyPagesInContext()
+            return@coroutineScope bookmark to probablySuccessBookmarkPage
         }
 
         if (!loadGuard.invoke(bookmark.page, probablySuccessBookmarkPage)) {
@@ -680,7 +683,7 @@ open class Paginator<T>(
         startContextPage = bookmark.page
         endContextPage = bookmark.page
 
-        loadOrGetPageState(
+        val resultState: PageState<T> = loadOrGetPageState(
             page = bookmark.page,
             forceLoading = true,
             loading = { page: UInt, pageState: PageState<T>? ->
@@ -700,24 +703,24 @@ open class Paginator<T>(
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
             initErrorState = initErrorState
-        ).also { resultState: PageState<T> ->
-            setState(
-                state = resultState,
-                silently = true
-            )
-            expandStartContextPage(getStateOf(startContextPage))
-            expandEndContextPage(getStateOf(endContextPage))
+        )
+        setState(
+            state = resultState,
+            silently = true
+        )
+        expandStartContextPage(getStateOf(startContextPage))
+        expandEndContextPage(getStateOf(endContextPage))
 
-            if (enableCacheFlow) {
-                repeatCacheFlow()
-            }
-            if (!silentlyResult) {
-                snapshot()
-            }
-
-            logger.log(TAG, "jump: page=${bookmark.page} result=${resultState::class.simpleName}")
-            return bookmark to resultState
+        if (enableCacheFlow) {
+            repeatCacheFlow()
         }
+        if (!silentlyResult) {
+            snapshot()
+        }
+
+        logger.log(TAG, "jump: page=${bookmark.page} result=${resultState::class.simpleName}")
+        refreshDirtyPagesInContext()
+        bookmark to resultState
     }
 
     /**
@@ -867,6 +870,7 @@ open class Paginator<T>(
             }
 
             logger.log(TAG, "goNextPage: page=$nextPage result=${resultState::class.simpleName}")
+            refreshDirtyPagesInContext()
             return@coroutineScope resultState
         }
     }
@@ -995,7 +999,11 @@ open class Paginator<T>(
                 snapshot()
             }
 
-            logger.log(TAG, "goPreviousPage: page=$previousPage result=${resulState::class.simpleName}")
+            logger.log(
+                TAG,
+                "goPreviousPage: page=$previousPage result=${resulState::class.simpleName}"
+            )
+            refreshDirtyPagesInContext()
             return@coroutineScope resulState
         }
     }
@@ -1052,6 +1060,8 @@ open class Paginator<T>(
             silently = true
         )
 
+        clearAllDirty()
+
         if (!loadGuard.invoke(1u, firstPage)) {
             throw LoadGuardedException(attemptedPage = 1u)
         }
@@ -1062,12 +1072,18 @@ open class Paginator<T>(
             page = 1u,
             forceLoading = true,
             loading = { page, pageState ->
+                val dataOfState: List<T> = pageState?.data.orEmpty()
+                val progressState: ProgressPage<T> = initProgressState.invoke(page, dataOfState)
                 setState(
-                    state = initProgressState.invoke(page, pageState?.data.orEmpty()),
+                    state = progressState,
                     silently = true
                 )
-                if (enableCacheFlow) repeatCacheFlow()
-                if (!silentlyLoading) snapshot(1u..1u)
+                if (enableCacheFlow) {
+                    repeatCacheFlow()
+                }
+                if (!silentlyLoading) {
+                    snapshot(1u..1u)
+                }
             },
             initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
@@ -1077,8 +1093,12 @@ open class Paginator<T>(
                 state = resultPageState,
                 silently = true
             )
-            if (enableCacheFlow) repeatCacheFlow()
-            if (!silentlyResult) snapshot(1u..1u)
+            if (enableCacheFlow) {
+                repeatCacheFlow()
+            }
+            if (!silentlyResult) {
+                snapshot(1u..1u)
+            }
             logger.log(TAG, "restart: result=${resultPageState::class.simpleName}")
         }
     }
@@ -1170,8 +1190,14 @@ open class Paginator<T>(
             }
         }.forEach { it.await() }
 
-        if (enableCacheFlow) repeatCacheFlow()
-        if (!finalSilently) snapshot()
+        clearDirty(pages)
+
+        if (enableCacheFlow) {
+            repeatCacheFlow()
+        }
+        if (!finalSilently) {
+            snapshot()
+        }
         logger.log(TAG, "refresh: pages=$pages completed")
     }
 
@@ -1210,7 +1236,10 @@ open class Paginator<T>(
         logger.log(TAG, "loadOrGetPageState: page=$page forceLoading=$forceLoading")
         val cachedState: PageState<T>? = getStateOf(page)
         if (!forceLoading && isFilledSuccessState(cachedState)) {
-            logger.log(TAG, "loadOrGetPageState: page=$page cachedState(isFilledSuccessState)=$cachedState")
+            logger.log(
+                TAG,
+                "loadOrGetPageState: page=$page cachedState(isFilledSuccessState)=$cachedState"
+            )
             return cachedState
         }
         loading.invoke(page, cachedState)
@@ -1230,6 +1259,66 @@ open class Paginator<T>(
             initErrorState.invoke(exception, page, cachedState?.data.orEmpty())
         }
     }
+
+    /** Internal set of page numbers marked as dirty (needing refresh). */
+    private val _dirtyPages: MutableSet<UInt> = mutableSetOf()
+    val dirtyPages: Set<UInt> get() = _dirtyPages.toSet()
+
+    /**
+     * Marks a single page as dirty, scheduling it for refresh on the next navigation.
+     *
+     * @param page The page number to mark as dirty.
+     */
+    fun markDirty(page: UInt) {
+        logger.log(TAG, "markDirty: page=$page")
+        _dirtyPages.add(page)
+    }
+
+    /**
+     * Marks multiple pages as dirty, scheduling them for refresh on the next navigation.
+     *
+     * @param pages The page numbers to mark as dirty.
+     */
+    fun markDirty(pages: List<UInt>) {
+        logger.log(TAG, "markDirty: pages=$pages")
+        _dirtyPages.addAll(pages)
+    }
+
+    /**
+     * Removes the dirty flag from a single page.
+     *
+     * @param page The page number to clear.
+     */
+    fun clearDirty(page: UInt) {
+        logger.log(TAG, "clearDirty: page=$page")
+        _dirtyPages.remove(page)
+    }
+
+    /**
+     * Removes the dirty flag from multiple pages.
+     *
+     * @param pages The page numbers to clear.
+     */
+    fun clearDirty(pages: List<UInt>) {
+        logger.log(TAG, "clearDirty: pages=$pages")
+        _dirtyPages.removeAll(pages.toSet())
+    }
+
+    /**
+     * Removes all dirty flags from all pages.
+     */
+    fun clearAllDirty() {
+        logger.log(TAG, "clearAllDirty")
+        _dirtyPages.clear()
+    }
+
+    /**
+     * Checks whether a specific page is marked as dirty.
+     *
+     * @param page The page number to check.
+     * @return `true` if the page is dirty, `false` otherwise.
+     */
+    fun isDirty(page: UInt): Boolean = page in _dirtyPages
 
     /**
      * Retrieves the cached [PageState] for the given [page] number.
@@ -1251,7 +1340,7 @@ open class Paginator<T>(
      * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
      *   Set to `true` during batch operations to avoid redundant emissions.
      */
-    open fun setState(
+    protected open fun setState(
         state: PageState<T>,
         silently: Boolean = false
     ) {
@@ -1302,6 +1391,29 @@ open class Paginator<T>(
     }
 
     /**
+     * Launches a fire-and-forget refresh for all dirty pages within the current context window.
+     *
+     * Finds pages in [_dirtyPages] that fall within [startContextPage]..[endContextPage],
+     * removes them from the dirty set, and starts a parallel [refresh] for those pages.
+     * The coroutine runs independently — the caller does not wait for its completion.
+     *
+     * This method is called automatically at the end of navigation operations
+     * ([jump], [goNextPage], [goPreviousPage]).
+     */
+    protected fun CoroutineScope.refreshDirtyPagesInContext() {
+        if (_dirtyPages.isEmpty() || !isStarted) return
+        val dirtyInContext: List<UInt> =
+            _dirtyPages.filter { page: UInt ->
+                page in startContextPage..endContextPage
+            }
+        if (dirtyInContext.isEmpty()) return
+        logger.log(TAG, "refreshDirtyPagesInContext: pages=$dirtyInContext")
+        launch {
+            refresh(pages = dirtyInContext, loadingSilently = true)
+        }
+    }
+
+    /**
      * Emits the current visible state to [snapshot] subscribers.
      *
      * Collects all cached pages within the given [pageRange] (or the expanded context window
@@ -1316,10 +1428,29 @@ open class Paginator<T>(
     fun snapshot(pageRange: UIntRange? = null) {
         (pageRange ?: run {
             if (!isStarted) return@run null
-            val min = walkBackwardWhile(cache[startContextPage])?.page
-            val max = walkForwardWhile(cache[endContextPage])?.page
-            return@run if (min != null && max != null) min..max
-            else null
+            var min: UInt? = walkBackwardWhile(
+                pivotState = getStateOf(startContextPage),
+                predicate = { state: PageState<T> ->
+                    isFilledSuccessState(state)
+                }
+            )?.page
+            if (min != null) {
+                min = (min - 1u).coerceAtLeast(1u)
+            } else {
+                return@run null
+            }
+            var max: UInt? = walkForwardWhile(
+                pivotState = getStateOf(endContextPage),
+                predicate = { state: PageState<T> ->
+                    isFilledSuccessState(state)
+                }
+            )?.page
+            if (max != null) {
+                max = (max + 1u).coerceAtMost(finalPage)
+            } else {
+                return@run null
+            }
+            return@run min..max
         })?.let { mPageRange: UIntRange ->
             _snapshot.update { false to emptyList() }
             _snapshot.update { true to scan(mPageRange) }
@@ -1423,6 +1554,40 @@ open class Paginator<T>(
     override fun hashCode(): Int = cache.hashCode()
 
     override fun equals(other: Any?): Boolean = this === other
+
+    /**
+     * Releases all resources and resets the paginator to its initial (unconfigured) state.
+     *
+     * This clears the cache, resets bookmarks to `[page 1]`, resets the context window
+     * to `0u`, sets [finalPage] back to [UInt.MAX_VALUE], unlocks all lock flags,
+     * and sets [capacity] to the given value.
+     *
+     * Call this method when the paginator is no longer needed (e.g., in `ViewModel.onCleared()`).
+     *
+     * @param capacity The capacity to set after release. Defaults to [DEFAULT_CAPACITY].
+     * @param silently If `true`, the empty snapshot is **not** emitted.
+     */
+    fun release(
+        capacity: Int = DEFAULT_CAPACITY,
+        silently: Boolean = false
+    ) {
+        logger.log(TAG, "release")
+        cache.clear()
+        bookmarks.clear()
+        bookmarks.add(BookmarkUInt(page = 1u))
+        bookmarkIterator = bookmarks.listIterator()
+        startContextPage = 0u
+        endContextPage = 0u
+        finalPage = UInt.MAX_VALUE
+        if (!silently) _snapshot.update { true to emptyList() }
+        this.capacity = capacity
+        lockJump = false
+        lockGoNextPage = false
+        lockGoPreviousPage = false
+        lockRestart = false
+        lockRefresh = false
+        _dirtyPages.clear()
+    }
 
     companion object {
         const val TAG = "Paginator"

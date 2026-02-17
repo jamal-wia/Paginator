@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkUInt
 import com.jamal_aliev.paginator.extension.far
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.extension.smartForEach
@@ -8,7 +7,6 @@ import com.jamal_aliev.paginator.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.extension.walkForwardWhile
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.page.PageState
-import kotlinx.coroutines.flow.update
 
 /**
  * A full-featured, mutable pagination manager for Kotlin/Android.
@@ -28,6 +26,21 @@ import kotlinx.coroutines.flow.update
 open class MutablePaginator<T>(
     source: suspend Paginator<T>.(page: UInt) -> List<T>
 ) : Paginator<T>(source) {
+
+    /**
+     * Stores a [PageState] in the cache, replacing any existing state for that page number.
+     *
+     * This is the public version of the protected [Paginator.setState].
+     *
+     * @param state The page state to store.
+     * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
+     */
+    public override fun setState(
+        state: PageState<T>,
+        silently: Boolean
+    ) {
+        super.setState(state, silently)
+    }
 
     /**
      * Removes the state of the specified page from the cache and adjusts surrounding pages and context.
@@ -186,9 +199,10 @@ open class MutablePaginator<T>(
         element: T,
         page: UInt,
         index: Int,
-        silently: Boolean = false
+        silently: Boolean = false,
+        isDirty: Boolean = false
     ) {
-        logger.log(TAG, "setElement: page=$page index=$index")
+        logger.log(TAG, "setElement: page=$page index=$index isDirty=$isDirty")
         val pageState = cache.getValue(page)
         setState(
             state = pageState.copy(
@@ -198,6 +212,8 @@ open class MutablePaginator<T>(
             ),
             silently = true
         )
+
+        if (isDirty) markDirty(page)
 
         if (!silently) {
             val pageBefore = walkBackwardWhile(cache[startContextPage])!!
@@ -230,8 +246,9 @@ open class MutablePaginator<T>(
         page: UInt,
         index: Int,
         silently: Boolean = false,
+        isDirty: Boolean = false,
     ): T {
-        logger.log(TAG, "removeElement: page=$page index=$index")
+        logger.log(TAG, "removeElement: page=$page index=$index isDirty=$isDirty")
         val pageState: PageState<T> = requireNotNull(
             value = getStateOf(page)
         ) { "page-$page was not created" }
@@ -274,6 +291,8 @@ open class MutablePaginator<T>(
             )
         }
 
+        if (isDirty) markDirty(page)
+
         if (!silently) {
             val pageBefore = walkBackwardWhile(cache[startContextPage])!!
             val pageAfter = walkForwardWhile(cache[endContextPage])!!
@@ -310,9 +329,10 @@ open class MutablePaginator<T>(
         targetPage: UInt,
         index: Int,
         silently: Boolean = false,
+        isDirty: Boolean = false,
         initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ) {
-        logger.log(TAG, "addAllElements: targetPage=$targetPage index=$index count=${elements.size}")
+        logger.log(TAG, "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty")
         val targetState: PageState<T> =
             (getStateOf(targetPage) ?: initPageState?.invoke(targetPage, mutableListOf()))
                 ?: throw IndexOutOfBoundsException(
@@ -354,6 +374,8 @@ open class MutablePaginator<T>(
                 rangePageInvalidated.forEach(cache::remove)
             }
         }
+
+        if (isDirty) markDirty(targetPage)
 
         if (!silently) {
             val startState: PageState<T> = checkNotNull(
@@ -491,39 +513,6 @@ open class MutablePaginator<T>(
         }
     }
 
-
-    /**
-     * Releases all resources and resets the paginator to its initial (unconfigured) state.
-     *
-     * This clears the cache, resets bookmarks to `[page 1]`, resets the context window
-     * to `0u`, sets [finalPage] back to [UInt.MAX_VALUE], unlocks all lock flags,
-     * and resizes to [capacity].
-     *
-     * Call this method when the paginator is no longer needed (e.g., in `ViewModel.onCleared()`).
-     *
-     * @param capacity The capacity to set after release. Defaults to [DEFAULT_CAPACITY].
-     * @param silently If `true`, the empty snapshot is **not** emitted.
-     */
-    fun release(
-        capacity: Int = DEFAULT_CAPACITY,
-        silently: Boolean = false
-    ) {
-        logger.log(TAG, "release")
-        cache.clear()
-        bookmarks.clear()
-        bookmarks.add(BookmarkUInt(page = 1u))
-        bookmarkIterator = bookmarks.listIterator()
-        startContextPage = 0u
-        endContextPage = 0u
-        finalPage = UInt.MAX_VALUE
-        if (!silently) _snapshot.update { true to emptyList() }
-        resize(capacity, resize = false, silently = true)
-        lockJump = false
-        lockGoNextPage = false
-        lockGoPreviousPage = false
-        lockRestart = false
-        lockRefresh = false
-    }
 
     operator fun minusAssign(page: UInt) {
         removeState(page)
