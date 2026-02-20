@@ -120,7 +120,7 @@ class MyViewModel : ViewModel() {
 }
 ```
 
-The `source` lambda receives a `UInt` page number and should return a `List<T>`.
+The `source` lambda receives a `Int` page number and should return a `List<T>`.
 
 ### Step 2: Observe and Start
 
@@ -136,7 +136,7 @@ init {
         .launchIn(viewModelScope)
 
     viewModelScope.launch {
-        paginator.jump(bookmark = BookmarkUInt(page = 1u))
+        paginator.jump(bookmark = BookmarkInt(page = 1))
     }
 }
 ```
@@ -173,7 +173,7 @@ override fun onCleared() {
 ### PageState
 
 `PageState<E>` is a sealed class representing the state of a single page. Every page has a
-`page: UInt` number, `data: List<E>` items, and a unique `id: Long`.
+`page: Int` number, `data: List<E>` items, and a unique `id: Long`.
 
 | Type              | Description                                                                              |
 |-------------------|------------------------------------------------------------------------------------------|
@@ -186,7 +186,7 @@ All `PageState` subclasses are `open`, so you can create your own custom types:
 
 ```kotlin
 class MyCustomProgress<T>(
-    page: UInt,
+    page: Int,
     data: List<T>,
     val progressPercent: Int = 0
 ) : PageState.ProgressPage<T>(page, data)
@@ -244,9 +244,9 @@ Bookmarks are predefined page targets for quick navigation:
 ```kotlin
 paginator.bookmarks.addAll(
     listOf(
-        BookmarkUInt(5u),
-        BookmarkUInt(10u),
-        BookmarkUInt(15u),
+        BookmarkInt(5),
+        BookmarkInt(10),
+        BookmarkInt(15),
     )
 )
 paginator.recyclingBookmark = true // Wrap around when reaching the end
@@ -282,7 +282,7 @@ Set `capacity` to `UNLIMITED_CAPACITY` (0) to disable capacity checks entirely.
 Set `finalPage` to enforce an upper boundary on pagination:
 
 ```kotlin
-paginator.finalPage = 20u // Typically from backend metadata
+paginator.finalPage = 20 // Typically from backend metadata
 ```
 
 Any attempt to navigate beyond this page (via `goNextPage`, `jump`, etc.) throws
@@ -364,7 +364,7 @@ Ideal for swipe-to-refresh.
 Reloads specific pages in parallel without clearing the cache:
 
 ```kotlin
-suspend fun refresh(pages: List<UInt>)
+suspend fun refresh(pages: List<Int>)
 ```
 
 Sets all specified pages to `ProgressPage` (preserving cached data), then reloads them concurrently.
@@ -383,25 +383,25 @@ launches a **fire-and-forget** refresh for them in parallel.
 
 ```kotlin
 // Mark a single page
-paginator.markDirty(3u)
+paginator.markDirty(3)
 
 // Mark multiple pages
-paginator.markDirty(listOf(1u, 2u, 3u))
+paginator.markDirty(listOf(1, 2, 3))
 
 // CRUD operations can also mark the affected page as dirty
-paginator.setElement(updatedItem, page = 3u, index = 0, isDirty = true)
-paginator.removeElement(page = 3u, index = 2, isDirty = true)
-paginator.addAllElements(listOf(newItem), targetPage = 3u, index = 0, isDirty = true)
+paginator.setElement(updatedItem, page = 3, index = 0, isDirty = true)
+paginator.removeElement(page = 3, index = 2, isDirty = true)
+paginator.addAllElements(listOf(newItem), targetPage = 3, index = 0, isDirty = true)
 ```
 
 ### Clearing Dirty Flags
 
 ```kotlin
 // Clear a single page
-paginator.clearDirty(3u)
+paginator.clearDirty(3)
 
 // Clear multiple pages
-paginator.clearDirty(listOf(1u, 2u))
+paginator.clearDirty(listOf(1, 2))
 
 // Clear all dirty flags
 paginator.clearAllDirty()
@@ -414,8 +414,8 @@ Dirty flags are also automatically cleared:
 ### Querying Dirty State
 
 ```kotlin
-paginator.isDirty(3u)     // true if page 3 is dirty
-paginator.dirtyPages      // Set<UInt> snapshot of all dirty page numbers
+paginator.isDirty(3)     // true if page 3 is dirty
+paginator.dirtyPages      // Set<Int> snapshot of all dirty page numbers
 ```
 
 ### How It Works
@@ -456,7 +456,7 @@ paginator.snapshot
 For advanced use cases, observe the entire cache:
 
 ```kotlin
-val cacheFlow: Flow<Map<UInt, PageState<T>>> = paginator.asFlow()
+val cacheFlow: Flow<Map<Int, PageState<T>>> = paginator.asFlow()
 ```
 
 This emits the complete cache map (all pages, including those outside the context window).
@@ -469,18 +469,18 @@ The paginator supports CRUD operations on individual items within pages:
 
 ```kotlin
 // Get an element
-val item: T? = paginator.getElement(page = 3u, index = 0)
+val item: T? = paginator.getElement(page = 3, index = 0)
 
 // Set/replace an element
-paginator.setElement(element = updatedItem, page = 3u, index = 0)
+paginator.setElement(element = updatedItem, page = 3, index = 0)
 
 // Remove an element (auto-rebalances pages)
-val removed: T = paginator.removeElement(page = 3u, index = 2)
+val removed: T = paginator.removeElement(page = 3, index = 2)
 
 // Add elements (overflows cascade to next pages)
 paginator.addAllElements(
     elements = listOf(newItem),
-    targetPage = 3u,
+    targetPage = 3,
     index = 0
 )
 
@@ -508,7 +508,7 @@ You can create custom `PageState` subclasses and use them via the initializer la
 ```kotlin
 // Custom progress page with additional metadata
 class DetailedProgress<T>(
-    page: UInt,
+    page: Int,
     data: List<T>,
     val source: String = "network"
 ) : PageState.ProgressPage<T>(page, data)
@@ -521,10 +521,10 @@ paginator.initializerProgressPage = { page, data ->
 
 Available initializer properties:
 
-- `initializerProgressPage: (page: UInt, data: List<T>) -> ProgressPage<T>`
-- `initializerSuccessPage: (page: UInt, data: List<T>) -> SuccessPage<T>`
-- `initializerEmptyPage: (page: UInt, data: List<T>) -> EmptyPage<T>`
-- `initializerErrorPage: (exception: Exception, page: UInt, data: List<T>) -> ErrorPage<T>`
+- `initializerProgressPage: (page: Int, data: List<T>) -> ProgressPage<T>`
+- `initializerSuccessPage: (page: Int, data: List<T>) -> SuccessPage<T>`
+- `initializerEmptyPage: (page: Int, data: List<T>) -> EmptyPage<T>`
+- `initializerErrorPage: (exception: Exception, page: Int, data: List<T>) -> ErrorPage<T>`
 
 Use `isRealProgressState(MyCustomProgress::class)` and similar extension functions to check for
 specific subclasses with smart-casting.
@@ -630,14 +630,14 @@ Distance calculations:
 ```kotlin
 pageA near pageB  // true if pages are 0 or 1 apart
 pageA far pageB   // true if pages are more than 1 apart
-pageA gap pageB   // UInt distance between page numbers
+pageA gap pageB   // Int distance between page numbers
 ```
 
 ### Paginator Extensions
 
 ```kotlin
 // Search for elements
-paginator.indexOfFirst { it.id == targetId }    // Returns Pair<UInt, Int>? (page, index)
+paginator.indexOfFirst { it.id == targetId }    // Returns Pair<Int, Int>? (page, index)
 paginator.indexOfLast { it.name == "test" }     // Search in reverse
 paginator.getElement { it.id == targetId }      // Get first matching element
 
@@ -674,8 +674,8 @@ class PaginatorViewModel : ViewModel() {
         repository.loadPage(page.toInt())
     }).apply {
         resize(capacity = 5, resize = false, silently = true)
-        finalPage = 20u
-        bookmarks.addAll(listOf(BookmarkUInt(5u), BookmarkUInt(10u), BookmarkUInt(15u)))
+        finalPage = 20
+        bookmarks.addAll(listOf(BookmarkInt(5), BookmarkInt(10), BookmarkInt(15)))
         recyclingBookmark = true
         logger = object : Logger {
             override fun log(tag: String, message: String) {
@@ -692,7 +692,7 @@ class PaginatorViewModel : ViewModel() {
             .launchIn(viewModelScope)
 
         viewModelScope.launch {
-            paginator.jump(BookmarkUInt(1u))
+            paginator.jump(BookmarkInt(1))
         }
     }
 
@@ -711,9 +711,9 @@ class PaginatorViewModel : ViewModel() {
     }
 
     // 3. Jump to a user-specified page
-    fun jumpToPage(page: UInt) = viewModelScope.launch {
+    fun jumpToPage(page: Int) = viewModelScope.launch {
         try {
-            paginator.jump(BookmarkUInt(page))
+            paginator.jump(BookmarkInt(page))
         } catch (e: FinalPageExceededException) {
             showError("Page exceeds limit")
         }
@@ -727,7 +727,7 @@ class PaginatorViewModel : ViewModel() {
     fun restart() = viewModelScope.launch { paginator.restart() }
 
     // 6. Retry on error
-    fun retryPage(page: UInt) = viewModelScope.launch {
+    fun retryPage(page: Int) = viewModelScope.launch {
         paginator.refresh(pages = listOf(page))
     }
 
@@ -783,18 +783,18 @@ fun PaginatedList(pages: List<PageState<String>>) {
 
 | Property              | Type                           | Description                                     |
 |-----------------------|--------------------------------|-------------------------------------------------|
-| `source`              | `suspend Paginator<T>.(UInt) -> List<T>` | Data source lambda                    |
+| `source`              | `suspend Paginator<T>.(Int) -> List<T>` | Data source lambda                    |
 | `logger`              | `PaginatorLogger`              | Logging interface (`NoOpLogger` by default)     |
 | `capacity`            | `Int` (read-only)              | Expected items per page                         |
 | `isCapacityUnlimited` | `Boolean`                      | `true` if `capacity == 0`                       |
-| `pages`               | `List<UInt>`                   | All cached page numbers (sorted)                |
+| `pages`               | `List<Int>`                   | All cached page numbers (sorted)                |
 | `pageStates`          | `List<PageState<T>>`           | All cached page states (sorted)                 |
 | `size`                | `Int`                          | Number of cached pages                          |
-| `dirtyPages`          | `Set<UInt>`                    | Snapshot of all dirty page numbers              |
-| `startContextPage`    | `UInt`                         | Left boundary of visible context                |
-| `endContextPage`      | `UInt`                         | Right boundary of visible context               |
+| `dirtyPages`          | `Set<Int>`                    | Snapshot of all dirty page numbers              |
+| `startContextPage`    | `Int`                         | Left boundary of visible context                |
+| `endContextPage`      | `Int`                         | Right boundary of visible context               |
 | `isStarted`           | `Boolean`                      | `true` if context pages are set                 |
-| `finalPage`           | `UInt`                         | Maximum allowed page (default `UInt.MAX_VALUE`) |
+| `finalPage`           | `Int`                         | Maximum allowed page (default `Int.MAX_VALUE`) |
 | `bookmarks`           | `MutableList<Bookmark>`        | Bookmark list (default: page 1)                 |
 | `recyclingBookmark`   | `Boolean`                      | Wrap-around bookmark iteration                  |
 | `snapshot`            | `Flow<List<PageState<T>>>`     | Visible page states flow                        |
@@ -827,7 +827,7 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | `scan(pagesRange)`                       | `List<PageState<T>>`            | Get pages in range                 |
 | `walkWhile(pivot, next, predicate)`      | `PageState<T>?`                 | Traverse pages                     |
 | `findNearContextPage(start, end)`        | `Unit`                          | Find nearest context               |
-| `asFlow()`                               | `Flow<Map<UInt, PageState<T>>>` | Full cache flow                    |
+| `asFlow()`                               | `Flow<Map<Int, PageState<T>>>` | Full cache flow                    |
 | `release(capacity, silently)`            | `Unit`                          | Full reset                         |
 
 ### MutablePaginator Methods (additional)

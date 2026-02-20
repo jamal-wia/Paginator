@@ -11,7 +11,7 @@ package com.jamal_aliev.paginator.exception
  * @param attemptedPage The page number that the paginator attempted to load.
  */
 open class LoadGuardedException(
-    val attemptedPage: UInt
+    val attemptedPage: Int
 ) : Exception(
     "Load guard rejected loading of page $attemptedPage"
 )

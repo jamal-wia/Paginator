@@ -4,7 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkUInt
+import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.extension.isErrorState
@@ -29,16 +29,16 @@ class MainViewModel : ViewModel() {
     val state = _state.asStateFlow()
 
     val paginator = MutablePaginator<String>(source = { page ->
-        SampleRepository.loadPage(page.toInt())
+        SampleRepository.loadPage(page)
     }).apply {
         resize(SampleRepository.PAGE_SIZE, resize = false, silently = true)
-        finalPage = SampleRepository.FINAL_PAGE.toUInt()
+        finalPage = SampleRepository.FINAL_PAGE
         // Default bookmarks already has page 1, add more
         bookmarks.addAll(
             listOf(
-                BookmarkUInt(5u),
-                BookmarkUInt(10u),
-                BookmarkUInt(15u),
+                BookmarkInt(5),
+                BookmarkInt(10),
+                BookmarkInt(15),
             )
         )
         recyclingBookmark = true
@@ -55,7 +55,7 @@ class MainViewModel : ViewModel() {
             .launchIn(viewModelScope)
 
         viewModelScope.launch {
-            paginator.jump(bookmark = BookmarkUInt(1u))
+            paginator.jump(bookmark = BookmarkInt(1))
             _state.update { it.copy(isInitialLoading = false) }
         }
     }
@@ -94,7 +94,7 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 paginator.goNextPage(
-                    initProgressState = { page: UInt, data: List<String> ->
+                    initProgressState = { page: Int, data: List<String> ->
                         NextProgressState(page, data)
                     }
                 )
@@ -110,7 +110,7 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 paginator.goPreviousPage(
-                    initProgressState = { page: UInt, data: List<String> ->
+                    initProgressState = { page: Int, data: List<String> ->
                         PreviousProgressState(page, data)
                     }
                 )
@@ -122,10 +122,10 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun jumpToPage(page: UInt) {
+    fun jumpToPage(page: Int) {
         viewModelScope.launch {
             try {
-                paginator.jump(bookmark = BookmarkUInt(page))
+                paginator.jump(bookmark = BookmarkInt(page))
             } catch (e: FinalPageExceededException) {
                 _state.update { it.copy(errorMessage = "Page ${e.attemptedPage} exceeds final page ${e.finalPage}") }
             } catch (e: Exception) {
@@ -177,7 +177,7 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun refreshPage(page: UInt) {
+    fun refreshPage(page: Int) {
         viewModelScope.launch {
             try {
                 paginator.refresh(pages = listOf(page))
@@ -205,7 +205,7 @@ class MainViewModel : ViewModel() {
 }
 
 class NextProgressState(
-    page: UInt, data: List<String>
+    page: Int, data: List<String>
 ) : PageState.ProgressPage<String>(
     page = page,
     data = data,
@@ -213,7 +213,7 @@ class NextProgressState(
 
 
 class PreviousProgressState(
-    page: UInt, data: List<String>
+    page: Int, data: List<String>
 ) : PageState.ProgressPage<String>(
     page = page,
     data = data,

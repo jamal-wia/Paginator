@@ -7,8 +7,8 @@ package com.jamal_aliev.paginator.exception
  * @param finalPage The final page number allowed.
  */
 class FinalPageExceededException(
-    val attemptedPage: UInt,
-    val finalPage: UInt
+    val attemptedPage: Int,
+    val finalPage: Int
 ) : Exception(
     "Attempted to access page $attemptedPage, which exceeds the final allowed page $finalPage"
 )

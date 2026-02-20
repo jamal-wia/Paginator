@@ -80,7 +80,7 @@ inline fun <T> Paginator<T>.smartForEach(
  */
 inline fun <T> Paginator<T>.indexOfFirst(
     predicate: (T) -> Boolean
-): Pair<UInt, Int>? {
+): Pair<Int, Int>? {
     for (page in pageStates) {
         val result = page.data.indexOfFirst(predicate)
         if (result != -1) return page.page to result
@@ -97,9 +97,9 @@ inline fun <T> Paginator<T>.indexOfFirst(
  * @throws IllegalArgumentException if the page is not found.
  */
 inline fun <T> Paginator<T>.indexOfFirst(
-    page: UInt,
+    page: Int,
     predicate: (T) -> Boolean
-): Pair<UInt, Int>? {
+): Pair<Int, Int>? {
     val pageState = checkNotNull(getStateOf(page)) { "Page $page is not found" }
     for ((i, e) in pageState.data.withIndex()) {
         if (predicate(e)) {
@@ -117,7 +117,7 @@ inline fun <T> Paginator<T>.indexOfFirst(
  */
 inline fun <T> Paginator<T>.indexOfLast(
     predicate: (T) -> Boolean
-): Pair<UInt, Int>? {
+): Pair<Int, Int>? {
     for (page in pageStates.reversed()) {
         val result = page.data.indexOfLast(predicate)
         if (result != -1) return page.page to result
@@ -134,13 +134,13 @@ inline fun <T> Paginator<T>.indexOfLast(
  * @throws IllegalArgumentException if the page is not found.
  */
 inline fun <T> Paginator<T>.indexOfLast(
-    page: UInt,
+    page: Int,
     predicate: (T) -> Boolean
-): Pair<UInt, Int>? {
+): Pair<Int, Int>? {
     val pageState = checkNotNull(getStateOf(page)) { "Page $page is not found" }
-    for ((index, element) in pageState.data.reversed().withIndex()) {
+    for ((reversedIndex, element) in pageState.data.reversed().withIndex()) {
         if (predicate(element)) {
-            return page to index
+            return page to (pageState.data.size - 1 - reversedIndex)
         }
     }
     return null
@@ -171,8 +171,8 @@ inline fun <T> Paginator<T>.walkForwardWhile(
 ): PageState<T>? {
     return walkWhile(
         pivotState = pivotState,
-        next = { currentPage: UInt ->
-            return@walkWhile currentPage + 1u
+        next = { currentPage: Int ->
+            return@walkWhile currentPage + 1
         },
         predicate = { state: PageState<T> ->
             return@walkWhile predicate.invoke(state)
@@ -209,8 +209,8 @@ inline fun <T> Paginator<T>.walkBackwardWhile(
 ): PageState<T>? {
     return walkWhile(
         pivotState = pivotState,
-        next = { currentPage: UInt ->
-            return@walkWhile currentPage - 1u
+        next = { currentPage: Int ->
+            return@walkWhile currentPage - 1
         },
         predicate = { state: PageState<T> ->
             return@walkWhile predicate.invoke(state)
@@ -228,7 +228,7 @@ fun <T> MutablePaginator<T>.removeElement(predicate: (T) -> Boolean): T? {
     return null
 }
 
-fun <T> MutablePaginator<T>.removeElement(page: UInt, predicate: (T) -> Boolean): T? {
+fun <T> MutablePaginator<T>.removeElement(page: Int, predicate: (T) -> Boolean): T? {
     val state: PageState<T>? = getStateOf(page)
     state ?: return null
     for ((index, element) in state.data.withIndex()) {
@@ -245,9 +245,9 @@ fun <T> MutablePaginator<T>.removeElement(page: UInt, predicate: (T) -> Boolean)
 fun <T> MutablePaginator<T>.addElement(
     element: T,
     silently: Boolean = false,
-    initSuccessPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
+    initSuccessPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
 ): Boolean {
-    val lastPage: UInt = pages.lastOrNull() ?: return false
+    val lastPage: Int = pages.lastOrNull() ?: return false
     val lastIndex: Int = getStateOf(lastPage)?.data?.lastIndex ?: return false
     addElement(element, lastPage, lastIndex, silently, initSuccessPageState)
     return true
@@ -255,10 +255,10 @@ fun <T> MutablePaginator<T>.addElement(
 
 fun <T> MutablePaginator<T>.addElement(
     element: T,
-    page: UInt,
+    page: Int,
     index: Int,
     silently: Boolean = false,
-    initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
+    initPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
 ) {
     return addAllElements(
         elements = listOf(element),
@@ -291,7 +291,7 @@ inline fun <T> MutablePaginator<T>.setElement(
     this.smartForEach { _, _, pageState ->
         var index = 0
         while (index < pageState.data.size) {
-            if (predicate(pageState.data[index++])) {
+            if (predicate(pageState.data[index])) {
                 setElement(
                     element = element,
                     page = pageState.page,
@@ -300,6 +300,7 @@ inline fun <T> MutablePaginator<T>.setElement(
                 )
                 return
             }
+            index++
         }
         return@smartForEach true
     }
@@ -330,7 +331,7 @@ inline fun <T> MutablePaginator<T>.setElement(
 suspend fun <T> Paginator<T>.refreshAll(
     loadingSilently: Boolean = false,
     finalSilently: Boolean = false,
-    loadGuard: (page: UInt, state: PageState<T>?) -> Boolean = { _, _ -> true },
+    loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
     enableCacheFlow: Boolean = this.enableCacheFlow,
     initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
     initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,

@@ -18,7 +18,7 @@ class SuccessPageStateTest {
 
     @Test
     fun `test the integrity of stored data for SuccessPage`() {
-        val samplePageNumber = 3u
+        val samplePageNumber = 3
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
@@ -35,7 +35,7 @@ class SuccessPageStateTest {
 
         assertThrows(Exception::class.java) {
             SuccessPage<String>(
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         }
@@ -43,7 +43,7 @@ class SuccessPageStateTest {
 
     @Test
     fun `test hashCode for SuccessPage`() {
-        val page = 4u
+        val page = 4
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
@@ -64,12 +64,12 @@ class SuccessPageStateTest {
             }
         val successPageState1: PageState<String> =
             SuccessPage(
-                page = 1u,
+                page = 1,
                 data = sampleListOfData
             )
         val successPageState2: PageState<String> =
             SuccessPage(
-                page = 2u,
+                page = 2,
                 data = sampleListOfData
             )
         assertTrue(successPageState1 < successPageState2)
@@ -80,7 +80,7 @@ class SuccessPageStateTest {
     fun `test copy for SuccessPage`() {
         val originalSuccessPageState: SuccessPage<String> =
             SuccessPage(
-                page = 1u,
+                page = 1,
                 data = listOf("a", "b", "c")
             )
 
@@ -97,7 +97,7 @@ class SuccessPageStateTest {
 
         val modifiedSuccessPageState: SuccessPage<String> =
             originalSuccessPageState.copy(
-                page = 3u,
+                page = 3,
                 data = listOf("x", "y", "z")
             )
 
@@ -131,7 +131,7 @@ class SuccessPageStateTest {
             }
         val successPageState: SuccessPage<String> =
             SuccessPage(
-                page = 1u,
+                page = 1,
                 data = sampleListOfData
             )
         assertTrue(successPageState.isSuccessState())
@@ -145,7 +145,7 @@ class SuccessPageStateTest {
             }
         val successPageState: SuccessPage<String> =
             SuccessPage(
-                page = 1u,
+                page = 1,
                 data = sampleListOfData
             )
         assertTrue(successPageState.isRealSuccessState(SuccessPage::class))

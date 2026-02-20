@@ -16,6 +16,15 @@ import com.jamal_aliev.paginator.page.PageState
  *
  * Use [Paginator] when you only need read-only access and navigation.
  *
+ * **Data mutability contract:** element-level operations ([setElement], [removeElement],
+ * [addAllElements]) cast [PageState.data] to [MutableList] directly. This is safe as long as
+ * `data` is always constructed as a `MutableList` (which is guaranteed by [Paginator]'s
+ * internal [loadOrGetPageState] via `.toMutableList()`).
+ * If you call [setState] directly with a [PageState] whose `data` was created via `listOf()`
+ * or another immutable factory, subsequent element-level mutations will throw
+ * [UnsupportedOperationException]. Always use `mutableListOf()` or `.toMutableList()` when
+ * constructing [PageState] instances passed to [MutablePaginator].
+ *
  * @param T The type of elements contained in each page.
  * @param source A suspending lambda that loads data for a given page number.
  *   The receiver is the paginator itself, giving access to its properties during loading.
@@ -24,7 +33,7 @@ import com.jamal_aliev.paginator.page.PageState
  * @see PageState
  */
 open class MutablePaginator<T>(
-    source: suspend Paginator<T>.(page: UInt) -> List<T>
+    source: suspend Paginator<T>.(page: Int) -> List<T>
 ) : Paginator<T>(source) {
 
     /**
@@ -68,37 +77,37 @@ open class MutablePaginator<T>(
      * see inner fun recalculateContext
      */
     fun removeState(
-        pageToRemove: UInt,
+        pageToRemove: Int,
         silently: Boolean = false,
     ): PageState<T>? {
         logger?.log(TAG, "removeState: page=$pageToRemove")
 
-        fun collapse(startPage: UInt, compression: Int) {
+        fun collapse(startPage: Int, compression: Int) {
             var currentState: PageState<T> = checkNotNull(
                 value = cache.remove(startPage)
             ) { "it's impossible to start collapse from this page" }
             var remaining: Int = compression
             while (remaining > 0) {
-                val collapsedState: PageState<T> = currentState.copy(page = currentState.page - 1u)
-                val pageState: PageState<T> = getStateOf(currentState.page - 1u) ?: break
+                val collapsedState: PageState<T> = currentState.copy(page = currentState.page - 1)
+                val pageState: PageState<T> = getStateOf(currentState.page - 1) ?: break
                 setState(state = collapsedState, silently = true)
                 currentState = pageState
                 remaining--
             }
         }
 
-        fun recalculateContext(removedPage: UInt) {
-            // Using explicit comparison for performance: avoid creating a UIntRange object
+        fun recalculateContext(removedPage: Int) {
+            // Using explicit comparison for performance: avoid creating a IntRange object
             if (startContextPage <= removedPage && removedPage <= endContextPage) {
-                if (endContextPage - startContextPage > 0u) {
+                if (endContextPage - startContextPage > 0) {
                     // Just shrink the context by one page
                     endContextPage--
-                } else if (removedPage == 1u) {
+                } else if (removedPage == 1) {
                     // If the first page was removed, find the nearest page
                     findNearContextPage()
                 } else {
                     // Otherwise, find the nearest pages around the removed page
-                    findNearContextPage(removedPage - 1u, removedPage + 1u)
+                    findNearContextPage(removedPage - 1, removedPage + 1)
                 }
             }
         }
@@ -198,7 +207,7 @@ open class MutablePaginator<T>(
      */
     fun setElement(
         element: T,
-        page: UInt,
+        page: Int,
         index: Int,
         silently: Boolean = false,
         isDirty: Boolean = false
@@ -244,7 +253,7 @@ open class MutablePaginator<T>(
      * @throws IndexOutOfBoundsException If [index] is out of range for the page's data.
      */
     fun removeElement(
-        page: UInt,
+        page: Int,
         index: Int,
         silently: Boolean = false,
         isDirty: Boolean = false,
@@ -260,7 +269,7 @@ open class MutablePaginator<T>(
             .also { removed = it.removeAt(index) }
 
         if (updatedData.size < capacity && !isCapacityUnlimited) {
-            val nextPageState = getStateOf(page + 1u)
+            val nextPageState = getStateOf(page + 1)
             if (nextPageState != null
                 &&
                 nextPageState::class == pageState::class
@@ -271,7 +280,7 @@ open class MutablePaginator<T>(
                 ) {
                     updatedData.add(
                         removeElement(
-                            page = page + 1u,
+                            page = page + 1,
                             index = 0,
                             silently = true
                         )
@@ -327,11 +336,11 @@ open class MutablePaginator<T>(
      */
     fun addAllElements(
         elements: List<T>,
-        targetPage: UInt,
+        targetPage: Int,
         index: Int,
         silently: Boolean = false,
         isDirty: Boolean = false,
-        initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
+        initPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
     ) {
         logger?.log(
             TAG,
@@ -361,20 +370,20 @@ open class MutablePaginator<T>(
         }
 
         if (!extraElements.isNullOrEmpty()) {
-            val nextPageState: PageState<T>? = getStateOf(targetPage + 1u)
+            val nextPageState: PageState<T>? = getStateOf(targetPage + 1)
             if ((nextPageState != null && nextPageState::class == targetState::class)
                 ||
                 (nextPageState == null && initPageState != null)
             ) {
                 addAllElements(
                     elements = extraElements,
-                    targetPage = targetPage + 1u,
+                    targetPage = targetPage + 1,
                     index = 0,
                     silently = true,
                     initPageState = initPageState
                 )
             } else {
-                val rangePageInvalidated: UIntRange = (targetPage + 1u)..cache.keys.last()
+                val rangePageInvalidated: IntRange = (targetPage + 1)..cache.keys.last()
                 rangePageInvalidated.forEach(cache::remove)
             }
         }
@@ -388,7 +397,7 @@ open class MutablePaginator<T>(
             val endState: PageState<T> = checkNotNull(
                 walkForwardWhile(getStateOf(endContextPage))
             ) { "endContextPage is broken so snapshot is impossible" }
-            val rangeSnapshot: UIntRange = startState.page..endState.page
+            val rangeSnapshot: IntRange = startState.page..endState.page
             if (targetPage in rangeSnapshot) {
                 snapshot(rangeSnapshot)
             }
@@ -475,30 +484,29 @@ open class MutablePaginator<T>(
         this.capacity = capacity
 
         if (resize && capacity > 0) {
-            val firstSuccessPageState: PageState<T>? =
+            val firstSuccessPageState: PageState<T> =
                 walkForwardWhile(
                     pivotState = cache[startContextPage],
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()
                     }
-                )
-            val lastSuccessPageState: PageState<T>? =
+                ) ?: return
+            val lastSuccessPageState: PageState<T> =
                 walkBackwardWhile(
                     pivotState = cache[endContextPage],
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()
                     }
-                )
-            firstSuccessPageState!!; lastSuccessPageState!!
+                ) ?: return
             val items: MutableList<T> =
                 (firstSuccessPageState.page..lastSuccessPageState.page)
-                    .map { page: UInt -> cache.getValue(page) }
+                    .map { page: Int -> cache.getValue(page) }
                     .flatMap { pageState: PageState<T> -> pageState.data }
                     .toMutableList()
 
             cache.clear()
 
-            var pageIndex: UInt = firstSuccessPageState.page
+            var pageIndex: Int = firstSuccessPageState.page
             while (items.isNotEmpty()) {
                 val successData = mutableListOf<T>()
                 while (items.isNotEmpty() && successData.size < capacity) {
@@ -518,7 +526,7 @@ open class MutablePaginator<T>(
     }
 
 
-    operator fun minusAssign(page: UInt) {
+    operator fun minusAssign(page: Int) {
         removeState(page)
     }
 

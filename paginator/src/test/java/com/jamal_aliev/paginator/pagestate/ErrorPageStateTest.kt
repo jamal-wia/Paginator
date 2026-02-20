@@ -17,7 +17,7 @@ class ErrorPageStateTest {
     @Test
     fun `test the integrity of stored data for ErrorPage`() {
         val sampleException = Exception("Test error")
-        val samplePageNumber = 3u
+        val samplePageNumber = 3
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
@@ -37,7 +37,7 @@ class ErrorPageStateTest {
 
     @Test
     fun `test hashCode for ErrorPage`() {
-        val page = 4u
+        val page = 4
         val errorPageState: PageState<String> =
             ErrorPage(
                 exception = Exception("Error"),
@@ -52,13 +52,13 @@ class ErrorPageStateTest {
         val errorPageState1: PageState<String> =
             ErrorPage(
                 exception = Exception("First error"),
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         val errorPageState2: PageState<String> =
             ErrorPage(
                 exception = Exception("Second error"),
-                page = 2u,
+                page = 2,
                 data = emptyList()
             )
         assertTrue(errorPageState1 < errorPageState2)
@@ -70,7 +70,7 @@ class ErrorPageStateTest {
         val originalErrorPageState: ErrorPage<String> =
             ErrorPage(
                 exception = Exception("Original error"),
-                page = 1u,
+                page = 1,
                 data = listOf("a", "b", "c")
             )
 
@@ -89,7 +89,7 @@ class ErrorPageStateTest {
         val modifiedErrorPageState: ErrorPage<String> =
             originalErrorPageState.copy(
                 exception = Exception("New error"),
-                page = 3u,
+                page = 3,
                 data = listOf("x", "y", "z")
             )
 
@@ -107,7 +107,7 @@ class ErrorPageStateTest {
         val errorPageState: ErrorPage<String> =
             ErrorPage(
                 exception = Exception("Test error"),
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         assertTrue(errorPageState.isErrorState())
@@ -118,7 +118,7 @@ class ErrorPageStateTest {
         val errorPageState: ErrorPage<String> =
             ErrorPage(
                 exception = Exception("Test error"),
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         assertTrue(errorPageState.isRealErrorState(ErrorPage::class))

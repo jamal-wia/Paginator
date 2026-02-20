@@ -17,7 +17,7 @@ class EmptyPageStateTest {
 
     @Test
     fun `test the integrity of stored data for EmptyPage`() {
-        val samplePageNumber = 3u
+        val samplePageNumber = 3
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
@@ -34,7 +34,7 @@ class EmptyPageStateTest {
 
         assertNotNull(
             EmptyPage<String>(
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         )
@@ -42,7 +42,7 @@ class EmptyPageStateTest {
 
     @Test
     fun `test hashCode for EmptyPage`() {
-        val page = 4u
+        val page = 4
         val emptyPageState: PageState<String> =
             EmptyPage(
                 page = page,
@@ -55,12 +55,12 @@ class EmptyPageStateTest {
     fun `test compareTo for EmptyPage`() {
         val emptyPageState1: PageState<String> =
             EmptyPage(
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         val emptyPageState2: PageState<String> =
             EmptyPage(
-                page = 2u,
+                page = 2,
                 data = emptyList()
             )
         assertTrue(emptyPageState1 < emptyPageState2)
@@ -71,7 +71,7 @@ class EmptyPageStateTest {
     fun `test copy for EmptyPage`() {
         val originalEmptyPageState: EmptyPage<String> =
             EmptyPage(
-                page = 1u,
+                page = 1,
                 data = listOf("a", "b", "c")
             )
 
@@ -88,7 +88,7 @@ class EmptyPageStateTest {
 
         val modifiedEmptyPageState: EmptyPage<String> =
             originalEmptyPageState.copy(
-                page = 3u,
+                page = 3,
                 data = listOf("x", "y", "z")
             )
 
@@ -104,7 +104,7 @@ class EmptyPageStateTest {
     fun `test true using isEmptyState for EmptyPage`() {
         val emptyPageState: EmptyPage<String> =
             EmptyPage(
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         assertTrue(emptyPageState.isEmptyState())
@@ -114,7 +114,7 @@ class EmptyPageStateTest {
     fun `test using isRealEmptyState for EmptyPage`() {
         val emptyPageState: EmptyPage<String> =
             EmptyPage(
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         assertTrue(emptyPageState.isRealEmptyState(EmptyPage::class))

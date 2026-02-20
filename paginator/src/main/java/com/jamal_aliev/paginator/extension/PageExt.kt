@@ -7,6 +7,7 @@ import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
+import kotlin.math.abs
 import kotlin.reflect.KClass
 
 /**
@@ -137,11 +138,11 @@ inline fun <T> PageState<T>.isRealErrorState(
  * Determines whether this `PageState` is adjacent to, or identical with, another `PageState`
  * based on their positional gap.
  *
- * Two states are considered "near" if the unsigned distance between them
- * (as returned by `gap(other)`) is either `0u` or `1u`, meaning:
+ * Two states are considered "near" if the distance between them
+ * (as returned by `gap(other)`) is either `0` or `1`, meaning:
  *
- * - `0u` — both states refer to the same position;
- * - `1u` — the states are directly next to each other.
+ * - `0` — both states refer to the same position;
+ * - `1` — the states are directly next to each other.
  *
  * This is a convenience infix function for expressing proximity between
  * two `PageState` instances in a clear and readable way.
@@ -150,23 +151,23 @@ inline fun <T> PageState<T>.isRealErrorState(
  * use [gap] instead of `near`.
  *
  * @param other The other `PageState` to compare with.
- * @return `true` if the gap is within `[0u, 1u]`, otherwise `false`.
+ * @return `true` if the gap is within `[0, 1]`, otherwise `false`.
  */
 @Suppress("NOTHING_TO_INLINE")
 inline infix fun PageState<*>.near(other: PageState<*>): Boolean {
-    val gap: UInt = this gap other
-    return gap == 0u || gap == 1u
+    val gap: Int = this gap other
+    return gap == 0 || gap == 1
 }
 
 /**
  * Determines whether this `PageState` is not adjacent to, and not identical with,
  * another `PageState` based on their positional gap.
  *
- * Two states are considered "far" if the unsigned distance between them
- * (as returned by `gap(other)`) is greater than `1u`, meaning:
+ * Two states are considered "far" if the distance between them
+ * (as returned by `gap(other)`) is greater than `1`, meaning:
  *
- * - the states do not represent the same position (`gap != 0u`), and
- * - they are not immediate neighbors (`gap != 1u`).
+ * - the states do not represent the same position (`gap != 0`), and
+ * - they are not immediate neighbors (`gap != 1`).
  *
  * This is the logical inverse of the `near` function and provides a readable
  * way to express non-proximity between `PageState` instances.
@@ -175,54 +176,47 @@ inline infix fun PageState<*>.near(other: PageState<*>): Boolean {
  * use [gap] instead of `far`.
  *
  * @param other The other `PageState` to compare with.
- * @return `true` if the gap is outside the range `[0u, 1u]`, otherwise `false`.
+ * @return `true` if the gap is outside the range `[0, 1]`, otherwise `false`.
  */
 @Suppress("NOTHING_TO_INLINE")
 inline infix fun PageState<*>.far(other: PageState<*>): Boolean {
-    val gap: UInt = this gap other
-    return gap != 0u && gap != 1u
+    val gap: Int = this gap other
+    return gap != 0 && gap != 1
 }
 
 /**
- * Computes the unsigned distance between this `PageState` and another `PageState`.
+ * Computes the absolute distance between this `PageState` and another `PageState`.
  *
  * The gap represents how far apart the two pages are, ignoring direction.
- * It is calculated as the difference between the larger and smaller page numbers:
- *
- *     gap = if (this.page >= other.page) this.page - other.page else other.page - this.page
  *
  * Examples:
- * - States on the same page → `0u`
- * - Adjacent pages → `1u`
- * - Two pages apart → `2u`, and so on.
+ * - States on the same page -> `0`
+ * - Adjacent pages -> `1`
+ * - Two pages apart -> `2`, and so on.
  *
  * This function is used by helpers like `near` and `far` to determine relative proximity
  * between page states.
  *
  * @param other The other `PageState` to measure the distance to.
- * @return A `UInt` representing the absolute page difference.
+ * @return An `Int` representing the absolute page difference.
  */
 @Suppress("NOTHING_TO_INLINE")
-inline infix fun PageState<*>.gap(other: PageState<*>): UInt {
+inline infix fun PageState<*>.gap(other: PageState<*>): Int {
     return gapInternal(this.page, other.page)
 }
 
 @Suppress("NOTHING_TO_INLINE")
-internal inline infix fun PageState<*>.gap(other: UInt): UInt {
+internal inline infix fun PageState<*>.gap(other: Int): Int {
     return gapInternal(this.page, other)
 }
 
 @Suppress("NOTHING_TO_INLINE")
-internal inline infix fun UInt.gap(other: PageState<*>): UInt {
+internal inline infix fun Int.gap(other: PageState<*>): Int {
     return gapInternal(this, other.page)
 }
 
 @PublishedApi
 @Suppress("NOTHING_TO_INLINE")
-internal inline fun gapInternal(first: UInt, second: UInt): UInt {
-    return if (first >= second) {
-        first - second
-    } else {
-        second - first
-    }
+internal inline fun gapInternal(first: Int, second: Int): Int {
+    return abs(first - second)
 }

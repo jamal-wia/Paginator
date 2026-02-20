@@ -282,8 +282,8 @@ class MainActivity : ComponentActivity() {
                 ),
                 keyboardActions = KeyboardActions(
                     onGo = {
-                        jumpText.toUIntOrNull()?.let { page ->
-                            if (page > 0u) {
+                        jumpText.toIntOrNull()?.let { page ->
+                            if (page > 0) {
                                 viewModel.jumpToPage(page)
                                 jumpText = ""
                                 focusManager.clearFocus()
@@ -294,15 +294,15 @@ class MainActivity : ComponentActivity() {
             )
             Button(
                 onClick = {
-                    jumpText.toUIntOrNull()?.let { page ->
-                        if (page > 0u) {
+                    jumpText.toIntOrNull()?.let { page ->
+                        if (page > 0) {
                             viewModel.jumpToPage(page)
                             jumpText = ""
                             focusManager.clearFocus()
                         }
                     }
                 },
-                enabled = jumpText.toUIntOrNull()?.let { it > 0u } == true
+                enabled = jumpText.toIntOrNull()?.let { it > 0 } == true
             ) {
                 Text("Jump")
             }
@@ -466,7 +466,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun PageHeader(
-        page: UInt,
+        page: Int,
         label: String,
         itemCount: Int,
         maxItems: Int,
@@ -586,7 +586,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun ErrorPageCard(page: UInt, message: String, hasData: Boolean) {
+    private fun ErrorPageCard(page: Int, message: String, hasData: Boolean) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -628,7 +628,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun ProgressCard(page: UInt, hasData: Boolean) {
+    private fun ProgressCard(page: Int, hasData: Boolean) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -663,7 +663,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun EmptyPageCard(page: UInt) {
+    private fun EmptyPageCard(page: Int) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()

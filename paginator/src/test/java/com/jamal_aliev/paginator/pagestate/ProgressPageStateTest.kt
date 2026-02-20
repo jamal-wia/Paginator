@@ -16,7 +16,7 @@ class ProgressPageStateTest {
 
     @Test
     fun `test the integrity of stored data for ProgressPage`() {
-        val samplePageNumber = 1u
+        val samplePageNumber = 1
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
@@ -32,7 +32,7 @@ class ProgressPageStateTest {
 
     @Test
     fun `test hashCode for ProgressPage`() {
-        val page = 1u
+        val page = 1
         val progressPageState: PageState<String> =
             ProgressPage(
                 page = page,
@@ -45,12 +45,12 @@ class ProgressPageStateTest {
     fun `test compareTo for ProgressPage`() {
         val progressPageState1: PageState<String> =
             ProgressPage(
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         val progressPageState2: PageState<String> =
             ProgressPage(
-                page = 2u,
+                page = 2,
                 data = emptyList()
             )
         assertTrue(progressPageState1 < progressPageState2)
@@ -61,7 +61,7 @@ class ProgressPageStateTest {
     fun `test copy for ProgressPage`() {
         val progressPageState: PageState<String> =
             ProgressPage(
-                page = 1u,
+                page = 1,
                 data = listOf("a", "b", "c")
             )
 
@@ -78,7 +78,7 @@ class ProgressPageStateTest {
 
         val modifiedProgressPageState: PageState<String> =
             progressPageState.copy(
-                page = 2u,
+                page = 2,
                 data = listOf("x", "y", "z")
             )
 
@@ -94,7 +94,7 @@ class ProgressPageStateTest {
     fun `test true using isProgressState for ProgressPage`() {
         val progressPageState: PageState<String> =
             ProgressPage(
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         assertTrue(progressPageState.isProgressState())
@@ -104,7 +104,7 @@ class ProgressPageStateTest {
     fun `test using isRealProgressState for ProgressPage`() {
         val progressPageState: PageState<String> =
             ProgressPage(
-                page = 1u,
+                page = 1,
                 data = emptyList()
             )
         assertTrue(progressPageState.isRealProgressState(ProgressPage::class))

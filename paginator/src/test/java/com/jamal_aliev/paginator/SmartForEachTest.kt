@@ -112,14 +112,14 @@ private fun createPaginatorWith(n: Int): MutablePaginator<String> {
     val paginator = MutablePaginator<String> { emptyList() }
     repeat(n) { index ->
         paginator.setState(
-            createRandomPageState(page = index.toUInt(), data = listOf("data $index")),
+            createRandomPageState(page = index.toInt(), data = listOf("data $index")),
             silently = true
         )
     }
     return paginator
 }
 
-private fun <T> createRandomPageState(page: UInt, data: List<T>): PageState<T> {
+private fun <T> createRandomPageState(page: Int, data: List<T>): PageState<T> {
     return when ((0..100).random()) {
         in 0..24 -> ProgressPage(page, data)
         in 25..49 -> EmptyPage(page, data)
