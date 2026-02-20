@@ -48,7 +48,9 @@ class MainViewModel : ViewModel() {
     init {
         paginator.snapshot
             .filter { it.isNotEmpty() }
-            .onEach { data -> updateStateFromPaginator(data) }
+            .onEach { data ->
+                updateStateFromPaginator(data)
+            }
             .flowOn(Dispatchers.Main)
             .launchIn(viewModelScope)
 

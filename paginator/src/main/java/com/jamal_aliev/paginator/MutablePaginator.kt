@@ -39,6 +39,7 @@ open class MutablePaginator<T>(
         state: PageState<T>,
         silently: Boolean
     ) {
+        logger?.log(TAG, "setState: page=${state.page}")
         super.setState(state, silently)
     }
 
@@ -70,7 +71,7 @@ open class MutablePaginator<T>(
         pageToRemove: UInt,
         silently: Boolean = false,
     ): PageState<T>? {
-        logger.log(TAG, "removeState: page=$pageToRemove")
+        logger?.log(TAG, "removeState: page=$pageToRemove")
 
         fun collapse(startPage: UInt, compression: Int) {
             var currentState: PageState<T> = checkNotNull(
@@ -202,7 +203,7 @@ open class MutablePaginator<T>(
         silently: Boolean = false,
         isDirty: Boolean = false
     ) {
-        logger.log(TAG, "setElement: page=$page index=$index isDirty=$isDirty")
+        logger?.log(TAG, "setElement: page=$page index=$index isDirty=$isDirty")
         val pageState = cache.getValue(page)
         setState(
             state = pageState.copy(
@@ -248,7 +249,7 @@ open class MutablePaginator<T>(
         silently: Boolean = false,
         isDirty: Boolean = false,
     ): T {
-        logger.log(TAG, "removeElement: page=$page index=$index isDirty=$isDirty")
+        logger?.log(TAG, "removeElement: page=$page index=$index isDirty=$isDirty")
         val pageState: PageState<T> = requireNotNull(
             value = getStateOf(page)
         ) { "page-$page was not created" }
@@ -332,7 +333,10 @@ open class MutablePaginator<T>(
         isDirty: Boolean = false,
         initPageState: ((page: UInt, data: List<T>) -> PageState<T>)? = null
     ) {
-        logger.log(TAG, "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty")
+        logger?.log(
+            TAG,
+            "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty"
+        )
         val targetState: PageState<T> =
             (getStateOf(targetPage) ?: initPageState?.invoke(targetPage, mutableListOf()))
                 ?: throw IndexOutOfBoundsException(
@@ -467,7 +471,7 @@ open class MutablePaginator<T>(
     ) {
         if (this.capacity == capacity) return
         require(capacity >= 0) { "capacity must be greater or equal than zero" }
-        logger.log(TAG, "resize: capacity=$capacity resize=$resize")
+        logger?.log(TAG, "resize: capacity=$capacity resize=$resize")
         this.capacity = capacity
 
         if (resize && capacity > 0) {

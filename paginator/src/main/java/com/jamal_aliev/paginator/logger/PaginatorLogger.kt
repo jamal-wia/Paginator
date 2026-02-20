@@ -7,7 +7,6 @@ package com.jamal_aliev.paginator.logger
  * Implement this interface to receive detailed logs about navigation,
  * state changes, and element-level CRUD operations performed by the paginator.
  *
- * By default, no logging is performed ([NoOpLogger]).
  * Set your implementation via [com.jamal_aliev.paginator.Paginator.logger].
  *
  * **Example:**
@@ -22,8 +21,6 @@ package com.jamal_aliev.paginator.logger
  *     }
  * }
  * ```
- *
- * @see NoOpLogger
  */
 interface PaginatorLogger {
 
@@ -35,14 +32,4 @@ interface PaginatorLogger {
      * @param message A human-readable description of the event.
      */
     fun log(tag: String, message: String)
-}
-
-/**
- * Default [PaginatorLogger] implementation that discards all log messages.
- *
- * This is used when no custom logger has been set on the paginator,
- * ensuring zero overhead for logging in production.
- */
-object NoOpLogger : PaginatorLogger {
-    override fun log(tag: String, message: String) = Unit
 }

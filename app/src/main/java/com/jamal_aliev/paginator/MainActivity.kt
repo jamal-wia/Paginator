@@ -49,7 +49,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -314,18 +313,6 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun PaginatedContent(state: MainViewState, modifier: Modifier) {
         val lazyListState = rememberLazyListState()
-
-        val endOfListReached by remember {
-            derivedStateOf {
-                val lastVisible = lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
-                val total = lazyListState.layoutInfo.totalItemsCount
-                lastVisible != null && total > 0 && lastVisible >= total - 3
-            }
-        }
-
-        LaunchedEffect(endOfListReached) {
-            if (endOfListReached) viewModel.goNextPage()
-        }
 
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,
