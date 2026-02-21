@@ -33,9 +33,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -130,7 +127,7 @@ open class Paginator<T>(
     /** Whether the full cache flow ([asFlow]) has been activated by a subscriber. */
     var enableCacheFlow = false
         private set
-    private val _cacheFlow = MutableStateFlow(false to cache)
+    private val _cacheFlow = MutableStateFlow(cache)
 
     /**
      * Returns a [Flow] that emits the **entire** cache map whenever it changes.
@@ -143,8 +140,6 @@ open class Paginator<T>(
     fun asFlow(): Flow<Map<Int, PageState<T>>> {
         enableCacheFlow = true
         return _cacheFlow.asStateFlow()
-            .filter { it.first }
-            .map { it.second }
     }
 
     /**
@@ -154,8 +149,7 @@ open class Paginator<T>(
      * that collectors receive the latest state, even if the map reference hasn't changed.
      */
     fun repeatCacheFlow() {
-        _cacheFlow.update { false to sortedMapOf() }
-        _cacheFlow.update { true to cache }
+        _cacheFlow.value = cache
     }
 
     /**
@@ -404,7 +398,7 @@ open class Paginator<T>(
     var recyclingBookmark = false
     protected var bookmarkIterator = bookmarks.listIterator()
 
-    protected val _snapshot = MutableStateFlow(false to emptyList<PageState<T>>())
+    protected val _snapshot = MutableStateFlow(emptyList<PageState<T>>())
 
     /**
      * A [Flow] that emits the list of [PageState] objects within the current context window
@@ -416,12 +410,7 @@ open class Paginator<T>(
      * The emitted list includes pages from [startContextPage] to [endContextPage],
      * plus any adjacent non-success pages (e.g., [ProgressPage] or [ErrorPage]).
      */
-    val snapshot: Flow<List<PageState<T>>>
-        get() {
-            return _snapshot.asStateFlow()
-                .filter { it.first }
-                .map { it.second }
-        }
+    val snapshot: Flow<List<PageState<T>>> = _snapshot.asStateFlow()
 
     /**
      * Factory for creating [ProgressPage] instances during page loading.
@@ -679,12 +668,14 @@ open class Paginator<T>(
             )
         }
 
-        navigationMutex.withLock {
+        return@coroutineScope navigationMutex.withLock {
             val probablySuccessBookmarkPage: PageState<T>? = getStateOf(bookmark.page)
             if (isFilledSuccessState(probablySuccessBookmarkPage)) {
                 expandStartContextPage(probablySuccessBookmarkPage)
                 expandEndContextPage(probablySuccessBookmarkPage)
-                if (!silentlyResult) snapshot()
+                if (!silentlyResult) {
+                    snapshot()
+                }
                 logger?.log(TAG, "jump: page=${bookmark.page} cache hit")
                 refreshDirtyPagesInContext()
                 return@withLock bookmark to probablySuccessBookmarkPage
@@ -707,6 +698,9 @@ open class Paginator<T>(
                         state = progressState,
                         silently = true,
                     )
+                    expandStartContextPage(progressState)
+                    expandEndContextPage(progressState)
+
                     if (enableCacheFlow) {
                         repeatCacheFlow()
                     }
@@ -722,8 +716,8 @@ open class Paginator<T>(
                 state = resultState,
                 silently = true
             )
-            expandStartContextPage(getStateOf(startContextPage))
-            expandEndContextPage(getStateOf(endContextPage))
+            expandStartContextPage(resultState)
+            expandEndContextPage(resultState)
 
             if (enableCacheFlow) {
                 repeatCacheFlow()
@@ -734,7 +728,7 @@ open class Paginator<T>(
 
             logger?.log(TAG, "jump: page=${bookmark.page} result=${resultState::class.simpleName}")
             refreshDirtyPagesInContext()
-            bookmark to resultState
+            return@withLock bookmark to resultState
         }
     }
 
@@ -813,7 +807,7 @@ open class Paginator<T>(
             return@coroutineScope pageState
         }
 
-        navigationMutex.withLock {
+        return@coroutineScope navigationMutex.withLock {
             var pivotContextPage: Int = endContextPage
             var pivotContextPageState: PageState<T>? = getStateOf(pivotContextPage)
             val isPivotContextPageValid: Boolean = isFilledSuccessState(pivotContextPageState)
@@ -955,13 +949,13 @@ open class Paginator<T>(
                     "Please use jump function to start paginator before use goPreviousPage"
         }
 
-        navigationMutex.withLock {
+        return@coroutineScope navigationMutex.withLock {
             var pivotContextPage: Int = startContextPage
             var pivotContextPageState = getStateOf(pivotContextPage)
             val pivotContextPageValid = isFilledSuccessState(pivotContextPageState)
             if (pivotContextPageValid) {
                 expandStartContextPage(getStateOf(pivotContextPage - 1))
-                    ?.also { expanded ->
+                    ?.also { expanded: PageState<T> ->
                         pivotContextPage = expanded.page
                         pivotContextPageState = expanded
                     }
@@ -1075,11 +1069,14 @@ open class Paginator<T>(
         if (lockRestart) throw RestartWasLockedException()
         logger?.log(TAG, "restart")
 
-        navigationMutex.withLock {
+        return@coroutineScope navigationMutex.withLock {
             val firstPage: PageState<T>? = cache[1]
             cache.clear()
             if (firstPage != null) {
-                setState(state = firstPage, silently = true)
+                setState(
+                    state = firstPage,
+                    silently = true
+                )
             }
 
             clearAllDirty()
@@ -1180,13 +1177,15 @@ open class Paginator<T>(
         // Phase 1: validate guards and set progress states under lock
         navigationMutex.withLock {
             pages.forEach { page: Int ->
-                if (!loadGuard.invoke(page, cache[page])) {
+                if (!loadGuard.invoke(page, getStateOf(page))) {
                     throw LoadGuardedException(attemptedPage = page)
                 }
             }
             pages.forEach { page: Int ->
+                val dataOfPage = getStateOf(page)?.data ?: mutableListOf()
+                val progressState = initProgressState.invoke(page, dataOfPage)
                 setState(
-                    state = initProgressState.invoke(page, cache[page]?.data ?: mutableListOf()),
+                    state = progressState,
                     silently = true
                 )
             }
@@ -1199,7 +1198,7 @@ open class Paginator<T>(
         }
 
         // Phase 2: load pages in parallel (network I/O — outside lock)
-        pages.map { page ->
+        pages.map { page: Int ->
             async {
                 loadOrGetPageState(
                     page = page,
@@ -1212,8 +1211,11 @@ open class Paginator<T>(
         }.awaitAll().let { results: List<PageState<T>> ->
             // Phase 3: write results back under lock
             navigationMutex.withLock {
-                results.forEach { finalPageState ->
-                    setState(state = finalPageState, silently = true)
+                results.forEach { finalPageState: PageState<T> ->
+                    setState(
+                        state = finalPageState,
+                        silently = true
+                    )
                 }
             }
         }
@@ -1477,8 +1479,7 @@ open class Paginator<T>(
 
             return@run min..max
         })?.let { mPageRange: IntRange ->
-            _snapshot.update { false to emptyList() }
-            _snapshot.update { true to scan(mPageRange) }
+            _snapshot.value = scan(mPageRange)
         }
     }
 
@@ -1615,7 +1616,7 @@ open class Paginator<T>(
         startContextPage = 0
         endContextPage = 0
         finalPage = Int.MAX_VALUE
-        if (!silently) _snapshot.update { true to emptyList() }
+        if (!silently) _snapshot.value = emptyList()
         this.capacity = capacity
         lockJump = false
         lockGoNextPage = false
