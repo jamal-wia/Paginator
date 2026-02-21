@@ -10,7 +10,7 @@ import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -47,7 +47,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test jump and next`(): Unit = runBlocking {
+    fun `test jump and next`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             Source.getByPage(page, this.capacity)
         }
@@ -67,7 +67,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test jump and previous`(): Unit = runBlocking {
+    fun `test jump and previous`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             Source.getByPage(page, this.capacity)
         }
@@ -87,7 +87,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test jump next previous`(): Unit = runBlocking {
+    fun `test jump next previous`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             Source.getByPage(page, this.capacity)
         }
@@ -106,7 +106,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test jump jump and remove`(): Unit = runBlocking {
+    fun `test jump jump and remove`(): Unit = runTest {
         val paginator = MutablePaginator { emptyList<String>() }.apply {
             resize(capacity = 1, resize = false, silently = true)
         }
@@ -209,7 +209,7 @@ class MutablePaginatorTest {
 
 
     @Test
-    fun `test context findNearContextPage`(): Unit = runBlocking {
+    fun `test context findNearContextPage`(): Unit = runTest {
         val paginator = MutablePaginator { emptyList<String>() }.apply {
             resize(capacity = 1, resize = false, silently = true)
         }
@@ -259,7 +259,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test finalPage with goNextPage`(): Unit = runBlocking {
+    fun `test finalPage with goNextPage`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Deterministic source - no random exceptions
             List(this.capacity) { "item $it of page $page" }
@@ -291,7 +291,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test finalPage with jump`(): Unit = runBlocking {
+    fun `test finalPage with jump`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Deterministic source - no random exceptions
             List(this.capacity) { "item $it of page $page" }
@@ -319,7 +319,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test finalPage default allows unlimited pages`(): Unit = runBlocking {
+    fun `test finalPage default allows unlimited pages`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Use a simple source that doesn't throw random exceptions
             if (page <= 10) {
