@@ -438,15 +438,18 @@ open class MutablePaginator<T>(
                             index = index,
                             silently = true
                         )
+                        index++
                     } else {
                         removeElement(
                             page = pageState.page,
                             index = index,
                             silently = true
                         )
+                        // Don't increment index: elements shifted left after removal
                     }
+                } else {
+                    index++
                 }
-                index++
             }
             return@smartForEach true
         }
@@ -485,14 +488,14 @@ open class MutablePaginator<T>(
 
         if (resize && capacity > 0) {
             val firstSuccessPageState: PageState<T> =
-                walkForwardWhile(
+                walkBackwardWhile(
                     pivotState = cache[startContextPage],
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()
                     }
                 ) ?: return
             val lastSuccessPageState: PageState<T> =
-                walkBackwardWhile(
+                walkForwardWhile(
                     pivotState = cache[endContextPage],
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()

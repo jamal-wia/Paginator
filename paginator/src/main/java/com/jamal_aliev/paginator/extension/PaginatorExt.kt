@@ -248,8 +248,8 @@ fun <T> MutablePaginator<T>.addElement(
     initSuccessPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
 ): Boolean {
     val lastPage: Int = pages.lastOrNull() ?: return false
-    val lastIndex: Int = getStateOf(lastPage)?.data?.lastIndex ?: return false
-    addElement(element, lastPage, lastIndex, silently, initSuccessPageState)
+    val lastPageData = getStateOf(lastPage)?.data ?: return false
+    addElement(element, lastPage, lastPageData.size, silently, initSuccessPageState)
     return true
 }
 

@@ -1482,10 +1482,10 @@ open class Paginator<T>(
     }
 
     /**
-     * Returns a list of [PageState] objects for all contiguous cached pages within [pagesRange].
+     * Returns a list of [PageState] objects for all cached pages within [pagesRange].
      *
-     * Iterates through the range and collects cached pages. Stops at the first gap
-     * (page not in the cache), ensuring only contiguous pages are returned.
+     * Iterates through the range and collects cached pages, skipping any page numbers
+     * that are not present in the cache.
      *
      * @param pagesRange The range of page numbers to scan. Defaults to the expanded
      *   context window ([startContextPage]..[endContextPage] plus adjacent pages).
