@@ -451,7 +451,26 @@ open class Paginator<T>(
         }
 
     /**
-     * Moves forward to the next bookmark in the [bookmarks] list and jumps to it.
+     * Returns the page range currently visible in the last emitted [snapshot],
+     * or `null` if the snapshot is empty.
+     *
+     * Used by [jumpForward] and [jumpBack] to skip bookmarks whose pages
+     * are already visible on the UI.
+     */
+    fun snapshotPageRange(): IntRange? {
+        val pages: List<PageState<T>> = _snapshot.value
+        if (pages.isEmpty()) return null
+        return pages.first().page..pages.last().page
+    }
+
+    /**
+     * Moves forward to the next bookmark in the [bookmarks] list whose page is
+     * **outside** the current visible [snapshot] range, and jumps to it.
+     *
+     * Bookmarks whose pages fall within the snapshot range (i.e., already visible
+     * on the UI) are skipped, since jumping to them would be a no-op for the user.
+     * If all remaining bookmarks are visible, the function falls back to the last
+     * one encountered (preserving the old behavior).
      *
      * If the bookmark iterator has reached the end and [recycling] is `true`,
      * the iterator resets to the beginning and continues from the first bookmark.
@@ -494,17 +513,48 @@ open class Paginator<T>(
         if (lockJump) throw JumpWasLockedException()
         logger?.log(TAG, "jumpForward: recycling=$recycling")
 
-        var bookmark: Bookmark? = bookmarkIterator
-            .takeIf { it.hasNext() }
-            ?.next()
+        val visibleRange: IntRange? = snapshotPageRange()
+        var lastSkippedBookmark: Bookmark? = null
+        var bookmark: Bookmark? = null
+        var iteratorInvalidated = false
 
-        if (bookmark != null || recycling) {
-            if (bookmark == null) {
-                bookmarkIterator = bookmarks.listIterator()
-                bookmark = bookmarkIterator
-                    .takeIf { it.hasNext() }
-                    ?.next() ?: return null
+        // Phase 1: iterate forward, skipping bookmarks inside the visible range.
+        // If bookmarks were modified externally, the iterator may throw
+        // ConcurrentModificationException — in that case we recreate the iterator in Phase 2.
+        try {
+            while (bookmarkIterator.hasNext()) {
+                val candidate: Bookmark = bookmarkIterator.next()
+                if (visibleRange != null && candidate.page in visibleRange) {
+                    lastSkippedBookmark = candidate
+                    continue
+                }
+                bookmark = candidate
+                break
             }
+        } catch (_: ConcurrentModificationException) {
+            iteratorInvalidated = true
+        }
+
+        // Phase 2: reset iterator and try again — either on recycling or if iterator was invalidated
+        if (bookmark == null && (recycling || iteratorInvalidated)) {
+            bookmarkIterator = bookmarks.listIterator()
+            while (bookmarkIterator.hasNext()) {
+                val candidate = bookmarkIterator.next()
+                if (visibleRange != null && candidate.page in visibleRange) {
+                    lastSkippedBookmark = candidate
+                    continue
+                }
+                bookmark = candidate
+                break
+            }
+        }
+
+        // Phase 3: fallback — if all bookmarks were visible, use the last skipped one
+        if (bookmark == null) {
+            bookmark = lastSkippedBookmark
+        }
+
+        if (bookmark != null) {
             return jump(
                 bookmark = bookmark,
                 silentlyLoading = silentlyLoading,
@@ -524,7 +574,13 @@ open class Paginator<T>(
     }
 
     /**
-     * Moves backward to the previous bookmark in the [bookmarks] list and jumps to it.
+     * Moves backward to the previous bookmark in the [bookmarks] list whose page is
+     * **outside** the current visible [snapshot] range, and jumps to it.
+     *
+     * Bookmarks whose pages fall within the snapshot range (i.e., already visible
+     * on the UI) are skipped, since jumping to them would be a no-op for the user.
+     * If all remaining bookmarks are visible, the function falls back to the last
+     * one encountered (preserving the old behavior).
      *
      * If the bookmark iterator has reached the beginning and [recycling] is `true`,
      * the iterator resets to the last bookmark and continues backward.
@@ -567,17 +623,48 @@ open class Paginator<T>(
         if (lockJump) throw JumpWasLockedException()
         logger?.log(TAG, "jumpBack: recycling=$recycling")
 
-        var bookmark: Bookmark? = bookmarkIterator
-            .takeIf { it.hasPrevious() }
-            ?.previous()
+        val visibleRange: IntRange? = snapshotPageRange()
+        var lastSkippedBookmark: Bookmark? = null
+        var bookmark: Bookmark? = null
+        var iteratorInvalidated = false
 
-        if (bookmark != null || recycling) {
-            if (bookmark == null) {
-                bookmarkIterator = bookmarks.listIterator(bookmarks.lastIndex)
-                bookmark = bookmarkIterator
-                    .takeIf { it.hasPrevious() }
-                    ?.previous() ?: return null
+        // Phase 1: iterate backward, skipping bookmarks inside the visible range.
+        // If bookmarks were modified externally, the iterator may throw
+        // ConcurrentModificationException — in that case we recreate the iterator in Phase 2.
+        try {
+            while (bookmarkIterator.hasPrevious()) {
+                val candidate: Bookmark = bookmarkIterator.previous()
+                if (visibleRange != null && candidate.page in visibleRange) {
+                    lastSkippedBookmark = candidate
+                    continue
+                }
+                bookmark = candidate
+                break
             }
+        } catch (_: ConcurrentModificationException) {
+            iteratorInvalidated = true
+        }
+
+        // Phase 2: reset iterator to end and try again — either on recycling or if iterator was invalidated
+        if (bookmark == null && (recycling || iteratorInvalidated)) {
+            bookmarkIterator = bookmarks.listIterator(bookmarks.size)
+            while (bookmarkIterator.hasPrevious()) {
+                val candidate = bookmarkIterator.previous()
+                if (visibleRange != null && candidate.page in visibleRange) {
+                    lastSkippedBookmark = candidate
+                    continue
+                }
+                bookmark = candidate
+                break
+            }
+        }
+
+        // Phase 3: fallback — if all bookmarks were visible, use the last skipped one
+        if (bookmark == null) {
+            bookmark = lastSkippedBookmark
+        }
+
+        if (bookmark != null) {
             return jump(
                 bookmark = bookmark,
                 silentlyLoading = silentlyLoading,
@@ -1473,9 +1560,8 @@ open class Paginator<T>(
                     }
                 )?.page?.plus(1)?.coerceAtMost(finalPage)
 
-            val min = expandedBackwardPage ?: startContextPage
-            val max = expandedForwardPage ?: endContextPage
-
+            val min: Int = expandedBackwardPage ?: pivotBackwardState.page
+            val max: Int = expandedForwardPage ?: pivotForwardState.page
             return@run min..max
         })?.let { mPageRange: IntRange ->
             _snapshot.value = scan(mPageRange)

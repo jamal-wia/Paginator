@@ -166,4 +166,114 @@ class BookmarkNavigationTest {
         assertEquals(7, paginator.startContextPage)
         assertEquals(7, paginator.endContextPage)
     }
+
+    // --- Smart skip-visible-bookmarks tests ---
+
+    @Test
+    fun `jumpForward skips bookmarks inside visible range`() = runTest {
+        val paginator = createDeterministicPaginator(capacity = 5)
+
+        // Jump to page 1 and navigate to page 3 so snapshot covers 1..3
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = false)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 2
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 3
+        assertEquals(1, paginator.startContextPage)
+        assertEquals(3, paginator.endContextPage)
+
+        // Now set up bookmarks. The default iterator was consumed by earlier operations,
+        // so we set up bookmarks and use recycling to get a fresh iterator.
+        paginator.bookmarks.clear()
+        paginator.bookmarks.addAll(listOf(BookmarkInt(1), BookmarkInt(5), BookmarkInt(10)))
+
+        // jumpForward with recycling=true will recreate the iterator (Phase 2)
+        // since the old iterator is invalidated. It should skip bookmark 1 (visible)
+        // and jump to 5.
+        val result = paginator.jumpForward(
+            recycling = true,
+            silentlyLoading = true,
+            silentlyResult = false
+        )
+        assertNotNull(result)
+        assertEquals(5, result!!.first.page)
+        assertTrue(result.second.isSuccessState())
+    }
+
+    @Test
+    fun `jumpForward falls back to last visible bookmark when all are visible`() = runTest {
+        val paginator = createDeterministicPaginator(capacity = 5)
+
+        // Load pages 1..3 so snapshot covers 1..3
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = false)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 2
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 3
+
+        // Set up bookmarks — all within visible range
+        paginator.bookmarks.clear()
+        paginator.bookmarks.addAll(listOf(BookmarkInt(1), BookmarkInt(2), BookmarkInt(3)))
+
+        // All bookmarks (1,2,3) are visible → fallback to last one = 3
+        val result = paginator.jumpForward(
+            recycling = true,
+            silentlyLoading = true,
+            silentlyResult = false
+        )
+        assertNotNull(result)
+        assertEquals(3, result!!.first.page)
+    }
+
+    @Test
+    fun `jumpBack skips bookmarks inside visible range`() = runTest {
+        val paginator = createDeterministicPaginator(capacity = 5)
+
+        // Load pages 1..3 so snapshot covers 1..3
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = false)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 2
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 3
+
+        // Set up bookmarks: [1, 2, 10]
+        paginator.bookmarks.clear()
+        paginator.bookmarks.addAll(listOf(BookmarkInt(1), BookmarkInt(2), BookmarkInt(10)))
+
+        // jumpForward with recycling — Phase 1 CME → Phase 2 fresh iterator:
+        // bookmark 1 (in 1..3) → skip, bookmark 2 (in 1..3) → skip, bookmark 10 (not in 1..3) → jump to 10
+        val fwdResult = paginator.jumpForward(
+            recycling = true,
+            silentlyLoading = true,
+            silentlyResult = false
+        )
+        assertNotNull(fwdResult)
+        assertEquals(10, fwdResult!!.first.page)
+        // After jump(10), snapshot = [10], visibleRange = 10..10
+        // Iterator is now at position 3 (past bookmark 10)
+
+        // jumpBack: iterate backward from position 3:
+        // candidate = BookmarkInt(10), 10 in 10..10 → skip
+        // candidate = BookmarkInt(2), 2 NOT in 10..10 → jump to 2
+        val result = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
+        assertNotNull(result)
+        assertEquals(2, result!!.first.page)
+    }
+
+    @Test
+    fun `jumpForward with recycling skips visible and wraps to non-visible`() = runTest {
+        val paginator = createDeterministicPaginator(capacity = 5)
+
+        // Load pages 1..3 so snapshot covers 1..3
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = false)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 2
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 3
+
+        // Set up bookmarks
+        paginator.bookmarks.clear()
+        paginator.bookmarks.addAll(listOf(BookmarkInt(1), BookmarkInt(10)))
+
+        // jumpForward with recycling: bookmark 1 is visible → skip, bookmark 10 is not → jump to it
+        val result = paginator.jumpForward(
+            recycling = true,
+            silentlyLoading = true,
+            silentlyResult = false
+        )
+        assertNotNull(result)
+        assertEquals(10, result!!.first.page)
+    }
 }
