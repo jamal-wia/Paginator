@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.github.jamal-wia"
-version = "5.2.0"
+version = "6.0.0"
 
 android {
     namespace = "com.jamal_aliev.paginator"
@@ -56,7 +56,7 @@ afterEvaluate {
                 from(components["release"])
                 groupId = "com.github.jamal-wia"
                 artifactId = "paginator"
-                version = "5.2.0"
+                version = "6.0.0"
             }
         }
     }
