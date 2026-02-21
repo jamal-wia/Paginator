@@ -63,8 +63,6 @@ import kotlin.contracts.contract
  *
  * **Coroutine safety:** all mutations to [cache] are serialized through [navigationMutex],
  * so concurrent coroutine calls (e.g. [goNextPage] + [refresh]) are safe.
- * [_dirtyPages] is backed by a [java.util.Collections.synchronizedSet], making
- * isolated reads/writes atomic without requiring a suspend lock.
  *
  * **Java-thread safety is NOT guaranteed** — do not access a [Paginator] from
  * raw Java threads without external synchronization.
@@ -1070,7 +1068,7 @@ open class Paginator<T>(
         logger?.log(TAG, "restart")
 
         return@coroutineScope navigationMutex.withLock {
-            val firstPage: PageState<T>? = cache[1]
+            val firstPage: PageState<T>? = getStateOf(1)
             cache.clear()
             if (firstPage != null) {
                 setState(
