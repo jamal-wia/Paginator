@@ -33,8 +33,9 @@ import com.jamal_aliev.paginator.page.PageState
  * @see PageState
  */
 open class MutablePaginator<T>(
+    initialCapacity: Int = DEFAULT_CAPACITY,
     source: suspend Paginator<T>.(page: Int) -> List<T>
-) : Paginator<T>(source) {
+) : Paginator<T>(initialCapacity, source) {
 
     /**
      * Stores a [PageState] in the cache, replacing any existing state for that page number.

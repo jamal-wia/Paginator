@@ -76,6 +76,7 @@ import kotlin.contracts.contract
  * @see MutablePaginator
  */
 open class Paginator<T>(
+    initialCapacity : Int = DEFAULT_CAPACITY,
     var source: suspend Paginator<T>.(page: Int) -> List<T>
 ) : Comparable<Paginator<*>> {
 
@@ -101,7 +102,7 @@ open class Paginator<T>(
      *
      * Default: [DEFAULT_CAPACITY] (20).
      */
-    var capacity: Int = DEFAULT_CAPACITY
+    var capacity: Int = initialCapacity
         protected set
 
     /**
@@ -117,7 +118,7 @@ open class Paginator<T>(
     val pages: List<Int> get() = cache.keys.toList()
 
     /** All cached page states, sorted by page number. */
-    val pageStates: List<PageState<T>> get() = cache.values.toList()
+    val states: List<PageState<T>> get() = cache.values.toList()
 
     /** The number of pages currently in the cache. */
     val size: Int get() = cache.size
@@ -221,7 +222,7 @@ open class Paginator<T>(
 
         fun find(sPont: Int, ePoint: Int) {
             // example 1(0), 2(1), 3(2), 21(3), 22(4), 23(5)
-            val validStates = this.pageStates.filter(::isFilledSuccessState)
+            val validStates = this.states.filter(::isFilledSuccessState)
             if (validStates.isEmpty()) {
                 startContextPage = 0
                 endContextPage = 0

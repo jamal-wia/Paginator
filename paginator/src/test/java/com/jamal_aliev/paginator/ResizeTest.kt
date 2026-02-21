@@ -26,7 +26,7 @@ class ResizeTest {
     @Test
     fun `resize with same capacity is noop`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
-        val statesBefore = paginator.pageStates.toList()
+        val statesBefore = paginator.states.toList()
 
         paginator.resize(capacity = 3, resize = true, silently = true)
 
@@ -73,7 +73,7 @@ class ResizeTest {
 
         // 6 items / 2 per page = 3 pages
         assertEquals(3, paginator.size)
-        val all = paginator.pageStates.flatMap { it.data }
+        val all = paginator.states.flatMap { it.data }
         assertEquals(
             listOf("p1_item0", "p1_item1", "p1_item2", "p2_item0", "p2_item1", "p2_item2"),
             all

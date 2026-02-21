@@ -104,7 +104,7 @@ class SmartForEachTest {
         val paginator = createPaginatorWith(3)
         val result = paginator.smartForEach { _, _, _ -> true }
 
-        assertEquals(paginator.pageStates, result)
+        assertEquals(paginator.states, result)
     }
 }
 

@@ -85,7 +85,7 @@ class MainViewModel : ViewModel() {
                         itemCount = pageState?.data?.size ?: 0
                     )
                 },
-                totalCachedItems = paginator.pageStates.sumOf { it.data.size },
+                totalCachedItems = paginator.states.sumOf { it.data.size },
             )
         }
     }

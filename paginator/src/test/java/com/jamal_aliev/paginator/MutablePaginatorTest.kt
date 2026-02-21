@@ -32,7 +32,7 @@ class MutablePaginatorTest {
 
         assertEquals(pageStates.size, paginator.size)
 
-        assertEquals(pageStates, paginator.pageStates)
+        assertEquals(pageStates, paginator.states)
         assertEquals(pageStates.map { it.page }, paginator.pages)
         pageStates.forEach { pageState: PageState<String> ->
             assertEquals(pageState, paginator[pageState.page])

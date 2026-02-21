@@ -60,7 +60,7 @@ inline fun <T> Paginator<T>.smartForEach(
         currentState: PageState<T>
     ) -> Boolean
 ): List<PageState<T>> {
-    val states: List<PageState<T>> = this.pageStates
+    val states: List<PageState<T>> = this.states
     var index = initialIndex.invoke(states)
     while (0 <= index && index < states.size) {
         val currentState: PageState<T> = states[index]
@@ -81,7 +81,7 @@ inline fun <T> Paginator<T>.smartForEach(
 inline fun <T> Paginator<T>.indexOfFirst(
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
-    for (page in pageStates) {
+    for (page in states) {
         val result = page.data.indexOfFirst(predicate)
         if (result != -1) return page.page to result
     }
@@ -118,7 +118,7 @@ inline fun <T> Paginator<T>.indexOfFirst(
 inline fun <T> Paginator<T>.indexOfLast(
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
-    for (page in pageStates.reversed()) {
+    for (page in states.reversed()) {
         val result = page.data.indexOfLast(predicate)
         if (result != -1) return page.page to result
     }
