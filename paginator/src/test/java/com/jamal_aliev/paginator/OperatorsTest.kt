@@ -64,8 +64,8 @@ class OperatorsTest {
     fun `iterator iterates all entries`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
         val pages = mutableListOf<Int>()
-        for (entry in paginator) {
-            pages.add(entry.key)
+        for (state in paginator) {
+            pages.add(state.page)
         }
         assertEquals(listOf(1, 2, 3), pages)
     }

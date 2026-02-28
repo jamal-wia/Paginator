@@ -19,7 +19,7 @@ inline fun <T> Paginator<T>.foreEach(
     action: (PageState<T>) -> Unit
 ) {
     for (state in this) {
-        action(state.value)
+        action(state)
     }
 }
 

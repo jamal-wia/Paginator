@@ -27,7 +27,7 @@ import kotlin.contracts.contract
  * logic which lives in [Paginator]. It is connected to [Paginator] via composition.
  *
  * **Key concepts:**
- * - **Cache**: a sorted map of [PageState] objects keyed by page number.
+ * - **Cache**: a sorted list of [PageState] objects ordered by page number.
  * - **Context window** ([startContextPage]..[endContextPage]): the contiguous range of
  *   filled success pages visible to the UI via the [snapshot] flow.
  * - **Capacity**: the expected number of items per page. Pages with fewer items are
@@ -51,20 +51,31 @@ open class PagingCore<T>(
     //  Core storage
     // ──────────────────────────────────────────────────────────────────────────
 
-    /** Internal sorted cache of page states, keyed by page number. */
-    private val cacheMap = sortedMapOf<Int, PageState<T>>()
+    /** Internal sorted cache of page states, ordered by page number. */
+    private val cache = mutableListOf<PageState<T>>()
+
+    /**
+     * Finds the index of a page in [cache] via binary search.
+     *
+     * @return A non-negative index if found, or a negative insertion-point encoding
+     *   `-(insertionPoint + 1)` if not found (same semantics as [List.binarySearch]).
+     */
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun binarySearchPage(page: Int): Int {
+        return cache.binarySearch { it.page.compareTo(page) }
+    }
 
     /** All cached page numbers, sorted in ascending order. */
-    val pages: List<Int> get() = cacheMap.keys.toList()
+    val pages: List<Int> get() = cache.map { it.page }
 
     /** All cached page states, sorted by page number. */
-    val states: List<PageState<T>> get() = cacheMap.values.toList()
+    val states: List<PageState<T>> get() = cache.toList()
 
     /** The number of pages currently in the cache. */
-    val size: Int get() = cacheMap.size
+    val size: Int get() = cache.size
 
     /** Returns the highest page number in the cache, or `null` if empty. */
-    fun lastPage(): Int? = cacheMap.keys.lastOrNull()
+    fun lastPage(): Int? = cache.lastOrNull()?.page
 
     // ──────────────────────────────────────────────────────────────────────────
     //  Capacity
@@ -315,7 +326,8 @@ open class PagingCore<T>(
      */
     fun getStateOf(page: Int): PageState<T>? {
         logger?.log(TAG, "getStateOf: page=$page")
-        return cacheMap[page]
+        val index = binarySearchPage(page)
+        return if (index >= 0) cache[index] else null
     }
 
     /**
@@ -331,7 +343,12 @@ open class PagingCore<T>(
         state: PageState<T>,
         silently: Boolean = false
     ) {
-        cacheMap[state.page] = state
+        val index = binarySearchPage(state.page)
+        if (index >= 0) {
+            cache[index] = state
+        } else {
+            cache.add(-(index + 1), state)
+        }
         if (!silently) {
             snapshot()
         }
@@ -344,14 +361,15 @@ open class PagingCore<T>(
      * @return The removed [PageState], or `null` if the page was not in the cache.
      */
     fun removeFromCache(page: Int): PageState<T>? {
-        return cacheMap.remove(page)
+        val index = binarySearchPage(page)
+        return if (index >= 0) cache.removeAt(index) else null
     }
 
     /**
      * Clears all pages from the cache.
      */
     fun clear() {
-        cacheMap.clear()
+        cache.clear()
     }
 
     /**
@@ -454,17 +472,17 @@ open class PagingCore<T>(
     /** Whether the full cache flow ([asFlow]) has been activated by a subscriber. */
     var enableCacheFlow = false
         private set
-    private val _cacheFlow = MutableStateFlow(cacheMap)
+    private val _cacheFlow = MutableStateFlow<List<PageState<T>>>(emptyList())
 
     /**
-     * Returns a [Flow] that emits the **entire** cache map whenever it changes.
+     * Returns a [Flow] that emits the **entire** cache list whenever it changes.
      *
      * This includes all pages — even those outside the current context window.
      * Calling this method automatically enables cache flow updates ([enableCacheFlow] = `true`).
      *
      * For most UI use cases, prefer [snapshot] which emits only the visible pages.
      */
-    fun asFlow(): Flow<Map<Int, PageState<T>>> {
+    fun asFlow(): Flow<List<PageState<T>>> {
         enableCacheFlow = true
         return _cacheFlow.asStateFlow()
     }
@@ -472,11 +490,11 @@ open class PagingCore<T>(
     /**
      * Forces a re-emission of the current cache into [asFlow] subscribers.
      *
-     * Emits a "reset" (false) followed by the current cache (true) to ensure
-     * that collectors receive the latest state, even if the map reference hasn't changed.
+     * Creates a snapshot copy of the current cache list and emits it to ensure
+     * that collectors receive the latest state.
      */
     fun repeatCacheFlow() {
-        _cacheFlow.value = cacheMap
+        _cacheFlow.value = cache.toList()
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -567,8 +585,8 @@ open class PagingCore<T>(
         pagesRange: IntRange = run {
             check(startContextPage != 0) { "You cannot scan because startContextPage is 0" }
             check(endContextPage != 0) { "You cannot scan because endContextPage is 0" }
-            val min = walkWhile(cacheMap[startContextPage], next = { it - 1 })?.page
-            val max = walkWhile(cacheMap[endContextPage], next = { it + 1 })?.page
+            val min = walkWhile(getStateOf(startContextPage), next = { it - 1 })?.page
+            val max = walkWhile(getStateOf(endContextPage), next = { it + 1 })?.page
             checkNotNull(min) { "min is null the data structure is broken!" }
             checkNotNull(max) { "max is null the data structure is broken!" }
             return@run min..max
@@ -727,7 +745,7 @@ open class PagingCore<T>(
         if (resize && capacity > 0) {
             val firstSuccessPageState: PageState<T> =
                 walkWhile(
-                    pivotState = cacheMap[startContextPage],
+                    pivotState = getStateOf(startContextPage),
                     next = { it - 1 },
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()
@@ -735,7 +753,7 @@ open class PagingCore<T>(
                 ) ?: return
             val lastSuccessPageState: PageState<T> =
                 walkWhile(
-                    pivotState = cacheMap[endContextPage],
+                    pivotState = getStateOf(endContextPage),
                     next = { it + 1 },
                     predicate = { pageState: PageState<T> ->
                         pageState.isSuccessState()
@@ -743,11 +761,11 @@ open class PagingCore<T>(
                 ) ?: return
             val items: MutableList<T> =
                 (firstSuccessPageState.page..lastSuccessPageState.page)
-                    .map { page: Int -> cacheMap.getValue(page) }
+                    .mapNotNull { page: Int -> getStateOf(page) }
                     .flatMap { pageState: PageState<T> -> pageState.data }
                     .toMutableList()
 
-            cacheMap.clear()
+            cache.clear()
 
             var pageIndex: Int = firstSuccessPageState.page
             while (items.isNotEmpty()) {
@@ -785,7 +803,7 @@ open class PagingCore<T>(
         silently: Boolean = false
     ) {
         logger?.log(TAG, "release")
-        cacheMap.clear()
+        cache.clear()
         startContextPage = 0
         endContextPage = 0
         if (!silently) _snapshot.value = emptyList()
@@ -797,8 +815,8 @@ open class PagingCore<T>(
     //  Operators
     // ──────────────────────────────────────────────────────────────────────────
 
-    operator fun iterator(): MutableIterator<MutableMap.MutableEntry<Int, PageState<T>>> {
-        return cacheMap.iterator()
+    operator fun iterator(): MutableIterator<PageState<T>> {
+        return cache.iterator()
     }
 
     operator fun contains(page: Int): Boolean = getStateOf(page) != null
@@ -809,9 +827,9 @@ open class PagingCore<T>(
 
     operator fun get(page: Int, index: Int): T? = getElement(page, index)
 
-    override fun toString(): String = "PagingCore(pages=$cacheMap)"
+    override fun toString(): String = "PagingCore(pages=$cache)"
 
-    override fun hashCode(): Int = cacheMap.hashCode()
+    override fun hashCode(): Int = cache.hashCode()
 
     override fun equals(other: Any?): Boolean = this === other
 

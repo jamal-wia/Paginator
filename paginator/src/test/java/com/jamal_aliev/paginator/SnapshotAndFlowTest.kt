@@ -72,6 +72,6 @@ class SnapshotAndFlowTest {
         paginator.core.repeatCacheFlow()
         val updated = flow.first()
         assertEquals(1, updated.size)
-        assertTrue(1 in updated)
+        assertEquals(1, updated.first().page)
     }
 }

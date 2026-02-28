@@ -1027,7 +1027,7 @@ open class Paginator<T>(
      */
     override operator fun compareTo(other: Paginator<*>): Int = core.size - other.core.size
 
-    operator fun iterator(): MutableIterator<MutableMap.MutableEntry<Int, PageState<T>>> {
+    operator fun iterator(): MutableIterator<PageState<T>> {
         return core.iterator()
     }
 
