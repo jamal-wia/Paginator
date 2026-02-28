@@ -7,7 +7,6 @@ import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
-import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
@@ -46,13 +45,6 @@ open class PagingCore<T>(
 
     @PublishedApi
     internal fun stateAtIndex(index: Int): PageState<T> = cache[index]
-
-    /**
-     * Logger for observing cache operations.
-     *
-     * @see PaginatorLogger
-     */
-    var logger: PaginatorLogger? = null
 
     // ──────────────────────────────────────────────────────────────────────────
     //  Core storage
@@ -332,7 +324,6 @@ open class PagingCore<T>(
      * @return The cached [PageState], or `null` if the page is not in the cache.
      */
     fun getStateOf(page: Int): PageState<T>? {
-        logger?.log(TAG, "getStateOf: page=$page")
         val index = searchIndexOfPage(page)
         return if (index >= 0) cache[index] else null
     }
@@ -654,7 +645,6 @@ open class PagingCore<T>(
      * @param page The page number to mark as dirty.
      */
     fun markDirty(page: Int) {
-        logger?.log(TAG, "markDirty: page=$page")
         _dirtyPages.add(page)
     }
 
@@ -664,7 +654,6 @@ open class PagingCore<T>(
      * @param pages The page numbers to mark as dirty.
      */
     fun markDirty(pages: List<Int>) {
-        logger?.log(TAG, "markDirty: pages=$pages")
         _dirtyPages.addAll(pages)
     }
 
@@ -674,7 +663,6 @@ open class PagingCore<T>(
      * @param page The page number to clear.
      */
     fun clearDirty(page: Int) {
-        logger?.log(TAG, "clearDirty: page=$page")
         _dirtyPages.remove(page)
     }
 
@@ -684,7 +672,6 @@ open class PagingCore<T>(
      * @param pages The page numbers to clear.
      */
     fun clearDirty(pages: List<Int>) {
-        logger?.log(TAG, "clearDirty: pages=$pages")
         _dirtyPages.removeAll(pages.toSet())
     }
 
@@ -692,7 +679,6 @@ open class PagingCore<T>(
      * Removes all dirty flags from all pages.
      */
     fun clearAllDirty() {
-        logger?.log(TAG, "clearAllDirty")
         _dirtyPages.clear()
     }
 
@@ -776,7 +762,6 @@ open class PagingCore<T>(
     ) {
         if (this.capacity == capacity) return
         require(capacity >= 0) { "capacity must be greater or equal than zero" }
-        logger?.log(TAG, "resize: capacity=$capacity resize=$resize")
         this.capacity = capacity
 
         if (resize && capacity > 0) {
@@ -839,7 +824,6 @@ open class PagingCore<T>(
         capacity: Int = DEFAULT_CAPACITY,
         silently: Boolean = false
     ) {
-        logger?.log(TAG, "release")
         cache.clear()
         startContextPage = 0
         endContextPage = 0
