@@ -19,6 +19,7 @@ import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -79,10 +80,6 @@ open class Paginator<T>(
      * @see PaginatorLogger
      */
     var logger: PaginatorLogger? = null
-        set(value) {
-            field = value
-            core.logger = value
-        }
 
     // ──────────────────────────────────────────────────────────────────────────
     //  Final page
@@ -694,13 +691,13 @@ open class Paginator<T>(
                 initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
-            ).also { resulState: PageState<T> ->
+            ).also { resultState: PageState<T> ->
                 core.setState(
-                    state = resulState,
+                    state = resultState,
                     silently = true
                 )
                 if (core.startContextPage == pivotContextPage
-                    && core.isFilledSuccessState(resulState)
+                    && core.isFilledSuccessState(resultState)
                 ) {
                     core.startContextPage = previousPage
                     core.expandStartContextPage(core.getStateOf(previousPage - 1))
@@ -714,10 +711,10 @@ open class Paginator<T>(
 
                 logger?.log(
                     TAG,
-                    "goPreviousPage: page=$previousPage result=${resulState::class.simpleName}"
+                    "goPreviousPage: page=$previousPage result=${resultState::class.simpleName}"
                 )
                 refreshDirtyPagesInContext()
-                return@withLock resulState
+                return@withLock resultState
             }
         }
     }
@@ -956,6 +953,8 @@ open class Paginator<T>(
                 logger?.log(TAG, "loadOrGetPageState: page=$page data.isNotEmpty()")
                 initSuccessState.invoke(page, data)
             }
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (exception: Exception) {
             logger?.log(TAG, "loadOrGetPageState: page=$page exception=$exception")
             initErrorState.invoke(exception, page, cachedState?.data ?: mutableListOf())
@@ -973,12 +972,10 @@ open class Paginator<T>(
      * removes them from the dirty set, and starts a parallel [refresh] for those pages.
      */
     protected fun CoroutineScope.refreshDirtyPagesInContext() {
-        if (core.dirtyPages.isEmpty() || !core.isStarted) return
+        if (!core.isStarted) return
         val dirtyInContext: List<Int> =
-            core.dirtyPages.filter { page: Int ->
-                page in core.startContextPage..core.endContextPage
-            }
-        if (dirtyInContext.isEmpty()) return
+            core.drainDirtyPagesInRange(core.startContextPage..core.endContextPage)
+                ?: return
         logger?.log(TAG, "refreshDirtyPagesInContext: pages=$dirtyInContext")
         launch {
             refresh(pages = dirtyInContext, loadingSilently = true)
@@ -1041,9 +1038,9 @@ open class Paginator<T>(
 
     override fun toString(): String = "Paginator(cache=$core, bookmarks=$bookmarks)"
 
-    override fun hashCode(): Int = core.hashCode()
-
     override fun equals(other: Any?): Boolean = this === other
+
+    override fun hashCode(): Int = System.identityHashCode(this)
 
     companion object {
         const val TAG = "Paginator"

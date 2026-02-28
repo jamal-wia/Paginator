@@ -15,7 +15,7 @@ import com.jamal_aliev.paginator.page.PageState
  *
  * @param action The action to be performed on each PageState.
  */
-inline fun <T> Paginator<T>.foreEach(
+inline fun <T> Paginator<T>.forEach(
     action: (PageState<T>) -> Unit
 ) {
     for (state in this) {
@@ -111,7 +111,7 @@ inline fun <T> Paginator<T>.indexOfFirst(
 inline fun <T> Paginator<T>.indexOfLast(
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
-    for (page in core.states.reversed()) {
+    for (page in core.states.asReversed()) {
         val result = page.data.indexOfLast(predicate)
         if (result != -1) return page.page to result
     }
@@ -131,11 +131,8 @@ inline fun <T> Paginator<T>.indexOfLast(
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
     val pageState = checkNotNull(core.getStateOf(page)) { "Page $page is not found" }
-    for ((reversedIndex, element) in pageState.data.reversed().withIndex()) {
-        if (predicate(element)) {
-            return page to (pageState.data.size - 1 - reversedIndex)
-        }
-    }
+    val result = pageState.data.indexOfLast(predicate)
+    if (result != -1) return page to result
     return null
 }
 
@@ -216,7 +213,7 @@ fun <T> MutablePaginator<T>.addElement(
     silently: Boolean = false,
     initSuccessPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
 ): Boolean {
-    val lastPage: Int = core.pages.lastOrNull() ?: return false
+    val lastPage: Int = core.lastPage() ?: return false
     val lastPageData = core.getStateOf(lastPage)?.data ?: return false
     addElement(element, lastPage, lastPageData.size, silently, initSuccessPageState)
     return true

@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.extension.addElement
-import com.jamal_aliev.paginator.extension.foreEach
+import com.jamal_aliev.paginator.extension.forEach
 import com.jamal_aliev.paginator.extension.getElement
 import com.jamal_aliev.paginator.extension.indexOfFirst
 import com.jamal_aliev.paginator.extension.indexOfLast
@@ -229,15 +229,11 @@ class ExtensionFunctionsTest {
         assertEquals(3, result!!.page)
     }
 
-    // =========================================================================
-    // foreEach
-    // =========================================================================
-
     @Test
-    fun `foreEach iterates all page states`() = runTest {
+    fun `forEach iterates all page states`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
         val visited = mutableListOf<Int>()
-        paginator.foreEach { visited.add(it.page) }
+        paginator.forEach { visited.add(it.page) }
         assertEquals(listOf(1, 2, 3), visited)
     }
 }

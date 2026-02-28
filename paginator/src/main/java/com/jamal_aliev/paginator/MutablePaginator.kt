@@ -188,14 +188,7 @@ open class MutablePaginator<T>(
 
         if (isDirty) core.markDirty(page)
 
-        if (!silently) {
-            val pageBefore = walkBackwardWhile(core[core.startContextPage])!!
-            val pageAfter = walkForwardWhile(core[core.endContextPage])!!
-            val rangeSnapshot = pageBefore.page..pageAfter.page
-            if (page in rangeSnapshot) {
-                core.snapshot(rangeSnapshot)
-            }
-        }
+        if (!silently) snapshotIfPageVisible(page)
     }
 
     /**
@@ -263,14 +256,7 @@ open class MutablePaginator<T>(
 
         if (isDirty) core.markDirty(page)
 
-        if (!silently) {
-            val pageBefore = walkBackwardWhile(core[core.startContextPage])!!
-            val pageAfter = walkForwardWhile(core[core.endContextPage])!!
-            val rangeSnapshot = pageBefore.page..pageAfter.page
-            if (page in rangeSnapshot) {
-                core.snapshot(rangeSnapshot)
-            }
-        }
+        if (!silently) snapshotIfPageVisible(page)
 
         return removed
     }
@@ -346,18 +332,7 @@ open class MutablePaginator<T>(
 
         if (isDirty) core.markDirty(targetPage)
 
-        if (!silently) {
-            val startState: PageState<T> = checkNotNull(
-                walkBackwardWhile(core.getStateOf(core.startContextPage))
-            ) { "startContextPage is broken so snapshot is impossible" }
-            val endState: PageState<T> = checkNotNull(
-                walkForwardWhile(core.getStateOf(core.endContextPage))
-            ) { "endContextPage is broken so snapshot is impossible" }
-            val rangeSnapshot: IntRange = startState.page..endState.page
-            if (targetPage in rangeSnapshot) {
-                core.snapshot(rangeSnapshot)
-            }
-        }
+        if (!silently) snapshotIfPageVisible(targetPage)
     }
 
     /**
@@ -374,7 +349,7 @@ open class MutablePaginator<T>(
      * @param silently If `true`, no snapshot is emitted after the operation completes.
      * @param predicate Determines whether an element should be processed.
      */
-    inline fun replaceAllElement(
+    inline fun replaceAllElements(
         providerElement: (current: T, pageState: PageState<T>, index: Int) -> T?,
         silently: Boolean = false,
         predicate: (current: T, pageState: PageState<T>, index: Int) -> Boolean
@@ -412,6 +387,18 @@ open class MutablePaginator<T>(
         }
     }
 
+    /**
+     * Emits a snapshot if [affectedPage] falls within the current visible range.
+     * Extracts the repeated pattern used across CRUD operations.
+     */
+    private fun snapshotIfPageVisible(affectedPage: Int) {
+        val startState = walkBackwardWhile(core[core.startContextPage]) ?: return
+        val endState = walkForwardWhile(core[core.endContextPage]) ?: return
+        val rangeSnapshot = startState.page..endState.page
+        if (affectedPage in rangeSnapshot) {
+            core.snapshot(rangeSnapshot)
+        }
+    }
 
     operator fun minusAssign(page: Int) {
         removeState(page)

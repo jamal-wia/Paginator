@@ -46,10 +46,6 @@ open class PagingCore<T>(
     @PublishedApi
     internal fun stateAtIndex(index: Int): PageState<T> = cache[index]
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Core storage
-    // ──────────────────────────────────────────────────────────────────────────
-
     /** Internal sorted cache of page states, ordered by page number. */
     private val cache = mutableListOf<PageState<T>>()
 
@@ -76,10 +72,6 @@ open class PagingCore<T>(
     /** Returns the highest page number in the cache, or `null` if empty. */
     fun lastPage(): Int? = cache.lastOrNull()?.page
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Capacity
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
      * The expected number of items per page.
      *
@@ -97,10 +89,6 @@ open class PagingCore<T>(
      */
     val isCapacityUnlimited: Boolean
         get() = capacity == UNLIMITED_CAPACITY
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Context window
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * The left (lowest) boundary of the current context window.
@@ -177,7 +165,7 @@ open class PagingCore<T>(
         require(endPoint >= 1) { "endPoint must be greater than zero" }
         require(endPoint >= startPoint) { "endPoint must be greater than startPoint" }
 
-        fun find(sPont: Int, ePoint: Int) {
+        fun find(sPoint: Int, ePoint: Int) {
             // example 1(0), 2(1), 3(2), 21(3), 22(4), 23(5)
             val validStates = this.states.filter(::isFilledSuccessState)
             if (validStates.isEmpty()) {
@@ -187,7 +175,7 @@ open class PagingCore<T>(
             }
 
             var startPoint = 1
-            if (sPont > 0) startPoint = sPont
+            if (sPoint > 0) startPoint = sPoint
             var endPoint = validStates[validStates.lastIndex].page
             if (ePoint < endPoint) endPoint = ePoint
 
@@ -307,15 +295,11 @@ open class PagingCore<T>(
             // startPoint (== endPoint) is not a valid page state,
             // so we need to find around it the nearest valid page state
             find(
-                sPont = startPoint - 1,
+                sPoint = startPoint - 1,
                 ePoint = endPoint + 1
             )
         }
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  State access
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Retrieves the cached [PageState] for the given [page] number.
@@ -386,10 +370,6 @@ open class PagingCore<T>(
             ?.data?.get(index)
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  State checking
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
      * Determines whether the given [PageState] represents a successfully loaded page
      * whose data set is considered "filled".
@@ -412,10 +392,6 @@ open class PagingCore<T>(
         if (!state.isSuccessState()) return false
         return isCapacityUnlimited || state.data.size == capacity
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Walking
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Traverses pages starting from [pivotState], repeatedly applying [next]
@@ -493,10 +469,6 @@ open class PagingCore<T>(
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Cache Flow
-    // ──────────────────────────────────────────────────────────────────────────
-
     /** Whether the full cache flow ([asFlow]) has been activated by a subscriber. */
     var enableCacheFlow = false
         private set
@@ -529,7 +501,7 @@ open class PagingCore<T>(
     //  Snapshot
     // ──────────────────────────────────────────────────────────────────────────
 
-    protected val _snapshot = MutableStateFlow<List<PageState<T>>>(cache)
+    protected val _snapshot = MutableStateFlow<List<PageState<T>>>(emptyList())
 
     /**
      * A [Flow] that emits the list of [PageState] objects within the current context window
@@ -620,8 +592,8 @@ open class PagingCore<T>(
             return@run min..max
         }
     ): List<PageState<T>> {
-        val capacity: Int = (pagesRange.last - pagesRange.first + 1)
-        val result: List<PageState<T>> = buildList(capacity) {
+        val rangeSize: Int = (pagesRange.last - pagesRange.first + 1)
+        val result: List<PageState<T>> = buildList(rangeSize) {
             for (page in pagesRange) {
                 val pageState: PageState<T> =
                     getStateOf(page) ?: continue
@@ -630,10 +602,6 @@ open class PagingCore<T>(
         }
         return result
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Dirty pages
-    // ──────────────────────────────────────────────────────────────────────────
 
     /** Internal set of page numbers marked as dirty (needing refresh). */
     private val _dirtyPages: MutableSet<Int> = mutableSetOf()
@@ -690,9 +658,30 @@ open class PagingCore<T>(
      */
     fun isDirty(page: Int): Boolean = page in _dirtyPages
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Initializers
-    // ──────────────────────────────────────────────────────────────────────────
+    /**
+     * Returns `true` if there are no dirty pages.
+     *
+     * Avoids the allocation that [dirtyPages] (which creates a defensive copy) would incur
+     * when the caller only needs to check emptiness.
+     */
+    fun isDirtyPagesEmpty(): Boolean = _dirtyPages.isEmpty()
+
+    /**
+     * Returns dirty pages that fall within the given [range], removing them from the dirty set.
+     *
+     * This is an atomic "drain" operation: pages are both returned and cleared in one step,
+     * avoiding double-access of [dirtyPages] and the extra Set copy it creates.
+     *
+     * @param range The page range to check against.
+     * @return A list of dirty page numbers that were within [range], or `null` if none.
+     */
+    fun drainDirtyPagesInRange(range: IntRange): List<Int>? {
+        if (_dirtyPages.isEmpty()) return null
+        val result = _dirtyPages.filter { it in range }
+        if (result.isEmpty()) return null
+        _dirtyPages.removeAll(result.toSet())
+        return result
+    }
 
     /**
      * Factory for creating [ProgressPage] instances during page loading.
@@ -732,10 +721,6 @@ open class PagingCore<T>(
         fun(exception: Exception, page: Int, data: List<T>): ErrorPage<T> {
             return ErrorPage(exception = exception, page = page, data = data)
         }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Resize
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Changes the expected number of items per page and optionally redistributes existing data.
@@ -790,11 +775,11 @@ open class PagingCore<T>(
             cache.clear()
 
             var pageIndex: Int = firstSuccessPageState.page
-            while (items.isNotEmpty()) {
-                val successData = mutableListOf<T>()
-                while (items.isNotEmpty() && successData.size < capacity) {
-                    successData.add(items.removeAt(0))
-                }
+            var offset = 0
+            while (offset < items.size) {
+                val end = minOf(offset + capacity, items.size)
+                val successData = items.subList(offset, end).toMutableList()
+                offset = end
 
                 setState(
                     state = initSuccessState.invoke(pageIndex++, successData),
@@ -807,10 +792,6 @@ open class PagingCore<T>(
             snapshot()
         }
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Release
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Releases all cache resources and resets to initial state.
@@ -832,10 +813,6 @@ open class PagingCore<T>(
         _dirtyPages.clear()
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Operators
-    // ──────────────────────────────────────────────────────────────────────────
-
     operator fun iterator(): MutableIterator<PageState<T>> {
         return cache.iterator()
     }
@@ -850,9 +827,9 @@ open class PagingCore<T>(
 
     override fun toString(): String = "PagingCore(pages=$cache)"
 
-    override fun hashCode(): Int = cache.hashCode()
-
     override fun equals(other: Any?): Boolean = this === other
+
+    override fun hashCode(): Int = System.identityHashCode(this)
 
     companion object {
         const val TAG = "PagingCore"
@@ -860,10 +837,6 @@ open class PagingCore<T>(
         const val UNLIMITED_CAPACITY = 0
     }
 }
-
-// ──────────────────────────────────────────────────────────────────────────
-//  Private gap helpers (replaces extension `gap` usage inside findNearContextPage)
-// ──────────────────────────────────────────────────────────────────────────
 
 @Suppress("NOTHING_TO_INLINE")
 private inline fun <T> gap(state: PageState<T>, page: Int): Int {

@@ -80,8 +80,8 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - **Lock flags** -- prevent specific operations at runtime (`lockJump`, `lockGoNextPage`,
   `lockGoPreviousPage`, `lockRestart`, `lockRefresh`)
 - **Parallel loading** -- preload multiple pages concurrently with `loadOrGetPageState`
-- **Pluggable logging** -- implement the `Logger` interface to receive detailed logs about
-  navigation, state changes, and element-level operations. No logging by default (`NoOpLogger`)
+- **Pluggable logging** -- implement the `PaginatorLogger` interface to receive detailed logs about
+  navigation, state changes, and element-level operations. No logging by default (`null`)
 - **Context window** -- the paginator tracks a contiguous range of successfully loaded pages (
   `startContextPage..endContextPage`), which defines the visible snapshot
 
@@ -115,12 +115,12 @@ Create a `MutablePaginator` in your ViewModel or Presenter, providing a data sou
 class MyViewModel : ViewModel() {
 
     private val paginator = MutablePaginator<Item>(source = { page ->
-        repository.loadPage(page.toInt())
+        repository.loadPage(page)
     })
 }
 ```
 
-The `source` lambda receives a `Int` page number and should return a `List<T>`.
+The `source` lambda receives an `Int` page number and should return a `List<T>`.
 
 ### Step 2: Observe and Start
 
@@ -201,8 +201,8 @@ The library provides two classes with different levels of access:
 | **Role** | Read-only base class | Full-featured mutable extension |
 | **Navigation** | `jump`, `goNextPage`, `goPreviousPage`, `restart`, `refresh` | Inherits all from `Paginator` |
 | **State access** | `getStateOf`, `getElement`, `scan`, `snapshot` | `setState` (public), `removeState` |
-| **CRUD** | -- | `setElement`, `removeElement`, `addAllElements`, `replaceAllElement` |
-| **Capacity** | Read-only `capacity` | `resize()` |
+| **CRUD** | -- | `setElement`, `removeElement`, `addAllElements`, `replaceAllElements` |
+| **Capacity** | Read-only `capacity` | `core.resize()` |
 | **Dirty pages** | `markDirty`, `clearDirty`, `isDirty` | Inherits + `isDirty` param on CRUD ops |
 | **Lifecycle** | `release()` | Inherits |
 
@@ -216,12 +216,12 @@ direct state manipulation. Most use cases will use this class.
 ```kotlin
 // Most common: full-featured paginator
 val paginator = MutablePaginator<String>(source = { page ->
-    api.fetchItems(page.toInt())
+    api.fetchItems(page)
 })
 
 // Read-only: only navigation, no element mutations
 val readOnlyPaginator = Paginator<String>(source = { page ->
-    api.fetchItems(page.toInt())
+    api.fetchItems(page)
 })
 ```
 
@@ -456,10 +456,10 @@ paginator.snapshot
 For advanced use cases, observe the entire cache:
 
 ```kotlin
-val cacheFlow: Flow<Map<Int, PageState<T>>> = paginator.core.asFlow()
+val cacheFlow: Flow<List<PageState<T>>> = paginator.core.asFlow()
 ```
 
-This emits the complete cache map (all pages, including those outside the context window).
+This emits the complete cache list (all pages, including those outside the context window).
 
 ---
 
@@ -485,7 +485,7 @@ paginator.addAllElements(
 )
 
 // Replace all matching elements across all pages
-paginator.replaceAllElement(
+paginator.replaceAllElements(
     providerElement = { current, _, _ -> current.copy(read = true) },
     predicate = { current, _, _ -> current.id == targetId }
 )
@@ -553,14 +553,14 @@ All locks are reset to `false` on `release()`.
 
 ## Logger
 
-The paginator supports pluggable logging via the `Logger` interface. By default, no logging is
-performed (`NoOpLogger`). Implement the interface and assign it to `paginator.logger` to receive
+The paginator supports pluggable logging via the `PaginatorLogger` interface. By default, no logging is
+performed (logger is `null`). Implement the interface and assign it to `paginator.logger` to receive
 logs about navigation, state changes, and element-level operations.
 
-### Logger Interface
+### PaginatorLogger Interface
 
 ```kotlin
-interface Logger {
+interface PaginatorLogger {
     fun log(tag: String, message: String)
 }
 ```
@@ -569,16 +569,16 @@ interface Logger {
 
 ```kotlin
 import android.util.Log
-import com.jamal_aliev.paginator.logger.Logger
+import com.jamal_aliev.paginator.logger.PaginatorLogger
 
-object AndroidLogger : Logger {
+object AndroidLogger : PaginatorLogger {
     override fun log(tag: String, message: String) {
         Log.d(tag, message)
     }
 }
 
 val paginator = MutablePaginator<String>(source = { page ->
-    api.fetchItems(page.toInt())
+    api.fetchItems(page)
 }).apply {
     logger = AndroidLogger
 }
@@ -639,7 +639,7 @@ pageA gap pageB   // Int distance between page numbers
 // Search for elements
 paginator.indexOfFirst { it.id == targetId }    // Returns Pair<Int, Int>? (page, index)
 paginator.indexOfLast { it.name == "test" }     // Search in reverse
-paginator.core.getElement { it.id == targetId }      // Get first matching element
+paginator.getElement { it.id == targetId }             // Get first matching element
 
 // Modify elements
 paginator.setElement(updatedItem) { it.id == targetId }
@@ -647,7 +647,7 @@ paginator.removeElement { it.id == targetId }
 paginator.addElement(newItem)  // Append to last page
 
 // Iteration
-paginator.foreEach { pageState -> /* ... */ }
+paginator.forEach { pageState -> /* ... */ }
 paginator.smartForEach { states, index, currentState -> /* continue? */ true }
 
 // Traversal
@@ -671,13 +671,13 @@ class PaginatorViewModel : ViewModel() {
     val uiState = _uiState.asStateFlow()
 
     private val paginator = MutablePaginator<String>(source = { page ->
-        repository.loadPage(page.toInt())
+        repository.loadPage(page)
     }).apply {
-        resize(capacity = 5, resize = false, silently = true)
+        core.resize(capacity = 5, resize = false, silently = true)
         finalPage = 20
         bookmarks.addAll(listOf(BookmarkInt(5), BookmarkInt(10), BookmarkInt(15)))
         recyclingBookmark = true
-        logger = object : Logger {
+        logger = object : PaginatorLogger {
             override fun log(tag: String, message: String) {
                 Log.d(tag, message)
             }
@@ -784,7 +784,7 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | Property              | Type                           | Description                                     |
 |-----------------------|--------------------------------|-------------------------------------------------|
 | `source`              | `suspend Paginator<T>.(Int) -> List<T>` | Data source lambda                    |
-| `logger`              | `PaginatorLogger`              | Logging interface (`NoOpLogger` by default)     |
+| `logger`              | `PaginatorLogger?`             | Logging interface (`null` by default)           |
 | `capacity`            | `Int` (read-only)              | Expected items per page                         |
 | `isCapacityUnlimited` | `Boolean`                      | `true` if `capacity == 0`                       |
 | `pages`               | `List<Int>`                   | All cached page numbers (sorted)                |
@@ -827,7 +827,8 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | `scan(pagesRange)`                       | `List<PageState<T>>`            | Get pages in range                 |
 | `walkWhile(pivot, next, predicate)`      | `PageState<T>?`                 | Traverse pages                     |
 | `findNearContextPage(start, end)`        | `Unit`                          | Find nearest context               |
-| `asFlow()`                               | `Flow<Map<Int, PageState<T>>>` | Full cache flow                    |
+| `asFlow()`                               | `Flow<List<PageState<T>>>`     | Full cache flow                    |
+| `resize(capacity, resize, silently)`     | `Unit`                          | Change capacity (via `core`)       |
 | `release(capacity, silently)`            | `Unit`                          | Full reset                         |
 
 ### MutablePaginator Methods (additional)
@@ -839,8 +840,7 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | `setElement(element, page, index, isDirty)` | `Unit`        | Replace element (optionally mark dirty)  |
 | `removeElement(page, index, isDirty)`    | `T`              | Remove element (optionally mark dirty)   |
 | `addAllElements(elements, page, index, isDirty)` | `Unit`   | Insert elements (optionally mark dirty)  |
-| `replaceAllElement(provider, predicate)` | `Unit`           | Bulk replace                             |
-| `resize(capacity, resize, silently)`     | `Unit`           | Change capacity                          |
+| `replaceAllElements(provider, predicate)` | `Unit`           | Bulk replace                             |
 
 ### Operators
 

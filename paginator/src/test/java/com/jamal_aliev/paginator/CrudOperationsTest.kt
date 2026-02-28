@@ -8,10 +8,6 @@ import org.junit.Test
 
 class CrudOperationsTest {
 
-    // =========================================================================
-    // setElement
-    // =========================================================================
-
     @Test
     fun `setElement replaces element at given position`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
@@ -47,10 +43,6 @@ class CrudOperationsTest {
         )
         assertTrue(paginator.core.isDirty(1))
     }
-
-    // =========================================================================
-    // removeElement
-    // =========================================================================
 
     @Test
     fun `removeElement removes element and returns it`() = runTest {
@@ -96,10 +88,6 @@ class CrudOperationsTest {
         paginator.removeElement(page = 1, index = 0, silently = true, isDirty = true)
         assertTrue(paginator.core.isDirty(1))
     }
-
-    // =========================================================================
-    // addAllElements
-    // =========================================================================
 
     @Test
     fun `addAllElements inserts at given index`() = runTest {
@@ -193,15 +181,11 @@ class CrudOperationsTest {
         // Original page2 data lost (overflow couldn't cascade further)
     }
 
-    // =========================================================================
-    // replaceAllElement
-    // =========================================================================
-
     @Test
-    fun `replaceAllElement replaces matching elements`() = runTest {
+    fun `replaceAllElements replaces matching elements`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
 
-        paginator.replaceAllElement(
+        paginator.replaceAllElements(
             providerElement = { _, _, _ -> "replaced" },
             silently = true,
             predicate = { current, _, _ -> current.contains("item1") }
@@ -216,11 +200,11 @@ class CrudOperationsTest {
     }
 
     @Test
-    fun `replaceAllElement removes element when provider returns null`() = runTest {
+    fun `replaceAllElements removes element when provider returns null`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3)
         // page1: [p1_item0, p1_item1, p1_item2]
 
-        paginator.replaceAllElement(
+        paginator.replaceAllElements(
             providerElement = { _, _, _ -> null }, // remove
             silently = true,
             predicate = { current, _, _ -> current == "p1_item1" }
@@ -234,12 +218,12 @@ class CrudOperationsTest {
     }
 
     @Test
-    fun `replaceAllElement removes consecutive elements correctly (bug fix)`() = runTest {
+    fun `replaceAllElements removes consecutive elements correctly (bug fix)`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 5)
         // page1: [p1_item0, p1_item1, p1_item2, p1_item3, p1_item4]
 
         // Remove all items containing "item1" or "item2" (consecutive)
-        paginator.replaceAllElement(
+        paginator.replaceAllElements(
             providerElement = { _, _, _ -> null },
             silently = true,
             predicate = { current, _, _ ->
@@ -255,10 +239,10 @@ class CrudOperationsTest {
     }
 
     @Test
-    fun `replaceAllElement removes all elements from page`() = runTest {
+    fun `replaceAllElements removes all elements from page`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3)
 
-        paginator.replaceAllElement(
+        paginator.replaceAllElements(
             providerElement = { _, _, _ -> null },
             silently = true,
             predicate = { _, _, _ -> true }
