@@ -809,14 +809,14 @@ open class PagingCore<T>(
 
     operator fun get(page: Int, index: Int): T? = getElement(page, index)
 
-    override fun toString(): String = "PaginatorCache(pages=$cacheMap)"
+    override fun toString(): String = "PagingCore(pages=$cacheMap)"
 
     override fun hashCode(): Int = cacheMap.hashCode()
 
     override fun equals(other: Any?): Boolean = this === other
 
     companion object {
-        const val TAG = "PaginatorCache"
+        const val TAG = "PagingCore"
         const val DEFAULT_CAPACITY = 20
         const val UNLIMITED_CAPACITY = 0
     }
