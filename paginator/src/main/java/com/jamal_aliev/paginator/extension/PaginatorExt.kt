@@ -24,20 +24,13 @@ inline fun <T> Paginator<T>.foreEach(
 }
 
 /**
- * Iterates safely over all `PageState` items contained in this `MutablePaginator`,
+ * Iterates safely over all `PageState` items contained in this `Paginator`,
  * allowing full control over how iteration starts, progresses, and stops.
  *
  * This function provides customizable strategies for:
  * - selecting the initial index,
  * - determining how the index changes on each step,
  * - defining the conditions under which iteration continues.
- *
- * This enables flexible traversal patterns such as forward or backward iteration,
- * skipping elements, conditional early termination, or implementing custom stepping logic.
- *
- * Iteration proceeds as long as:
- * - the index stays within the bounds of the state list, and
- * - `actionAndContinue` returns `true`.
  *
  * @param initialIndex A function that determines the starting index for iteration.
  * Defaults to `0` (beginning of the list).
@@ -49,7 +42,7 @@ inline fun <T> Paginator<T>.foreEach(
  * Receives the full list of states, the current index, and the current state.
  * Returns `true` to continue iterating, or `false` to stop.
  *
- * @return The original list of page states (`pageStates`) after iteration completes.
+ * @return The original list of page states after iteration completes.
  */
 inline fun <T> Paginator<T>.smartForEach(
     initialIndex: (list: List<PageState<T>>) -> Int = { 0 },
@@ -60,7 +53,7 @@ inline fun <T> Paginator<T>.smartForEach(
         currentState: PageState<T>
     ) -> Boolean
 ): List<PageState<T>> {
-    val states: List<PageState<T>> = this.states
+    val states: List<PageState<T>> = this.core.states
     var index = initialIndex.invoke(states)
     while (0 <= index && index < states.size) {
         val currentState: PageState<T> = states[index]
@@ -81,7 +74,7 @@ inline fun <T> Paginator<T>.smartForEach(
 inline fun <T> Paginator<T>.indexOfFirst(
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
-    for (page in states) {
+    for (page in core.states) {
         val result = page.data.indexOfFirst(predicate)
         if (result != -1) return page.page to result
     }
@@ -100,7 +93,7 @@ inline fun <T> Paginator<T>.indexOfFirst(
     page: Int,
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
-    val pageState = checkNotNull(getStateOf(page)) { "Page $page is not found" }
+    val pageState = checkNotNull(core.getStateOf(page)) { "Page $page is not found" }
     for ((i, e) in pageState.data.withIndex()) {
         if (predicate(e)) {
             return page to i
@@ -118,7 +111,7 @@ inline fun <T> Paginator<T>.indexOfFirst(
 inline fun <T> Paginator<T>.indexOfLast(
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
-    for (page in states.reversed()) {
+    for (page in core.states.reversed()) {
         val result = page.data.indexOfLast(predicate)
         if (result != -1) return page.page to result
     }
@@ -137,7 +130,7 @@ inline fun <T> Paginator<T>.indexOfLast(
     page: Int,
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
-    val pageState = checkNotNull(getStateOf(page)) { "Page $page is not found" }
+    val pageState = checkNotNull(core.getStateOf(page)) { "Page $page is not found" }
     for ((reversedIndex, element) in pageState.data.reversed().withIndex()) {
         if (predicate(element)) {
             return page to (pageState.data.size - 1 - reversedIndex)
@@ -150,18 +143,8 @@ inline fun <T> Paginator<T>.indexOfLast(
  * Walks forward from the given [pivotState] through consecutive pages
  * that satisfy the [predicate], and returns the last page in that chain.
  *
- * This function:
- * - Starts at [pivotState].
- * - Moves to the next page (`page + 1`) as long as the page exists in the cache
- *   and satisfies the [predicate].
- * - Stops at the last consecutive page that satisfies the predicate.
- *
  * @param pivotState The initial page from which forward traversal begins.
- * If null or does not satisfy [predicate], the function returns null.
- *
  * @param predicate A condition that each traversed page must satisfy.
- * Defaults to always true, allowing traversal through all consecutive next pages.
- *
  * @return The last PageState encountered while moving forward that still satisfies [predicate],
  * or null if the starting page is null or fails the predicate.
  */
@@ -169,7 +152,7 @@ inline fun <T> Paginator<T>.walkForwardWhile(
     pivotState: PageState<T>?,
     predicate: (PageState<T>) -> Boolean = { true }
 ): PageState<T>? {
-    return walkWhile(
+    return core.walkWhile(
         pivotState = pivotState,
         next = { currentPage: Int ->
             return@walkWhile currentPage + 1
@@ -182,24 +165,10 @@ inline fun <T> Paginator<T>.walkForwardWhile(
 
 /**
  * Walks backward from the given [pivotState], following consecutive previous pages,
- * and returns the first page in that backward chain that does *not* satisfy the [predicate].
- *
- * In other words, this function:
- * - Starts at [pivotState].
- * - Moves to the previous page (`page - 1`) as long as:
- *   - The page exists in the cache, and
- *   - The page satisfies the [predicate].
- * - Stops at the last page that satisfied the predicate.
- *
- * This effectively finds the earliest consecutive page before [pivotState]
- * that still matches [predicate].
+ * and returns the first page in that backward chain that satisfies the [predicate].
  *
  * @param pivotState The initial page from which backward traversal begins.
- * If null or does not satisfy [predicate], the function returns null.
- *
  * @param predicate A condition that each traversed page must satisfy.
- * Defaults to always true, allowing traversal through all consecutive previous pages.
- *
  * @return The last PageState encountered while moving backward that still satisfies [predicate],
  * or null if the starting page is null or fails the predicate.
  */
@@ -207,7 +176,7 @@ inline fun <T> Paginator<T>.walkBackwardWhile(
     pivotState: PageState<T>?,
     predicate: (PageState<T>) -> Boolean = { true }
 ): PageState<T>? {
-    return walkWhile(
+    return core.walkWhile(
         pivotState = pivotState,
         next = { currentPage: Int ->
             return@walkWhile currentPage - 1
@@ -219,7 +188,7 @@ inline fun <T> Paginator<T>.walkBackwardWhile(
 }
 
 fun <T> MutablePaginator<T>.removeElement(predicate: (T) -> Boolean): T? {
-    for (page in pages) {
+    for (page in core.pages) {
         val removed: T? = removeElement(page, predicate)
         if (removed != null) {
             return removed
@@ -229,7 +198,7 @@ fun <T> MutablePaginator<T>.removeElement(predicate: (T) -> Boolean): T? {
 }
 
 fun <T> MutablePaginator<T>.removeElement(page: Int, predicate: (T) -> Boolean): T? {
-    val state: PageState<T>? = getStateOf(page)
+    val state: PageState<T>? = core.getStateOf(page)
     state ?: return null
     for ((index, element) in state.data.withIndex()) {
         if (predicate(element)) {
@@ -247,8 +216,8 @@ fun <T> MutablePaginator<T>.addElement(
     silently: Boolean = false,
     initSuccessPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
 ): Boolean {
-    val lastPage: Int = pages.lastOrNull() ?: return false
-    val lastPageData = getStateOf(lastPage)?.data ?: return false
+    val lastPage: Int = core.pages.lastOrNull() ?: return false
+    val lastPageData = core.getStateOf(lastPage)?.data ?: return false
     addElement(element, lastPage, lastPageData.size, silently, initSuccessPageState)
     return true
 }
@@ -309,17 +278,11 @@ inline fun <T> MutablePaginator<T>.setElement(
 /**
  * Refreshes **all** currently cached pages by reloading them from the source in parallel.
  *
- * This is a convenience wrapper around [MutablePaginator.refresh] that passes all
- * cached page numbers automatically.
- *
  * @param loadingSilently If `true`, the snapshot will **not** be emitted after setting
  *   pages to progress state.
  * @param finalSilently If `true`, the snapshot will **not** be emitted after all pages
  *   finish loading.
- * @param loadGuard A guard callback invoked with `(page, currentState)` for **each** page
- *   **before** any loading begins. Return `true` to proceed, or `false` to abort the
- *   entire refresh. When `false` is returned, [LoadGuardedException] is thrown.
- *   Defaults to always allowing the load.
+ * @param loadGuard A guard callback invoked for each page before loading.
  * @param enableCacheFlow If `true`, the full cache flow is also updated.
  * @param initProgressState Factory for creating progress page instances during loading.
  * @param initEmptyState Factory for creating empty page instances.
@@ -332,15 +295,15 @@ suspend fun <T> Paginator<T>.refreshAll(
     loadingSilently: Boolean = false,
     finalSilently: Boolean = false,
     loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
-    enableCacheFlow: Boolean = this.enableCacheFlow,
-    initProgressState: InitializerProgressPage<T> = this.initializerProgressPage,
-    initEmptyState: InitializerEmptyPage<T> = this.initializerEmptyPage,
-    initSuccessState: InitializerSuccessPage<T> = this.initializerSuccessPage,
-    initErrorState: InitializerErrorPage<T> = this.initializerErrorPage
+    enableCacheFlow: Boolean = this.core.enableCacheFlow,
+    initProgressState: InitializerProgressPage<T> = this.core.initializerProgressPage,
+    initEmptyState: InitializerEmptyPage<T> = this.core.initializerEmptyPage,
+    initSuccessState: InitializerSuccessPage<T> = this.core.initializerSuccessPage,
+    initErrorState: InitializerErrorPage<T> = this.core.initializerErrorPage
 ) {
     if (lockRefresh) throw RefreshWasLockedException()
     return refresh(
-        pages = this.pages,
+        pages = this.core.pages,
         loadingSilently = loadingSilently,
         finalSilently = finalSilently,
         loadGuard = loadGuard,
@@ -351,5 +314,3 @@ suspend fun <T> Paginator<T>.refreshAll(
         initErrorState = initErrorState
     )
 }
-
-

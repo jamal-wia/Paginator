@@ -23,7 +23,7 @@ class OperatorsTest {
     @Test
     fun `contains with PageState`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
-        val state = paginator.getStateOf(2)!!
+        val state = paginator.core.getStateOf(2)!!
         assertTrue(state in paginator)
         val unknown = SuccessPage(page = 99, data = listOf("x"))
         assertFalse(unknown in paginator)
@@ -81,19 +81,19 @@ class OperatorsTest {
     @Test
     fun `minusAssign by page number removes and collapses`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
-        val sizeBefore = paginator.size
+        val sizeBefore = paginator.core.size
         paginator -= 2
         // removeState collapses: page 3 becomes page 2
-        assertEquals(sizeBefore - 1, paginator.size)
+        assertEquals(sizeBefore - 1, paginator.core.size)
     }
 
     @Test
     fun `minusAssign by PageState removes and collapses`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
-        val state = paginator.getStateOf(2)!!
-        val sizeBefore = paginator.size
+        val state = paginator.core.getStateOf(2)!!
+        val sizeBefore = paginator.core.size
         paginator -= state
-        assertEquals(sizeBefore - 1, paginator.size)
+        assertEquals(sizeBefore - 1, paginator.core.size)
     }
 
     @Test

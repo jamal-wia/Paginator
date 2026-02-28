@@ -31,7 +31,7 @@ class MainViewModel : ViewModel() {
     val paginator = MutablePaginator<String>(source = { page ->
         SampleRepository.loadPage(page)
     }).apply {
-        resize(SampleRepository.PAGE_SIZE, resize = false, silently = true)
+        core.resize(SampleRepository.PAGE_SIZE, resize = false, silently = true)
         finalPage = SampleRepository.FINAL_PAGE
         // Default bookmarks already has page 1, add more
         bookmarks.addAll(
@@ -46,7 +46,7 @@ class MainViewModel : ViewModel() {
     }
 
     init {
-        paginator.snapshot
+        paginator.core.snapshot
             .filter { it.isNotEmpty() }
             .onEach { data ->
                 updateStateFromPaginator(data)
@@ -65,12 +65,12 @@ class MainViewModel : ViewModel() {
         _state.update { current ->
             current.copy(
                 data = snapshotData,
-                startContextPage = paginator.startContextPage,
-                endContextPage = paginator.endContextPage,
+                startContextPage = paginator.core.startContextPage,
+                endContextPage = paginator.core.endContextPage,
                 finalPage = paginator.finalPage,
                 bookmarks = paginator.bookmarks.map { it.page },
-                cachedPages = paginator.pages.map { page ->
-                    val pageState = paginator.getStateOf(page)
+                cachedPages = paginator.core.pages.map { page ->
+                    val pageState = paginator.core.getStateOf(page)
                     CachedPageInfo(
                         page = page,
                         type = when {
@@ -85,7 +85,7 @@ class MainViewModel : ViewModel() {
                         itemCount = pageState?.data?.size ?: 0
                     )
                 },
-                totalCachedItems = paginator.states.sumOf { it.data.size },
+                totalCachedItems = paginator.core.states.sumOf { it.data.size },
             )
         }
     }

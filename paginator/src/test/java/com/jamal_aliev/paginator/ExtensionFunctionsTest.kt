@@ -105,9 +105,9 @@ class ExtensionFunctionsTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
         paginator.setElement(element = "replaced", silently = true) { it == "p2_item1" }
 
-        assertEquals("replaced", paginator.getElement(2, 1))
+        assertEquals("replaced", paginator.core.getElement(2, 1))
         // Other items on same page unchanged
-        assertEquals("p2_item0", paginator.getElement(2, 0))
+        assertEquals("p2_item0", paginator.core.getElement(2, 0))
     }
 
     // =========================================================================
@@ -143,12 +143,12 @@ class ExtensionFunctionsTest {
     fun `addElement appends to last page at end`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 5)
         // page2 has 5 items (filled at capacity). Increase capacity so there's room.
-        paginator.resize(capacity = 10, resize = false, silently = true)
+        paginator.core.resize(capacity = 10, resize = false, silently = true)
 
         val result = paginator.addElement(element = "new_element", silently = true)
         assertTrue(result)
 
-        val lastPageData = paginator.getStateOf(2)!!.data
+        val lastPageData = paginator.core.getStateOf(2)!!.data
         assertEquals("new_element", lastPageData.last())
         assertEquals(6, lastPageData.size)
     }
@@ -170,7 +170,7 @@ class ExtensionFunctionsTest {
             silently = true
         )
 
-        val data = paginator.getStateOf(1)!!.data
+        val data = paginator.core.getStateOf(1)!!.data
         assertEquals("inserted", data[0])
         assertEquals("p1_item0", data[1])
     }
@@ -182,7 +182,7 @@ class ExtensionFunctionsTest {
     @Test
     fun `walkForwardWhile traverses consecutive pages`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 5, capacity = 3)
-        val start = paginator.getStateOf(1)
+        val start = paginator.core.getStateOf(1)
         val last = paginator.walkForwardWhile(start)
         assertNotNull(last)
         assertEquals(5, last!!.page) // walks all the way to page 5
@@ -192,14 +192,14 @@ class ExtensionFunctionsTest {
     fun `walkForwardWhile stops at gap`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
         // Add a non-consecutive page
-        paginator.setState(
+        paginator.core.setState(
             state = PageState.SuccessPage(
                 page = 10,
                 data = mutableListOf("x", "y", "z")
             ),
             silently = true
         )
-        val start = paginator.getStateOf(1)
+        val start = paginator.core.getStateOf(1)
         val last = paginator.walkForwardWhile(start)
         assertEquals(3, last!!.page) // stops at 3, doesn't reach 10
     }
@@ -207,7 +207,7 @@ class ExtensionFunctionsTest {
     @Test
     fun `walkBackwardWhile traverses consecutive pages`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 5, capacity = 3)
-        val start = paginator.getStateOf(5)
+        val start = paginator.core.getStateOf(5)
         val first = paginator.walkBackwardWhile(start)
         assertNotNull(first)
         assertEquals(1, first!!.page)
@@ -224,7 +224,7 @@ class ExtensionFunctionsTest {
     fun `walkWhile with custom predicate stops at non-matching`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 5, capacity = 3)
         // Walk forward but stop at page 3 (predicate returns false for page > 3)
-        val start = paginator.getStateOf(1)
+        val start = paginator.core.getStateOf(1)
         val result = paginator.walkForwardWhile(start) { it.page <= 3 }
         assertEquals(3, result!!.page)
     }

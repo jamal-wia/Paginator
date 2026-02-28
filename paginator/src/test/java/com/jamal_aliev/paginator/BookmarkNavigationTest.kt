@@ -104,8 +104,8 @@ class BookmarkNavigationTest {
 
     @Test
     fun `jumpForward returns null when bookmarks empty`() = runTest {
-        val paginator = MutablePaginator<String> { MutableList(this.capacity) { "item$it" } }
-        paginator.resize(capacity = 5, resize = false, silently = true)
+        val paginator = MutablePaginator<String> { MutableList(this.core.capacity) { "item$it" } }
+        paginator.core.resize(capacity = 5, resize = false, silently = true)
         // Properly release to reset the iterator, then clear
         paginator.release()
         paginator.bookmarks.clear()
@@ -126,9 +126,9 @@ class BookmarkNavigationTest {
         var loadCount = 0
         val paginator = MutablePaginator<String> { page ->
             loadCount++
-            MutableList(this.capacity) { "item_$it" }
+            MutableList(this.core.capacity) { "item_$it" }
         }
-        paginator.resize(capacity = 5, resize = false, silently = true)
+        paginator.core.resize(capacity = 5, resize = false, silently = true)
 
         // First jump loads from source
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -157,14 +157,14 @@ class BookmarkNavigationTest {
         val paginator = createDeterministicPaginator()
         // Direct jump doesn't use bookmarks, just navigates
         paginator.jump(BookmarkInt(3), silentlyLoading = true, silentlyResult = true)
-        assertTrue(paginator.getStateOf(3)!!.isSuccessState())
-        assertEquals(3, paginator.startContextPage)
-        assertEquals(3, paginator.endContextPage)
+        assertTrue(paginator.core.getStateOf(3)!!.isSuccessState())
+        assertEquals(3, paginator.core.startContextPage)
+        assertEquals(3, paginator.core.endContextPage)
 
         paginator.jump(BookmarkInt(7), silentlyLoading = true, silentlyResult = true)
-        assertTrue(paginator.getStateOf(7)!!.isSuccessState())
-        assertEquals(7, paginator.startContextPage)
-        assertEquals(7, paginator.endContextPage)
+        assertTrue(paginator.core.getStateOf(7)!!.isSuccessState())
+        assertEquals(7, paginator.core.startContextPage)
+        assertEquals(7, paginator.core.endContextPage)
     }
 
     // --- Smart skip-visible-bookmarks tests ---
@@ -177,8 +177,8 @@ class BookmarkNavigationTest {
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = false)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 2
         paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 3
-        assertEquals(1, paginator.startContextPage)
-        assertEquals(3, paginator.endContextPage)
+        assertEquals(1, paginator.core.startContextPage)
+        assertEquals(3, paginator.core.endContextPage)
 
         // Now set up bookmarks. The default iterator was consumed by earlier operations,
         // so we set up bookmarks and use recycling to get a fresh iterator.

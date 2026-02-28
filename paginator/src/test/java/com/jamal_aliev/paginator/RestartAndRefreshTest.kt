@@ -21,14 +21,14 @@ class RestartAndRefreshTest {
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        assertEquals(3, paginator.size)
+        assertEquals(3, paginator.core.size)
 
         paginator.restart(silentlyLoading = true, silentlyResult = true)
 
-        assertEquals(1, paginator.size)
-        assertEquals(1, paginator.startContextPage)
-        assertEquals(1, paginator.endContextPage)
-        assertTrue(paginator.getStateOf(1)!!.isSuccessState())
+        assertEquals(1, paginator.core.size)
+        assertEquals(1, paginator.core.startContextPage)
+        assertEquals(1, paginator.core.endContextPage)
+        assertTrue(paginator.core.getStateOf(1)!!.isSuccessState())
     }
 
     @Test
@@ -36,15 +36,15 @@ class RestartAndRefreshTest {
         var callCount = 0
         val paginator = MutablePaginator<String> { page ->
             callCount++
-            MutableList(this.capacity) { "call${callCount}_item$it" }
+            MutableList(this.core.capacity) { "call${callCount}_item$it" }
         }
-        paginator.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
-        val firstData = paginator.getStateOf(1)!!.data.toList()
+        val firstData = paginator.core.getStateOf(1)!!.data.toList()
 
         paginator.restart(silentlyLoading = true, silentlyResult = true)
-        val secondData = paginator.getStateOf(1)!!.data.toList()
+        val secondData = paginator.core.getStateOf(1)!!.data.toList()
 
         // Data should be different because source returned different data
         assertTrue(firstData != secondData)
@@ -59,20 +59,20 @@ class RestartAndRefreshTest {
         var callCount = 0
         val paginator = MutablePaginator<String> { page ->
             callCount++
-            MutableList(this.capacity) { "call${callCount}_p${page}_item$it" }
+            MutableList(this.core.capacity) { "call${callCount}_p${page}_item$it" }
         }
-        paginator.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        val dataBefore = paginator.getStateOf(1)!!.data.toList()
+        val dataBefore = paginator.core.getStateOf(1)!!.data.toList()
 
         paginator.refresh(
             pages = listOf(1),
             loadingSilently = true,
             finalSilently = true
         )
-        val dataAfter = paginator.getStateOf(1)!!.data.toList()
+        val dataAfter = paginator.core.getStateOf(1)!!.data.toList()
 
         assertTrue(dataBefore != dataAfter) // different data from new call
     }
@@ -91,9 +91,9 @@ class RestartAndRefreshTest {
         )
 
         // All 3 pages should still be success states after refresh
-        assertTrue(paginator.getStateOf(1)!!.isSuccessState())
-        assertTrue(paginator.getStateOf(2)!!.isSuccessState())
-        assertTrue(paginator.getStateOf(3)!!.isSuccessState())
+        assertTrue(paginator.core.getStateOf(1)!!.isSuccessState())
+        assertTrue(paginator.core.getStateOf(2)!!.isSuccessState())
+        assertTrue(paginator.core.getStateOf(3)!!.isSuccessState())
     }
 
     @Test
@@ -101,12 +101,12 @@ class RestartAndRefreshTest {
         var shouldFail = false
         val paginator = MutablePaginator<String> { page ->
             if (shouldFail && page == 1) throw RuntimeException("refresh error")
-            MutableList(this.capacity) { "p${page}_item$it" }
+            MutableList(this.core.capacity) { "p${page}_item$it" }
         }
-        paginator.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
-        assertTrue(paginator.getStateOf(1)!!.isSuccessState())
+        assertTrue(paginator.core.getStateOf(1)!!.isSuccessState())
 
         shouldFail = true
         paginator.refresh(
@@ -114,7 +114,7 @@ class RestartAndRefreshTest {
             loadingSilently = true,
             finalSilently = true
         )
-        assertTrue(paginator.getStateOf(1)!!.isErrorState())
+        assertTrue(paginator.core.getStateOf(1)!!.isErrorState())
     }
 
     // =========================================================================
@@ -126,9 +126,9 @@ class RestartAndRefreshTest {
         var generation = 0
         val paginator = MutablePaginator<String> { page ->
             generation++
-            MutableList(this.capacity) { "gen${generation}_p${page}_$it" }
+            MutableList(this.core.capacity) { "gen${generation}_p${page}_$it" }
         }
-        paginator.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
@@ -138,7 +138,7 @@ class RestartAndRefreshTest {
 
         // Both pages should have been refreshed (generation increased)
         assertTrue(generation > gen)
-        assertTrue(paginator.getStateOf(1)!!.isSuccessState())
-        assertTrue(paginator.getStateOf(2)!!.isSuccessState())
+        assertTrue(paginator.core.getStateOf(1)!!.isSuccessState())
+        assertTrue(paginator.core.getStateOf(2)!!.isSuccessState())
     }
 }

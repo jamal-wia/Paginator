@@ -15,7 +15,7 @@ class CrudOperationsTest {
     @Test
     fun `setElement replaces element at given position`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
-        assertEquals("p1_item0", paginator.getElement(1, 0))
+        assertEquals("p1_item0", paginator.core.getElement(1, 0))
 
         paginator.setElement(
             element = "replaced",
@@ -24,9 +24,9 @@ class CrudOperationsTest {
             silently = true
         )
 
-        assertEquals("replaced", paginator.getElement(1, 0))
-        assertEquals("p1_item1", paginator.getElement(1, 1))
-        assertEquals("p1_item2", paginator.getElement(1, 2))
+        assertEquals("replaced", paginator.core.getElement(1, 0))
+        assertEquals("p1_item1", paginator.core.getElement(1, 1))
+        assertEquals("p1_item2", paginator.core.getElement(1, 2))
     }
 
     @Test(expected = NoSuchElementException::class)
@@ -45,7 +45,7 @@ class CrudOperationsTest {
             silently = true,
             isDirty = true
         )
-        assertTrue(paginator.isDirty(1))
+        assertTrue(paginator.core.isDirty(1))
     }
 
     // =========================================================================
@@ -68,14 +68,14 @@ class CrudOperationsTest {
         paginator.removeElement(page = 1, index = 0, silently = true)
 
         // After removing p1_item0, should pull p2_item0 from page 2
-        val page1Data = paginator.getStateOf(1)!!.data
+        val page1Data = paginator.core.getStateOf(1)!!.data
         assertEquals(3, page1Data.size) // rebalanced to capacity
         assertEquals("p1_item1", page1Data[0])
         assertEquals("p1_item2", page1Data[1])
         assertEquals("p2_item0", page1Data[2])
 
         // page2 should have lost its first element
-        val page2Data = paginator.getStateOf(2)!!.data
+        val page2Data = paginator.core.getStateOf(2)!!.data
         assertEquals(3, page2Data.size) // rebalanced from page 3
         assertEquals("p2_item1", page2Data[0])
         assertEquals("p2_item2", page2Data[1])
@@ -86,15 +86,15 @@ class CrudOperationsTest {
     fun `removeElement empties page and removes it`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 1)
         paginator.removeElement(page = 1, index = 0, silently = true)
-        assertNull(paginator.getStateOf(1))
-        assertEquals(0, paginator.size)
+        assertNull(paginator.core.getStateOf(1))
+        assertEquals(0, paginator.core.size)
     }
 
     @Test
     fun `removeElement with isDirty marks page dirty`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
         paginator.removeElement(page = 1, index = 0, silently = true, isDirty = true)
-        assertTrue(paginator.isDirty(1))
+        assertTrue(paginator.core.isDirty(1))
     }
 
     // =========================================================================
@@ -113,7 +113,7 @@ class CrudOperationsTest {
             silently = true
         )
 
-        val data = paginator.getStateOf(1)!!.data
+        val data = paginator.core.getStateOf(1)!!.data
         assertEquals(5, data.size) // capacity enforced
         assertEquals("p1_item0", data[0])
         assertEquals("new1", data[1])
@@ -135,14 +135,14 @@ class CrudOperationsTest {
             silently = true
         )
 
-        val page1 = paginator.getStateOf(1)!!.data
+        val page1 = paginator.core.getStateOf(1)!!.data
         assertEquals(3, page1.size) // capped at capacity
         assertEquals("new1", page1[0])
         assertEquals("new2", page1[1])
         assertEquals("p1_item0", page1[2])
 
         // Overflow went to page 2
-        val page2 = paginator.getStateOf(2)!!.data
+        val page2 = paginator.core.getStateOf(2)!!.data
         assertEquals("p1_item1", page2[0])
         assertEquals("p1_item2", page2[1])
         assertEquals("p2_item0", page2[2])
@@ -158,7 +158,7 @@ class CrudOperationsTest {
             silently = true,
             isDirty = true
         )
-        assertTrue(paginator.isDirty(1))
+        assertTrue(paginator.core.isDirty(1))
     }
 
     @Test
@@ -178,14 +178,14 @@ class CrudOperationsTest {
             silently = true
         )
 
-        val page1 = paginator.getStateOf(1)!!.data
+        val page1 = paginator.core.getStateOf(1)!!.data
         assertEquals(3, page1.size)
         assertEquals("x1", page1[0])
         assertEquals("x2", page1[1])
         assertEquals("x3", page1[2])
 
         // page2 received overflow from page1
-        val page2 = paginator.getStateOf(2)!!.data
+        val page2 = paginator.core.getStateOf(2)!!.data
         assertEquals(3, page2.size)
         assertEquals("p1_item0", page2[0])
         assertEquals("p1_item1", page2[1])
@@ -208,11 +208,11 @@ class CrudOperationsTest {
         )
 
         // p1_item1 and p2_item1 should be replaced
-        assertEquals("replaced", paginator.getElement(1, 1))
-        assertEquals("replaced", paginator.getElement(2, 1))
+        assertEquals("replaced", paginator.core.getElement(1, 1))
+        assertEquals("replaced", paginator.core.getElement(2, 1))
         // Others unchanged
-        assertEquals("p1_item0", paginator.getElement(1, 0))
-        assertEquals("p2_item0", paginator.getElement(2, 0))
+        assertEquals("p1_item0", paginator.core.getElement(1, 0))
+        assertEquals("p2_item0", paginator.core.getElement(2, 0))
     }
 
     @Test
@@ -227,7 +227,7 @@ class CrudOperationsTest {
         )
 
         // p1_item1 should be removed
-        val data = paginator.getStateOf(1)!!.data
+        val data = paginator.core.getStateOf(1)!!.data
         assertEquals(2, data.size)
         assertEquals("p1_item0", data[0])
         assertEquals("p1_item2", data[1])
@@ -247,7 +247,7 @@ class CrudOperationsTest {
             }
         )
 
-        val data = paginator.getStateOf(1)!!.data
+        val data = paginator.core.getStateOf(1)!!.data
         assertEquals(3, data.size)
         assertEquals("p1_item0", data[0])
         assertEquals("p1_item3", data[1])
@@ -265,6 +265,6 @@ class CrudOperationsTest {
         )
 
         // Page should be removed since all elements were deleted
-        assertNull(paginator.getStateOf(1))
+        assertNull(paginator.core.getStateOf(1))
     }
 }

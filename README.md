@@ -265,7 +265,7 @@ You can also implement the `Bookmark` interface for custom bookmark types.
 paginator to determine whether a page is **filled** (complete) or **incomplete**.
 
 ```kotlin
-paginator.resize(capacity = 10, resize = false, silently = true)
+paginator.core.resize(capacity = 10, resize = false, silently = true)
 ```
 
 When a page returns fewer items than `capacity`, the paginator considers it **incomplete**. On the
@@ -383,10 +383,10 @@ launches a **fire-and-forget** refresh for them in parallel.
 
 ```kotlin
 // Mark a single page
-paginator.markDirty(3)
+paginator.core.markDirty(3)
 
 // Mark multiple pages
-paginator.markDirty(listOf(1, 2, 3))
+paginator.core.markDirty(listOf(1, 2, 3))
 
 // CRUD operations can also mark the affected page as dirty
 paginator.setElement(updatedItem, page = 3, index = 0, isDirty = true)
@@ -398,13 +398,13 @@ paginator.addAllElements(listOf(newItem), targetPage = 3, index = 0, isDirty = t
 
 ```kotlin
 // Clear a single page
-paginator.clearDirty(3)
+paginator.core.clearDirty(3)
 
 // Clear multiple pages
-paginator.clearDirty(listOf(1, 2))
+paginator.core.clearDirty(listOf(1, 2))
 
 // Clear all dirty flags
-paginator.clearAllDirty()
+paginator.core.clearAllDirty()
 ```
 
 Dirty flags are also automatically cleared:
@@ -414,8 +414,8 @@ Dirty flags are also automatically cleared:
 ### Querying Dirty State
 
 ```kotlin
-paginator.isDirty(3)     // true if page 3 is dirty
-paginator.dirtyPages      // Set<Int> snapshot of all dirty page numbers
+paginator.core.isDirty(3)     // true if page 3 is dirty
+paginator.core.dirtyPages      // Set<Int> snapshot of all dirty page numbers
 ```
 
 ### How It Works
@@ -456,7 +456,7 @@ paginator.snapshot
 For advanced use cases, observe the entire cache:
 
 ```kotlin
-val cacheFlow: Flow<Map<Int, PageState<T>>> = paginator.asFlow()
+val cacheFlow: Flow<Map<Int, PageState<T>>> = paginator.core.asFlow()
 ```
 
 This emits the complete cache map (all pages, including those outside the context window).
@@ -469,7 +469,7 @@ The paginator supports CRUD operations on individual items within pages:
 
 ```kotlin
 // Get an element
-val item: T? = paginator.getElement(page = 3, index = 0)
+val item: T? = paginator.core.getElement(page = 3, index = 0)
 
 // Set/replace an element
 paginator.setElement(element = updatedItem, page = 3, index = 0)
@@ -639,7 +639,7 @@ pageA gap pageB   // Int distance between page numbers
 // Search for elements
 paginator.indexOfFirst { it.id == targetId }    // Returns Pair<Int, Int>? (page, index)
 paginator.indexOfLast { it.name == "test" }     // Search in reverse
-paginator.getElement { it.id == targetId }      // Get first matching element
+paginator.core.getElement { it.id == targetId }      // Get first matching element
 
 // Modify elements
 paginator.setElement(updatedItem) { it.id == targetId }
