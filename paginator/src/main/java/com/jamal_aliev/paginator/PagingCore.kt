@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
+import kotlin.math.abs
 
 /**
  * Manages the page cache, context window, dirty page tracking, snapshot emission,
@@ -40,6 +41,12 @@ open class PagingCore<T>(
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {
 
+    @PublishedApi
+    internal fun indexOfPage(page: Int): Int = searchIndexOfPage(page)
+
+    @PublishedApi
+    internal fun stateAtIndex(index: Int): PageState<T> = cache[index]
+
     /**
      * Logger for observing cache operations.
      *
@@ -61,7 +68,7 @@ open class PagingCore<T>(
      *   `-(insertionPoint + 1)` if not found (same semantics as [List.binarySearch]).
      */
     @Suppress("NOTHING_TO_INLINE")
-    private inline fun binarySearchPage(page: Int): Int {
+    private inline fun searchIndexOfPage(page: Int): Int {
         return cache.binarySearch { it.page.compareTo(page) }
     }
 
@@ -326,7 +333,7 @@ open class PagingCore<T>(
      */
     fun getStateOf(page: Int): PageState<T>? {
         logger?.log(TAG, "getStateOf: page=$page")
-        val index = binarySearchPage(page)
+        val index = searchIndexOfPage(page)
         return if (index >= 0) cache[index] else null
     }
 
@@ -343,7 +350,7 @@ open class PagingCore<T>(
         state: PageState<T>,
         silently: Boolean = false
     ) {
-        val index = binarySearchPage(state.page)
+        val index = searchIndexOfPage(state.page)
         if (index >= 0) {
             cache[index] = state
         } else {
@@ -361,7 +368,7 @@ open class PagingCore<T>(
      * @return The removed [PageState], or `null` if the page was not in the cache.
      */
     fun removeFromCache(page: Int): PageState<T>? {
-        val index = binarySearchPage(page)
+        val index = searchIndexOfPage(page)
         return if (index >= 0) cache.removeAt(index) else null
     }
 
@@ -429,6 +436,11 @@ open class PagingCore<T>(
      *  - the next page does not exist, or
      *  - its state does not satisfy [predicate].
      *
+     * **Performance:** the first lookup uses binary search O(log n), then each
+     * subsequent step tries the adjacent cache index first (O(1) for sequential
+     * `next = { it + 1 }` or `{ it - 1 }`), falling back to binary search only
+     * when pages are non-contiguous. Total: O(log n + k) for k contiguous steps.
+     *
      * @param pivotState The first page to start traversal from.
      * If null or does not satisfy [predicate], the function returns null.
      *
@@ -446,19 +458,44 @@ open class PagingCore<T>(
         next: (current: Int) -> Int,
         predicate: (PageState<T>) -> Boolean = { true }
     ): PageState<T>? {
-        if (pivotState == null) {
-            return null
-        }
-        if (!predicate.invoke(pivotState)) {
-            return null
-        }
+        if (pivotState == null) return null
+        if (!predicate.invoke(pivotState)) return null
+
+        var index = indexOfPage(pivotState.page)
+        if (index < 0) return pivotState // pivot not in cache — nothing to walk
 
         var resultState: PageState<T> = pivotState
         while (true) {
             val nextPage: Int = next.invoke(resultState.page)
-            val state: PageState<T>? = getStateOf(nextPage)
-            if (state != null && predicate.invoke(state)) {
-                resultState = state
+            val delta: Int = nextPage - resultState.page
+            val candidateIndex: Int = index + delta
+
+            // Fast path: adjacent element in the sorted cache (O(1))
+            val nextState: PageState<T>? =
+                if (candidateIndex in 0 until size) {
+                    val candidate: PageState<T> = stateAtIndex(candidateIndex)
+                    if (candidate.page == nextPage) {
+                        index = candidateIndex
+                        candidate
+                    } else {
+                        // Gap detected — fall back to binary search
+                        val foundIdx = indexOfPage(nextPage)
+                        if (foundIdx >= 0) {
+                            index = foundIdx;
+                            stateAtIndex(foundIdx)
+                        } else null
+                    }
+                } else {
+                    // Out of cache bounds — fall back to binary search
+                    val foundIdx = indexOfPage(nextPage)
+                    if (foundIdx >= 0) {
+                        index = foundIdx;
+                        stateAtIndex(foundIdx)
+                    } else null
+                }
+
+            if (nextState != null && predicate.invoke(nextState)) {
+                resultState = nextState
             } else {
                 return resultState
             }
@@ -501,7 +538,7 @@ open class PagingCore<T>(
     //  Snapshot
     // ──────────────────────────────────────────────────────────────────────────
 
-    protected val _snapshot = MutableStateFlow(emptyList<PageState<T>>())
+    protected val _snapshot = MutableStateFlow<List<PageState<T>>>(cache)
 
     /**
      * A [Flow] that emits the list of [PageState] objects within the current context window
@@ -846,10 +883,10 @@ open class PagingCore<T>(
 
 @Suppress("NOTHING_TO_INLINE")
 private inline fun <T> gap(state: PageState<T>, page: Int): Int {
-    return kotlin.math.abs(state.page - page) - 1
+    return abs(state.page - page) - 1
 }
 
 @Suppress("NOTHING_TO_INLINE")
 private inline fun <T> gap(page: Int, state: PageState<T>): Int {
-    return kotlin.math.abs(page - state.page) - 1
+    return abs(page - state.page) - 1
 }
