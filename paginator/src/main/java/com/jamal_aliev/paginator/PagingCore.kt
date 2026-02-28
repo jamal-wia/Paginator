@@ -832,7 +832,6 @@ open class PagingCore<T>(
     override fun hashCode(): Int = System.identityHashCode(this)
 
     companion object {
-        const val TAG = "PagingCore"
         const val DEFAULT_CAPACITY = 20
         const val UNLIMITED_CAPACITY = 0
     }
