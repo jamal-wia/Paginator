@@ -13,6 +13,9 @@ import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.serialization.PageEntry
+import com.jamal_aliev.paginator.serialization.PageEntryType
+import com.jamal_aliev.paginator.serialization.PagingCoreSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -811,6 +814,81 @@ open class PagingCore<T>(
         if (!silently) _snapshot.value = emptyList()
         this.capacity = capacity
         _dirtyPages.clear()
+    }
+
+    /**
+     * Creates a serializable snapshot of this PagingCore's current state.
+     *
+     * All cached pages are captured. [ErrorPage] and [ProgressPage] entries
+     * are converted to [SuccessPage]/[EmptyPage] (preserving their cached data),
+     * and their page numbers are marked as dirty in the snapshot
+     * so they will be re-fetched on next navigation after restore.
+     *
+     * @return A [PagingCoreSnapshot] containing all the state needed for restoration.
+     */
+    fun saveState(): PagingCoreSnapshot<T> {
+        val entries = cache.map { pageState ->
+            val wasDirty = isDirty(pageState.page)
+                || pageState is ErrorPage
+                || pageState is ProgressPage
+
+            val type = if (pageState.data.isEmpty()) PageEntryType.EMPTY
+            else PageEntryType.SUCCESS
+
+            PageEntry(
+                page = pageState.page,
+                type = type,
+                data = pageState.data,
+                wasDirty = wasDirty,
+            )
+        }
+        return PagingCoreSnapshot(
+            entries = entries,
+            startContextPage = startContextPage,
+            endContextPage = endContextPage,
+            capacity = capacity,
+        )
+    }
+
+    /**
+     * Restores this PagingCore's state from a previously saved [snapshot].
+     *
+     * Clears the current cache and dirty pages, then rebuilds the cache
+     * from the snapshot's entries. Pages marked as dirty in the snapshot
+     * (including those that were ErrorPage/ProgressPage before saving) are
+     * added to the dirty set for automatic re-fetch on next navigation.
+     *
+     * Uses [initializerSuccessPage] and [initializerEmptyPage] factories,
+     * so custom PageState subclasses are honored on restore.
+     *
+     * @param snapshot The snapshot to restore from.
+     * @param silently If `true`, no snapshot is emitted after restoration.
+     */
+    fun restoreState(
+        snapshot: PagingCoreSnapshot<T>,
+        silently: Boolean = false,
+    ) {
+        cache.clear()
+        _dirtyPages.clear()
+
+        for (entry in snapshot.entries) {
+            val pageState: PageState<T> = when (entry.type) {
+                PageEntryType.EMPTY -> initializerEmptyPage(entry.page, entry.data)
+                PageEntryType.SUCCESS -> initializerSuccessPage(entry.page, entry.data.toMutableList())
+            }
+            setState(state = pageState, silently = true)
+            if (entry.wasDirty) {
+                _dirtyPages.add(entry.page)
+            }
+        }
+
+        capacity = snapshot.capacity
+        startContextPage = snapshot.startContextPage
+        endContextPage = snapshot.endContextPage
+
+        if (!silently) {
+            snapshot()
+        }
     }
 
     operator fun iterator(): MutableIterator<PageState<T>> {

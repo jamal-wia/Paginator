@@ -42,6 +42,7 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
     - [Cache Flow](#cache-flow)
 - [Element-Level Operations](#element-level-operations)
 - [Custom PageState Subclasses](#custom-pagestate-subclasses)
+- [State Serialization](#state-serialization)
 - [Lock Flags](#lock-flags)
 - [Logger](#logger)
 - [Extension Functions](#extension-functions)
@@ -82,6 +83,8 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - **Parallel loading** -- preload multiple pages concurrently with `loadOrGetPageState`
 - **Pluggable logging** -- implement the `PaginatorLogger` interface to receive detailed logs about
   navigation, state changes, and element-level operations. No logging by default (`null`)
+- **State serialization** -- save and restore the paginator's cache to/from JSON via
+  `kotlinx.serialization`, enabling seamless recovery after Android/iOS process death
 - **Context window** -- the paginator tracks a contiguous range of successfully loaded pages (
   `startContextPage..endContextPage`), which defines the visible snapshot
 
@@ -531,6 +534,87 @@ specific subclasses with smart-casting.
 
 ---
 
+## State Serialization
+
+The paginator supports saving and restoring its cache state via `kotlinx.serialization`. This is
+essential for surviving Android/iOS process death -- when the system kills your app, you can save the
+paginator state to `SavedStateHandle` or a file and restore it when the user returns.
+
+### Setup
+
+Your element type `T` must be annotated with `@Serializable`:
+
+```kotlin
+@Serializable
+data class Article(val id: Long, val title: String, val body: String)
+```
+
+### Saving State
+
+Use `saveStateToJson` to serialize the entire `PagingCore` cache, context window, capacity, and
+dirty page flags into a JSON string:
+
+```kotlin
+val json: String = paginator.core.saveStateToJson(Article.serializer())
+
+// Save to SavedStateHandle (Android ViewModel)
+savedStateHandle["paginator_state"] = json
+
+// Or save to a file
+File(context.filesDir, "paginator.json").writeText(json)
+```
+
+### Restoring State
+
+Use `restoreStateFromJson` to rebuild the cache from a previously saved JSON string:
+
+```kotlin
+val json: String? = savedStateHandle["paginator_state"]
+if (json != null) {
+    paginator.core.restoreStateFromJson(json, Article.serializer())
+}
+```
+
+After restoration, the paginator is ready to use immediately -- the `snapshot` flow emits the
+restored pages, and navigation (`goNextPage`, `goPreviousPage`, `jump`) works as normal.
+
+### What Gets Serialized
+
+| Included                        | Not included (re-initialize in code)  |
+|---------------------------------|---------------------------------------|
+| All cached page data            | `source` lambda                       |
+| Context window boundaries       | `finalPage`                           |
+| Capacity                        | Bookmarks                             |
+| Dirty page flags                | Lock flags                            |
+
+### How ErrorPage and ProgressPage Are Handled
+
+`ErrorPage` and `ProgressPage` cannot be serialized as-is (`Exception` is not serializable, and
+in-flight loads are meaningless after process death). During save, these pages are converted:
+
+- Their **cached data is preserved** (e.g., stale data shown before the error/reload)
+- They are restored as `SuccessPage` (or `EmptyPage` if data was empty)
+- They are automatically **marked as dirty**, so the next navigation triggers a fire-and-forget
+  refresh to re-fetch fresh data from the source
+
+### Low-Level API
+
+For advanced use cases, you can work with the `PagingCoreSnapshot<T>` object directly instead of
+JSON strings:
+
+```kotlin
+// Save to a snapshot object
+val snapshot: PagingCoreSnapshot<Article> = paginator.core.saveState()
+
+// Restore from a snapshot object
+paginator.core.restoreState(snapshot)
+```
+
+This is useful when you want to use a custom serialization format or pass the snapshot through a
+different persistence mechanism.
+
+---
+
 ## Lock Flags
 
 Prevent specific operations at runtime:
@@ -830,6 +914,10 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | `asFlow()`                               | `Flow<List<PageState<T>>>`     | Full cache flow                    |
 | `resize(capacity, resize, silently)`     | `Unit`                          | Change capacity (via `core`)       |
 | `release(capacity, silently)`            | `Unit`                          | Full reset                         |
+| `saveState()`                            | `PagingCoreSnapshot<T>`         | Serializable state snapshot        |
+| `restoreState(snapshot, silently)`       | `Unit`                          | Restore from snapshot              |
+| `saveStateToJson(serializer, json)`      | `String`                        | Save state as JSON string          |
+| `restoreStateFromJson(str, serializer)`  | `Unit`                          | Restore state from JSON string     |
 
 ### MutablePaginator Methods (additional)
 
