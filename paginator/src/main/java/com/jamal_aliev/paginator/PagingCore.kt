@@ -2,6 +2,7 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.PagingCore.Companion.UNLIMITED_CAPACITY
+import com.jamal_aliev.paginator.extension.gap
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
@@ -17,7 +18,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
-import kotlin.math.abs
 
 /**
  * Manages the page cache, context window, dirty page tracking, snapshot emission,
@@ -210,46 +210,46 @@ open class PagingCore<T>(
             }
 
             var startPivotIndex = -(sIndex + 1)
-            if (startPivotIndex > validStates.lastIndex) startPivotIndex = validStates.lastIndex
+            startPivotIndex = startPivotIndex.coerceAtMost(validStates.lastIndex)
             val startPivotState = validStates[startPivotIndex]
             if (startPivotState.page < startPoint) {
                 ltlIndex = startPivotIndex
-                ltlCost = gap(startPivotState, startPoint)
+                ltlCost = startPivotState gap startPoint
                 val rightPivotState = validStates.getOrNull(startPivotIndex + 1)
                 if (rightPivotState != null) {
                     ltrIndex = startPivotIndex + 1
-                    ltrCost = gap(startPoint, rightPivotState)
+                    ltrCost = startPoint gap rightPivotState
                 }
-            } else { // sPont < leftPivot.page (not equal)
+            } else { // startPoint < leftPivot.page (not equal)
                 val rightPivotState = startPivotState
                 ltrIndex = startPivotIndex
-                ltrCost = gap(startPoint, rightPivotState)
+                ltrCost = startPoint gap rightPivotState
                 val leftPivotState = validStates.getOrNull(startPivotIndex - 1)
                 if (leftPivotState != null) {
                     ltlIndex = startPivotIndex - 1
-                    ltlCost = gap(leftPivotState, startPoint)
+                    ltlCost = leftPivotState gap startPoint
                 }
             }
 
             var endPivotIndex = -(eIndex + 1)
-            if (endPivotIndex > validStates.lastIndex) endPivotIndex = validStates.lastIndex
+            endPivotIndex = endPivotIndex.coerceAtMost(validStates.lastIndex)
             val endPivotState = validStates[endPivotIndex]
             if (endPivotState.page < endPoint) {
                 rtlIndex = endPivotIndex
-                rtlCost = gap(endPivotState, endPoint)
+                rtlCost = endPivotState gap endPoint
                 val rightPivotState = validStates.getOrNull(endPivotIndex + 1)
                 if (rightPivotState != null) {
                     rtrIndex = endPivotIndex + 1
-                    rtrCost = gap(endPoint, rightPivotState)
+                    rtrCost = endPoint gap rightPivotState
                 }
-            } else { // ePoint < leftPivot.page (not equal)
+            } else { // endPivotIndex < leftPivot.page (not equal)
                 val rightPivotState = endPivotState
                 rtrIndex = endPivotIndex
-                rtrCost = gap(endPoint, rightPivotState)
+                rtrCost = endPoint gap rightPivotState
                 val leftPivotState = validStates.getOrNull(endPivotIndex - 1)
                 if (leftPivotState != null) {
                     rtlIndex = endPivotIndex - 1
-                    rtlCost = gap(leftPivotState, endPoint)
+                    rtlCost = leftPivotState gap endPoint
                 }
             }
 
@@ -835,14 +835,4 @@ open class PagingCore<T>(
         const val DEFAULT_CAPACITY = 20
         const val UNLIMITED_CAPACITY = 0
     }
-}
-
-@Suppress("NOTHING_TO_INLINE")
-private inline fun <T> gap(state: PageState<T>, page: Int): Int {
-    return abs(state.page - page) - 1
-}
-
-@Suppress("NOTHING_TO_INLINE")
-private inline fun <T> gap(page: Int, state: PageState<T>): Int {
-    return abs(page - state.page) - 1
 }
