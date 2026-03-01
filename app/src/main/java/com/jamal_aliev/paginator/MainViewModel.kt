@@ -1,9 +1,12 @@
 package com.jamal_aliev.paginator
 
 import android.util.Log
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.extension.isEmptyState
@@ -13,6 +16,8 @@ import com.jamal_aliev.paginator.extension.isRealProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.serialization.restoreStateFromJson
+import com.jamal_aliev.paginator.serialization.saveStateToJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,8 +27,11 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.serializer
 
-class MainViewModel : ViewModel() {
+class MainViewModel(
+    private val savedStateHandle: SavedStateHandle,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(MainViewState())
     val state = _state.asStateFlow()
@@ -50,13 +58,50 @@ class MainViewModel : ViewModel() {
             .filter { it.isNotEmpty() }
             .onEach { data ->
                 updateStateFromPaginator(data)
+                // Save paginator state to SavedStateHandle after each snapshot update,
+                // so it survives process death.
+                savePaginatorState()
             }
             .flowOn(Dispatchers.Main)
             .launchIn(viewModelScope)
 
-        viewModelScope.launch {
-            paginator.jump(bookmark = BookmarkInt(1))
+        // Try to restore state from SavedStateHandle (after process death).
+        // If no saved state exists, start fresh by jumping to page 1.
+        val restored = restorePaginatorState()
+        if (!restored) {
+            viewModelScope.launch {
+                paginator.jump(bookmark = BookmarkInt(1))
+                _state.update { it.copy(isInitialLoading = false) }
+            }
+        } else {
             _state.update { it.copy(isInitialLoading = false) }
+        }
+    }
+
+    /**
+     * Saves the current paginator cache state to [SavedStateHandle] as a JSON string.
+     * Called after each snapshot update so the state is always up to date.
+     */
+    private fun savePaginatorState() {
+        val json = paginator.core.saveStateToJson(String.serializer())
+        savedStateHandle[KEY_PAGINATOR_STATE] = json
+    }
+
+    /**
+     * Restores paginator state from [SavedStateHandle] if available.
+     * This happens after process death when the system recreates the Activity/ViewModel.
+     *
+     * @return `true` if state was restored, `false` if no saved state was found.
+     */
+    private fun restorePaginatorState(): Boolean {
+        val json = savedStateHandle.get<String>(KEY_PAGINATOR_STATE) ?: return false
+        return try {
+            paginator.core.restoreStateFromJson(json, String.serializer())
+            Log.d("MainViewModel", "Paginator state restored from SavedStateHandle")
+            true
+        } catch (e: Exception) {
+            Log.e("MainViewModel", "Failed to restore paginator state", e)
+            false
         }
     }
 
@@ -197,10 +242,18 @@ class MainViewModel : ViewModel() {
     }
 
     class Factory : ViewModelProvider.Factory {
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        override fun <T : ViewModel> create(
+            modelClass: Class<T>,
+            extras: CreationExtras,
+        ): T {
+            val savedStateHandle = extras.createSavedStateHandle()
             @Suppress("UNCHECKED_CAST")
-            return MainViewModel() as T
+            return MainViewModel(savedStateHandle) as T
         }
+    }
+
+    companion object {
+        private const val KEY_PAGINATOR_STATE = "paginator_state"
     }
 }
 
