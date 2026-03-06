@@ -1,14 +1,59 @@
+import com.vanniktech.maven.publish.KotlinMultiplatform
+import com.vanniktech.maven.publish.SonatypeHost
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
     id("com.android.library")
     id("org.jetbrains.kotlin.plugin.serialization")
-    id("maven-publish")
+    id("com.vanniktech.maven.publish")
 }
 
-group = "com.github.jamal-wia"
+group = "io.github.jamal-wia"
 version = "7.0.1"
+
+mavenPublishing {
+    configure(KotlinMultiplatform(javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty()))
+
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+
+    if (project.findProperty("signing.keyId") != null ||
+        System.getenv("ORG_GRADLE_PROJECT_signingInMemoryKey") != null
+    ) {
+        signAllPublications()
+    }
+
+    coordinates(group.toString(), "paginator", version.toString())
+
+    pom {
+        name.set("Paginator")
+        description.set("A powerful, flexible pagination library for Kotlin Multiplatform (KMP) with bidirectional navigation, bookmarks, CRUD, caching, and reactive state via Kotlin Flows.")
+        url.set("https://github.com/jamal-wia/Paginator")
+        inceptionYear.set("2023")
+
+        licenses {
+            license {
+                name.set("MIT License")
+                url.set("https://opensource.org/licenses/MIT")
+                distribution.set("repo")
+            }
+        }
+
+        developers {
+            developer {
+                id.set("jamal-wia")
+                name.set("Jamal Aliev")
+                url.set("https://github.com/jamal-wia")
+            }
+        }
+
+        scm {
+            url.set("https://github.com/jamal-wia/Paginator")
+            connection.set("scm:git:git://github.com/jamal-wia/Paginator.git")
+            developerConnection.set("scm:git:ssh://git@github.com/jamal-wia/Paginator.git")
+        }
+    }
+}
 
 kotlin {
     androidTarget {

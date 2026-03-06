@@ -1,6 +1,6 @@
 # Paginator
 
-[![Release](https://jitpack.io/v/jamal-wia/Paginator.svg)](https://jitpack.io/#jamal-wia/Paginator) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.jamal-wia/paginator)](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin)
 ![Android](https://img.shields.io/badge/target-Android-green)
 ![JVM](https://img.shields.io/badge/target-JVM-blue)
@@ -98,15 +98,7 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 
 ## Installation
 
-Add JitPack to your `settings.gradle.kts`:
-
-```kotlin
-dependencyResolutionManagement {
-    repositories {
-        maven { setUrl("https://jitpack.io") }
-    }
-}
-```
+The library is published to **Maven Central**. No additional repository configuration needed.
 
 ### Kotlin Multiplatform (KMP)
 
@@ -116,7 +108,7 @@ Add the dependency to `commonMain` in your module's `build.gradle.kts`:
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("com.github.jamal-wia:paginator:7.0.0")
+            implementation("io.github.jamal-wia:paginator:7.0.1")
         }
     }
 }
@@ -129,7 +121,7 @@ from the KMP metadata.
 
 ```kotlin
 dependencies {
-    implementation("com.github.jamal-wia:paginator:7.0.0")
+    implementation("io.github.jamal-wia:paginator:7.0.1")
 }
 ```
 
@@ -137,7 +129,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation("com.github.jamal-wia:paginator-jvm:7.0.0")
+    implementation("io.github.jamal-wia:paginator-jvm:7.0.1")
 }
 ```
 
