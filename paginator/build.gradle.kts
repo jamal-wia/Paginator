@@ -8,11 +8,11 @@ plugins {
 }
 
 group = "com.github.jamal-wia"
-version = "7.0.0"
+version = "7.0.1"
 
 kotlin {
     androidTarget {
-        publishLibraryVariants("release")
+        publishLibraryVariants("release", "debug")
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_1_8)
         }
