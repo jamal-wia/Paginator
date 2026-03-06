@@ -1,13 +1,19 @@
 # Paginator
 
 [![Release](https://jitpack.io/v/jamal-wia/Paginator.svg)](https://jitpack.io/#jamal-wia/Paginator) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin)
+![Android](https://img.shields.io/badge/target-Android-green)
+![JVM](https://img.shields.io/badge/target-JVM-blue)
+![iOS](https://img.shields.io/badge/target-iOS-lightgrey)
 
 ## [**📲 Download Demo APK**](https://raw.githubusercontent.com/jamal-wia/Paginator/master/PaginatorDemo.apk)
 
-**Paginator** is a powerful, flexible pagination library for Android (Kotlin) that goes far beyond
+**Paginator** is a powerful, flexible pagination library for **Kotlin Multiplatform (KMP)** that goes far beyond
 simple "load next page" patterns. It provides a full-featured page management system with support
 for jumping to arbitrary pages, bidirectional navigation, bookmarks, page caching, element-level
 CRUD, incomplete page handling, capacity management, and reactive state via Kotlin Flows.
+
+**Supported targets:** Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64
 
 ---
 ## AI Docs - https://deepwiki.com/jamal-wia/Paginator
@@ -84,7 +90,7 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - **Pluggable logging** -- implement the `PaginatorLogger` interface to receive detailed logs about
   navigation, state changes, and element-level operations. No logging by default (`null`)
 - **State serialization** -- save and restore the paginator's cache to/from JSON via
-  `kotlinx.serialization`, enabling seamless recovery after Android/iOS process death
+  `kotlinx.serialization`, enabling seamless recovery after process death on any KMP target
 - **Context window** -- the paginator tracks a contiguous range of successfully loaded pages (
   `startContextPage..endContextPage`), which defines the visible snapshot
 
@@ -92,18 +98,47 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 
 ## Installation
 
-Add JitPack to your project-level `build.gradle.kts` (or `settings.gradle.kts`):
+Add JitPack to your `settings.gradle.kts`:
 
 ```kotlin
-repositories {
-    maven { setUrl("https://jitpack.io") }
+dependencyResolutionManagement {
+    repositories {
+        maven { setUrl("https://jitpack.io") }
+    }
 }
 ```
 
-Add the dependency to your module-level `build.gradle.kts`:
+### Kotlin Multiplatform (KMP)
+
+Add the dependency to `commonMain` in your module's `build.gradle.kts`:
 
 ```kotlin
-implementation("com.github.jamal-wia:Paginator:6.0.0")
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation("com.github.jamal-wia:paginator:7.0.0")
+        }
+    }
+}
+```
+
+Gradle automatically resolves the correct platform artifact (`android`, `jvm`, `iosArm64`, etc.)
+from the KMP metadata.
+
+### Android-only project
+
+```kotlin
+dependencies {
+    implementation("com.github.jamal-wia:paginator:7.0.0")
+}
+```
+
+### JVM (Desktop / Server)
+
+```kotlin
+dependencies {
+    implementation("com.github.jamal-wia:paginator-jvm:7.0.0")
+}
 ```
 
 ---
@@ -556,12 +591,16 @@ dirty page flags into a JSON string:
 
 ```kotlin
 val json: String = paginator.core.saveStateToJson(Article.serializer())
+```
 
-// Save to SavedStateHandle (Android ViewModel)
+Persist it using whatever mechanism fits your platform:
+
+```kotlin
+// Android — SavedStateHandle (survives process death)
 savedStateHandle["paginator_state"] = json
 
-// Or save to a file
-File(context.filesDir, "paginator.json").writeText(json)
+// Any KMP target — file storage
+// (use expect/actual or a KMP file I/O library)
 ```
 
 ### Restoring State
@@ -575,7 +614,7 @@ if (json != null) {
 }
 ```
 
-After restoration, the paginator is ready to use immediately -- the `snapshot` flow emits the
+After restoration, the paginator is ready to use immediately — the `snapshot` flow emits the
 restored pages, and navigation (`goNextPage`, `goPreviousPage`, `jump`) works as normal.
 
 ### What Gets Serialized
@@ -652,19 +691,26 @@ interface PaginatorLogger {
 ### Usage
 
 ```kotlin
-import android.util.Log
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 
+// Platform-agnostic (works on all KMP targets)
+object ConsoleLogger : PaginatorLogger {
+    override fun log(tag: String, message: String) {
+        println("[$tag] $message")
+    }
+}
+
+// Android-specific
 object AndroidLogger : PaginatorLogger {
     override fun log(tag: String, message: String) {
-        Log.d(tag, message)
+        android.util.Log.d(tag, message)
     }
 }
 
 val paginator = MutablePaginator<String>(source = { page ->
     api.fetchItems(page)
 }).apply {
-    logger = AndroidLogger
+    logger = ConsoleLogger // or AndroidLogger on Android
 }
 ```
 
@@ -763,7 +809,7 @@ class PaginatorViewModel : ViewModel() {
         recyclingBookmark = true
         logger = object : PaginatorLogger {
             override fun log(tag: String, message: String) {
-                Log.d(tag, message)
+                println("[$tag] $message")
             }
         }
     }
