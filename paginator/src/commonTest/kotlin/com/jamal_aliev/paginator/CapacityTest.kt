@@ -60,7 +60,7 @@ class CapacityTest {
     }
 
     @Test
-    fun `goNextPage reloads incomplete page (not filled)`() = runTest {
+    fun `goNextPage reloads incomplete page that is not filled`() = runTest {
         var loadCount = 0
         val paginator = MutablePaginator<String> { page ->
             loadCount++

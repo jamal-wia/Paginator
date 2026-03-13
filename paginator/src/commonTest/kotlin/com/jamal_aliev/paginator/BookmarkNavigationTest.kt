@@ -5,6 +5,7 @@ import com.jamal_aliev.paginator.extension.isSuccessState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -17,14 +18,18 @@ class BookmarkNavigationTest {
         assertEquals(1, bookmark.page)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun `BookmarkInt rejects page 0`() {
-        BookmarkInt(page = 0)
+        assertFailsWith<IllegalArgumentException> {
+            BookmarkInt(page = 0)
+        }
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun `BookmarkInt rejects negative page`() {
-        BookmarkInt(page = -1)
+        assertFailsWith<IllegalArgumentException> {
+            BookmarkInt(page = -1)
+        }
     }
 
     @Test

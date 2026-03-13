@@ -92,12 +92,12 @@ class NavigationEdgeCasesTest {
         assertEquals(10, paginator.core.endContextPage)
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun `jump with page 0 throws IllegalArgumentException`() = runTest {
-        val paginator = createDeterministicPaginator()
-        // BookmarkInt requires page >= 1, this should throw in BookmarkInt constructor
-        paginator.jump(BookmarkInt(0))
-        Unit
+    @Test
+    fun `jump with page 0 throws IllegalArgumentException`() {
+        assertFailsWith<IllegalArgumentException> {
+            // BookmarkInt requires page >= 1, this should throw in BookmarkInt constructor
+            BookmarkInt(0)
+        }
     }
 
     @Test

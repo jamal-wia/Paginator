@@ -10,14 +10,15 @@ plugins {
 }
 
 group = "io.github.jamal-wia"
-version = "7.0.1"
+version = "7.1.0"
 
 mavenPublishing {
     configure(KotlinMultiplatform(javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty()))
 
-    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
 
     if (project.findProperty("signing.keyId") != null ||
+        project.findProperty("signingInMemoryKey") != null ||
         System.getenv("ORG_GRADLE_PROJECT_signingInMemoryKey") != null
     ) {
         signAllPublications()
@@ -75,9 +76,9 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation("org.jetbrains.kotlinx:atomicfu:0.26.1")
+            implementation("org.jetbrains.kotlinx:atomicfu:0.27.0")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

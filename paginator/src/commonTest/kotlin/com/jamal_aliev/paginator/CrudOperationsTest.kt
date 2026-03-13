@@ -3,6 +3,7 @@ package com.jamal_aliev.paginator
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -25,10 +26,12 @@ class CrudOperationsTest {
         assertEquals("p1_item2", paginator.core.getElement(1, 2))
     }
 
-    @Test(expected = NoSuchElementException::class)
+    @Test
     fun `setElement throws when page not found`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
-        paginator.setElement(element = "x", page = 99, index = 0, silently = true)
+        assertFailsWith<NoSuchElementException> {
+            paginator.setElement(element = "x", page = 99, index = 0, silently = true)
+        }
     }
 
     @Test
@@ -218,7 +221,7 @@ class CrudOperationsTest {
     }
 
     @Test
-    fun `replaceAllElements removes consecutive elements correctly (bug fix)`() = runTest {
+    fun `replaceAllElements removes consecutive elements correctly - bug fix`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 5)
         // page1: [p1_item0, p1_item1, p1_item2, p1_item3, p1_item4]
 
