@@ -3,6 +3,8 @@ package com.jamal_aliev.paginator
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.PagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.extension.gap
+import com.jamal_aliev.paginator.extension.isErrorState
+import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
@@ -819,29 +821,44 @@ open class PagingCore<T>(
     /**
      * Creates a serializable snapshot of this PagingCore's current state.
      *
-     * All cached pages are captured. [ErrorPage] and [ProgressPage] entries
-     * are converted to [SuccessPage]/[EmptyPage] (preserving their cached data),
-     * and their page numbers are marked as dirty in the snapshot
+     * All cached pages are captured (or only pages within the context window if
+     * [contextOnly] is `true`). [ErrorPage] and [ProgressPage] entries
+     * are converted to [SuccessPage]/[EmptyPage] (preserving their cached data
+     * and error messages), and their page numbers are marked as dirty in the snapshot
      * so they will be re-fetched on next navigation after restore.
      *
+     * @param contextOnly If `true`, only pages within `startContextPage..endContextPage`
+     *   are included in the snapshot. Useful for reducing snapshot size.
      * @return A [PagingCoreSnapshot] containing all the state needed for restoration.
      */
-    fun saveState(): PagingCoreSnapshot<T> {
-        val entries = cache.map { pageState ->
-            val wasDirty = isDirty(pageState.page)
-                || pageState is ErrorPage
-                || pageState is ProgressPage
-
-            val type = if (pageState.data.isEmpty()) PageEntryType.EMPTY
-            else PageEntryType.SUCCESS
-
-            PageEntry(
-                page = pageState.page,
-                type = type,
-                data = pageState.data,
-                wasDirty = wasDirty,
-            )
+    fun saveState(contextOnly: Boolean = false): PagingCoreSnapshot<T> {
+        val cache = if (contextOnly && startContextPage > 0 && endContextPage > 0) {
+            this@PagingCore.cache.filter { it.page in startContextPage..endContextPage }
+        } else {
+            this@PagingCore.cache
         }
+        val entries: List<PageEntry<T>> =
+            cache.map { state: PageState<T> ->
+                val wasDirty = isDirty(state.page)
+                        || state.isErrorState()
+                        || state.isProgressState()
+
+                val type: PageEntryType =
+                    if (state.data.isEmpty()) PageEntryType.EMPTY
+                    else PageEntryType.SUCCESS
+
+                val errorMessage: String? =
+                    if (state.isErrorState()) state.exception.message
+                    else null
+
+                PageEntry(
+                    page = state.page,
+                    type = type,
+                    data = state.data,
+                    wasDirty = wasDirty,
+                    errorMessage = errorMessage,
+                )
+            }
         return PagingCoreSnapshot(
             entries = entries,
             startContextPage = startContextPage,
@@ -853,8 +870,8 @@ open class PagingCore<T>(
     /**
      * Restores this PagingCore's state from a previously saved [snapshot].
      *
-     * Clears the current cache and dirty pages, then rebuilds the cache
-     * from the snapshot's entries. Pages marked as dirty in the snapshot
+     * Validates the snapshot before applying it. Clears the current cache and dirty pages,
+     * then rebuilds the cache from the snapshot's entries. Pages marked as dirty in the snapshot
      * (including those that were ErrorPage/ProgressPage before saving) are
      * added to the dirty set for automatic re-fetch on next navigation.
      *
@@ -863,18 +880,32 @@ open class PagingCore<T>(
      *
      * @param snapshot The snapshot to restore from.
      * @param silently If `true`, no snapshot is emitted after restoration.
+     * @throws IllegalArgumentException If the snapshot contains invalid data.
      */
     fun restoreState(
         snapshot: PagingCoreSnapshot<T>,
         silently: Boolean = false,
     ) {
+        validateSnapshot(snapshot)
+
         cache.clear()
         _dirtyPages.clear()
 
-        for (entry in snapshot.entries) {
+        snapshot.entries.forEach { entry: PageEntry<T> ->
             val pageState: PageState<T> = when (entry.type) {
-                PageEntryType.EMPTY -> initializerEmptyPage(entry.page, entry.data)
-                PageEntryType.SUCCESS -> initializerSuccessPage(entry.page, entry.data.toMutableList())
+                PageEntryType.EMPTY -> {
+                    initializerEmptyPage(
+                        entry.page,
+                        entry.data
+                    )
+                }
+
+                PageEntryType.SUCCESS -> {
+                    initializerSuccessPage(
+                        entry.page,
+                        entry.data.toMutableList()
+                    )
+                }
             }
             setState(state = pageState, silently = true)
             if (entry.wasDirty) {
@@ -888,6 +919,31 @@ open class PagingCore<T>(
 
         if (!silently) {
             snapshot()
+        }
+    }
+
+    private fun validateSnapshot(snapshot: PagingCoreSnapshot<T>) {
+        require(snapshot.capacity > 0) {
+            "Snapshot capacity must be > 0, but was ${snapshot.capacity}"
+        }
+        require(snapshot.startContextPage >= 0) {
+            "startContextPage must be >= 0, but was ${snapshot.startContextPage}"
+        }
+        require(snapshot.endContextPage >= 0) {
+            "endContextPage must be >= 0, but was ${snapshot.endContextPage}"
+        }
+        val bothZero = snapshot.startContextPage == 0 && snapshot.endContextPage == 0
+        require(bothZero || snapshot.startContextPage <= snapshot.endContextPage) {
+            "startContextPage (${snapshot.startContextPage}) must be <= endContextPage (${snapshot.endContextPage})"
+        }
+        val pages = mutableSetOf<Int>()
+        for (entry in snapshot.entries) {
+            require(entry.page >= 1) {
+                "Page number must be >= 1, but was ${entry.page}"
+            }
+            require(pages.add(entry.page)) {
+                "Duplicate page number: ${entry.page}"
+            }
         }
     }
 

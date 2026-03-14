@@ -19,6 +19,7 @@ import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.serialization.PaginatorSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
@@ -112,7 +113,7 @@ open class Paginator<T>(
      * Predefined page targets for quick navigation via [jumpForward] and [jumpBack].
      *
      * By default, contains a single bookmark pointing to page 1. You can add, remove, or
-     * replace bookmarks at any time. The internal iterator tracks the current position
+     * replace bookmarks at any time. The internal [bookmarkIndex] tracks the current position
      * within this list.
      */
     val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkInt(page = 1))
@@ -122,7 +123,7 @@ open class Paginator<T>(
      * reaching the end/beginning of the [bookmarks] list. Default: `false`.
      */
     var recyclingBookmark = false
-    protected var bookmarkIterator = bookmarks.listIterator()
+    protected var bookmarkIndex: Int = 0
 
     // ──────────────────────────────────────────────────────────────────────────
     //  Jump forward / back
@@ -181,40 +182,43 @@ open class Paginator<T>(
         val visibleRange: IntRange? = core.snapshotPageRange()
         var lastSkippedBookmark: Bookmark? = null
         var bookmark: Bookmark? = null
-        var iteratorInvalidated = false
 
-        // Phase 1: iterate forward, skipping bookmarks inside the visible range.
-        try {
-            while (bookmarkIterator.hasNext()) {
-                val candidate: Bookmark = bookmarkIterator.next()
+        val bookmarkSize: Int = bookmarks.size
+        if (bookmarkSize > 0) {
+            // Guard against external modification of the bookmarks list
+            bookmarkIndex = bookmarkIndex.coerceIn(0, bookmarkSize)
+
+            // Without recycling: scan only from bookmarkIndex to the end.
+            // With recycling: scan the entire list, wrapping around to the beginning,
+            //   so we visit every bookmark exactly once starting from bookmarkIndex.
+            val limit: Int =
+                if (recycling) bookmarkSize
+                else bookmarkSize - bookmarkIndex
+
+            for (i in 0 until limit) {
+                // Modular index allows the loop to wrap past the end back to 0
+                val index: Int = (bookmarkIndex + i) % bookmarkSize
+                val candidate: Bookmark = bookmarks[index]
                 if (visibleRange != null && candidate.page in visibleRange) {
                     lastSkippedBookmark = candidate
                     continue
                 }
                 bookmark = candidate
+                // Advance past the found bookmark so the next jumpForward continues from here
+                bookmarkIndex = index + 1
                 break
             }
-        } catch (_: ConcurrentModificationException) {
-            iteratorInvalidated = true
-        }
 
-        // Phase 2: reset iterator and try again
-        if (bookmark == null && (recycling || iteratorInvalidated)) {
-            bookmarkIterator = bookmarks.listIterator()
-            while (bookmarkIterator.hasNext()) {
-                val candidate = bookmarkIterator.next()
-                if (visibleRange != null && candidate.page in visibleRange) {
-                    lastSkippedBookmark = candidate
-                    continue
-                }
-                bookmark = candidate
-                break
+            if (bookmark == null) {
+                // No suitable bookmark found outside the visible range.
+                // Without recycling: park the index at the end (exhausted).
+                // With recycling: keep the index unchanged (next call retries from the same spot).
+                bookmarkIndex =
+                    if (recycling) bookmarkIndex
+                    else bookmarkSize
+                // Fall back to the last bookmark that was inside the visible range (if any)
+                bookmark = lastSkippedBookmark
             }
-        }
-
-        // Phase 3: fallback
-        if (bookmark == null) {
-            bookmark = lastSkippedBookmark
         }
 
         if (bookmark != null) {
@@ -261,40 +265,44 @@ open class Paginator<T>(
         val visibleRange: IntRange? = core.snapshotPageRange()
         var lastSkippedBookmark: Bookmark? = null
         var bookmark: Bookmark? = null
-        var iteratorInvalidated = false
 
-        // Phase 1: iterate backward, skipping bookmarks inside the visible range.
-        try {
-            while (bookmarkIterator.hasPrevious()) {
-                val candidate: Bookmark = bookmarkIterator.previous()
+        val bookmarkSize: Int = bookmarks.size
+        if (bookmarkSize > 0) {
+            // Guard against external modification of the bookmarks list
+            bookmarkIndex = bookmarkIndex.coerceIn(0, bookmarkSize)
+
+            // Without recycling: scan only from bookmarkIndex back to the beginning.
+            // With recycling: scan the entire list, wrapping around to the end,
+            //   so we visit every bookmark exactly once going backward from bookmarkIndex.
+            val limit: Int =
+                if (recycling) bookmarkSize
+                else bookmarkIndex
+
+            // i starts from 1: the first candidate is one step before bookmarkIndex
+            for (i in 1..limit) {
+                // Modular index allows the loop to wrap past 0 back to the end
+                val index = (bookmarkIndex - i + bookmarkSize) % bookmarkSize
+                val candidate: Bookmark = bookmarks[index]
                 if (visibleRange != null && candidate.page in visibleRange) {
                     lastSkippedBookmark = candidate
                     continue
                 }
                 bookmark = candidate
+                // Park the index at the found bookmark so the next jumpBack continues from here
+                bookmarkIndex = index
                 break
             }
-        } catch (_: ConcurrentModificationException) {
-            iteratorInvalidated = true
-        }
 
-        // Phase 2: reset iterator to end and try again
-        if (bookmark == null && (recycling || iteratorInvalidated)) {
-            bookmarkIterator = bookmarks.listIterator(bookmarks.size)
-            while (bookmarkIterator.hasPrevious()) {
-                val candidate = bookmarkIterator.previous()
-                if (visibleRange != null && candidate.page in visibleRange) {
-                    lastSkippedBookmark = candidate
-                    continue
-                }
-                bookmark = candidate
-                break
+            if (bookmark == null) {
+                // No suitable bookmark found outside the visible range.
+                // Without recycling: park the index at 0 (exhausted).
+                // With recycling: keep the index unchanged (next call retries from the same spot).
+                bookmarkIndex =
+                    if (recycling) bookmarkIndex
+                    else 0
+                // Fall back to the last bookmark that was inside the visible range (if any)
+                bookmark = lastSkippedBookmark
             }
-        }
-
-        // Phase 3: fallback
-        if (bookmark == null) {
-            bookmark = lastSkippedBookmark
         }
 
         if (bookmark != null) {
@@ -1006,13 +1014,82 @@ open class Paginator<T>(
         core.release(capacity, silently)
         bookmarks.clear()
         bookmarks.add(BookmarkInt(page = 1))
-        bookmarkIterator = bookmarks.listIterator()
+        bookmarkIndex = 0
         finalPage = Int.MAX_VALUE
         lockJump = false
         lockGoNextPage = false
         lockGoPreviousPage = false
         lockRestart = false
         lockRefresh = false
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    //  State serialization
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Creates a serializable snapshot of this Paginator's full state,
+     * including the [PagingCore] cache and Paginator-level fields
+     * ([finalPage], [bookmarks], [bookmarkIndex], lock flags).
+     *
+     * Thread-safe: acquires [navigationMutex] to ensure a consistent snapshot.
+     *
+     * @param contextOnly If `true`, only pages within the context window are included.
+     * @return A [PaginatorSnapshot] containing all the state needed for restoration.
+     */
+    suspend fun saveState(
+        contextOnly: Boolean = false,
+    ): PaginatorSnapshot<T> = navigationMutex.withLock {
+        PaginatorSnapshot(
+            coreSnapshot = core.saveState(contextOnly),
+            finalPage = finalPage,
+            bookmarkPages = bookmarks.map { it.page },
+            bookmarkIndex = bookmarkIndex,
+            recyclingBookmark = recyclingBookmark,
+            lockJump = lockJump,
+            lockGoNextPage = lockGoNextPage,
+            lockGoPreviousPage = lockGoPreviousPage,
+            lockRestart = lockRestart,
+            lockRefresh = lockRefresh,
+        )
+    }
+
+    /**
+     * Restores this Paginator's full state from a previously saved [snapshot].
+     *
+     * Restores both the [PagingCore] cache and Paginator-level fields
+     * ([finalPage], [bookmarks], [bookmarkIndex], lock flags).
+     *
+     * Thread-safe: acquires [navigationMutex] to prevent concurrent mutations.
+     *
+     * @param snapshot The snapshot to restore from.
+     * @param silently If `true`, no snapshot is emitted after restoration.
+     * @throws IllegalArgumentException If the snapshot contains invalid data.
+     */
+    suspend fun restoreState(
+        snapshot: PaginatorSnapshot<T>,
+        silently: Boolean = false,
+    ): Unit = navigationMutex.withLock {
+        core.restoreState(snapshot.coreSnapshot, silently)
+
+        finalPage = snapshot.finalPage
+
+        bookmarks.clear()
+        if (snapshot.bookmarkPages.isEmpty()) {
+            bookmarks.add(BookmarkInt(page = 1))
+        } else {
+            snapshot.bookmarkPages.forEach { page ->
+                bookmarks.add(BookmarkInt(page = page))
+            }
+        }
+        bookmarkIndex = snapshot.bookmarkIndex.coerceIn(0, bookmarks.size)
+
+        recyclingBookmark = snapshot.recyclingBookmark
+        lockJump = snapshot.lockJump
+        lockGoNextPage = snapshot.lockGoNextPage
+        lockGoPreviousPage = snapshot.lockGoPreviousPage
+        lockRestart = snapshot.lockRestart
+        lockRefresh = snapshot.lockRefresh
     }
 
     // ──────────────────────────────────────────────────────────────────────────

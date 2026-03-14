@@ -10,14 +10,16 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-@Serializable
-private data class TestItem(val name: String, val value: Int)
-
 class PagingCoreSerializationTest {
+
+    @Serializable
+    data class TestItem(val name: String, val value: Int)
 
     private fun createTestPaginator(
         pageCount: Int = 5,
@@ -241,5 +243,216 @@ class PagingCoreSerializationTest {
             val restoredState = restored.getStateOf(page)!!
             assertEquals(original.data, restoredState.data)
         }
+    }
+
+    // ── errorMessage tests ──────────────────────────────────────────────────
+
+    @Test
+    fun `errorMessage preserved for ErrorPage`() = runTest {
+        val paginator = createTestPaginator()
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+
+        val cachedData = paginator.core.getStateOf(2)!!.data
+        paginator.core.setState(
+            PageState.ErrorPage(
+                exception = RuntimeException("network timeout"),
+                page = 2,
+                data = cachedData,
+            ),
+            silently = true,
+        )
+
+        val snapshot = paginator.core.saveState()
+        val entry = snapshot.entries.first { it.page == 2 }
+        assertEquals("network timeout", entry.errorMessage)
+
+        val successEntry = snapshot.entries.first { it.page == 1 }
+        assertNull(successEntry.errorMessage)
+    }
+
+    @Test
+    fun `errorMessage null for non-error pages`() = runTest {
+        val paginator = createTestPaginator()
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+
+        val snapshot = paginator.core.saveState()
+        for (entry in snapshot.entries) {
+            assertNull(entry.errorMessage)
+        }
+    }
+
+    @Test
+    fun `errorMessage survives JSON round-trip`() = runTest {
+        val paginator = createTestPaginator()
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+
+        val cachedData = paginator.core.getStateOf(2)!!.data
+        paginator.core.setState(
+            PageState.ErrorPage(
+                exception = IllegalStateException("bad state"),
+                page = 2,
+                data = cachedData,
+            ),
+            silently = true,
+        )
+
+        val json = paginator.core.saveStateToJson(TestItem.serializer())
+        assertTrue(json.contains("bad state"))
+
+        val restored = PagingCore<TestItem>()
+        restored.restoreStateFromJson(json, TestItem.serializer(), silently = true)
+        assertTrue(restored.isDirty(2))
+    }
+
+    // ── contextOnly tests ───────────────────────────────────────────────────
+
+    @Test
+    fun `contextOnly saves only pages in context window`() = runTest {
+        val paginator = createTestPaginator()
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        for (i in 2..5) {
+            paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        }
+        // Context window is 1..5, but let's set it manually to 2..4
+        // by jumping to page 2 and loading through page 4
+        val paginator2 = createTestPaginator()
+        paginator2.jump(BookmarkInt(2), silentlyLoading = true, silentlyResult = true)
+        paginator2.goNextPage(silentlyLoading = true, silentlyResult = true) // page 3
+        paginator2.goNextPage(silentlyLoading = true, silentlyResult = true) // page 4
+
+        val fullSnapshot = paginator2.core.saveState(contextOnly = false)
+        val contextSnapshot = paginator2.core.saveState(contextOnly = true)
+
+        // Context window is 2..4
+        assertEquals(paginator2.core.startContextPage, contextSnapshot.startContextPage)
+        assertEquals(paginator2.core.endContextPage, contextSnapshot.endContextPage)
+
+        // contextOnly should have only pages within context window
+        val contextPages = contextSnapshot.entries.map { it.page }.toSet()
+        for (page in contextPages) {
+            assertTrue(page in paginator2.core.startContextPage..paginator2.core.endContextPage)
+        }
+
+        // Full snapshot may have more pages
+        assertTrue(fullSnapshot.entries.size >= contextSnapshot.entries.size)
+    }
+
+    @Test
+    fun `contextOnly false saves all cached pages`() = runTest {
+        val paginator = createTestPaginator()
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        for (i in 2..5) {
+            paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        }
+
+        val snapshot = paginator.core.saveState(contextOnly = false)
+        assertEquals(5, snapshot.entries.size)
+    }
+
+    // ── validation tests ────────────────────────────────────────────────────
+
+    @Test
+    fun `restoreState rejects negative startContextPage`() {
+        val core = PagingCore<TestItem>()
+        val snapshot = PagingCoreSnapshot<TestItem>(
+            entries = emptyList(),
+            startContextPage = -1,
+            endContextPage = 0,
+            capacity = 10,
+        )
+        assertFailsWith<IllegalArgumentException> {
+            core.restoreState(snapshot)
+        }
+    }
+
+    @Test
+    fun `restoreState rejects negative endContextPage`() {
+        val core = PagingCore<TestItem>()
+        val snapshot = PagingCoreSnapshot<TestItem>(
+            entries = emptyList(),
+            startContextPage = 0,
+            endContextPage = -1,
+            capacity = 10,
+        )
+        assertFailsWith<IllegalArgumentException> {
+            core.restoreState(snapshot)
+        }
+    }
+
+    @Test
+    fun `restoreState rejects startContextPage greater than endContextPage`() {
+        val core = PagingCore<TestItem>()
+        val snapshot = PagingCoreSnapshot<TestItem>(
+            entries = emptyList(),
+            startContextPage = 5,
+            endContextPage = 3,
+            capacity = 10,
+        )
+        assertFailsWith<IllegalArgumentException> {
+            core.restoreState(snapshot)
+        }
+    }
+
+    @Test
+    fun `restoreState rejects zero capacity`() {
+        val core = PagingCore<TestItem>()
+        val snapshot = PagingCoreSnapshot<TestItem>(
+            entries = emptyList(),
+            startContextPage = 0,
+            endContextPage = 0,
+            capacity = 0,
+        )
+        assertFailsWith<IllegalArgumentException> {
+            core.restoreState(snapshot)
+        }
+    }
+
+    @Test
+    fun `restoreState rejects duplicate page numbers`() {
+        val core = PagingCore<TestItem>()
+        val snapshot = PagingCoreSnapshot<TestItem>(
+            entries = listOf(
+                PageEntry(page = 1, type = PageEntryType.SUCCESS, data = listOf(TestItem("a", 1)), wasDirty = false),
+                PageEntry(page = 1, type = PageEntryType.SUCCESS, data = listOf(TestItem("b", 2)), wasDirty = false),
+            ),
+            startContextPage = 1,
+            endContextPage = 1,
+            capacity = 10,
+        )
+        assertFailsWith<IllegalArgumentException> {
+            core.restoreState(snapshot)
+        }
+    }
+
+    @Test
+    fun `restoreState rejects page number less than 1`() {
+        val core = PagingCore<TestItem>()
+        val snapshot = PagingCoreSnapshot<TestItem>(
+            entries = listOf(
+                PageEntry(page = 0, type = PageEntryType.SUCCESS, data = listOf(TestItem("a", 1)), wasDirty = false),
+            ),
+            startContextPage = 0,
+            endContextPage = 0,
+            capacity = 10,
+        )
+        assertFailsWith<IllegalArgumentException> {
+            core.restoreState(snapshot)
+        }
+    }
+
+    @Test
+    fun `restoreState accepts both context pages as zero`() {
+        val core = PagingCore<TestItem>()
+        val snapshot = PagingCoreSnapshot<TestItem>(
+            entries = emptyList(),
+            startContextPage = 0,
+            endContextPage = 0,
+            capacity = 10,
+        )
+        core.restoreState(snapshot, silently = true)
+        assertEquals(0, core.startContextPage)
+        assertEquals(0, core.endContextPage)
     }
 }

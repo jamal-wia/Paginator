@@ -25,6 +25,8 @@ enum class PageEntryType {
  * @param data The items on this page. For [PageEntryType.EMPTY] pages this is an empty list.
  * @param wasDirty `true` if this page was already dirty before saving,
  *   or if it was an ErrorPage/ProgressPage that was converted during save.
+ * @param errorMessage The exception message from an [com.jamal_aliev.paginator.page.PageState.ErrorPage],
+ *   preserved so that the UI can display the error reason after restoration. `null` for non-error pages.
  */
 @Serializable
 data class PageEntry<T>(
@@ -32,6 +34,7 @@ data class PageEntry<T>(
     val type: PageEntryType,
     val data: List<T>,
     val wasDirty: Boolean,
+    val errorMessage: String? = null,
 )
 
 /**

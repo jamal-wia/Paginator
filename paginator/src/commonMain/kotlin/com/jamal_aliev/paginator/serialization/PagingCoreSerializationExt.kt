@@ -28,8 +28,9 @@ val PagingCoreJson: Json = Json {
 fun <T> PagingCore<T>.saveStateToJson(
     elementSerializer: KSerializer<T>,
     json: Json = PagingCoreJson,
+    contextOnly: Boolean = false,
 ): String {
-    val snapshot = saveState()
+    val snapshot = saveState(contextOnly)
     val snapshotSerializer = PagingCoreSnapshot.serializer(elementSerializer)
     return json.encodeToString(snapshotSerializer, snapshot)
 }
