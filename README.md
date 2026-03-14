@@ -1092,11 +1092,7 @@ This triggers the **`Publish to Maven Central`** GitHub Actions workflow automat
 ### Step 5 — Monitor the Workflow
 
 1. Go to **[Actions](https://github.com/jamal-wia/Paginator/actions)** and open the running workflow
-2. The workflow runs on `macos-latest`, sets up JDK 17, imports the GPG key, and executes:
-   ```
-   ./gradlew :paginator:publishAndReleaseToMavenCentral --no-configuration-cache
-   ```
-3. Wait for the workflow to complete successfully (green checkmark)
+2. Wait for the workflow to complete successfully (green checkmark)
 
 ### Step 6 — Verify on Maven Central
 
