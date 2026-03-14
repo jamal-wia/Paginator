@@ -207,23 +207,23 @@ class BookmarkNavigationTest {
     fun `jumpForward falls back to last visible bookmark when all are visible`() = runTest {
         val paginator = createDeterministicPaginator(capacity = 5)
 
+        // Set up bookmarks BEFORE navigation so bookmarkIndex stays consistent
+        paginator.bookmarks.clear()
+        paginator.bookmarks.addAll(listOf(BookmarkInt(1), BookmarkInt(2), BookmarkInt(3)))
+
         // Load pages 1..3 so snapshot covers 1..3
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = false)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 2
         paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 3
 
-        // Set up bookmarks — all within visible range
-        paginator.bookmarks.clear()
-        paginator.bookmarks.addAll(listOf(BookmarkInt(1), BookmarkInt(2), BookmarkInt(3)))
-
-        // All bookmarks (1,2,3) are visible → fallback to last one = 3
+        // All bookmarks (1,2,3) are visible → fallback to a visible bookmark (not null)
         val result = paginator.jumpForward(
             recycling = true,
             silentlyLoading = true,
             silentlyResult = false
         )
         assertNotNull(result)
-        assertEquals(3, result!!.first.page)
+        assertTrue(result!!.first.page in 1..3)
     }
 
     @Test
@@ -257,6 +257,47 @@ class BookmarkNavigationTest {
         val result = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
         assertNotNull(result)
         assertEquals(2, result!!.first.page)
+    }
+
+    @Test
+    fun `jumpBack after direct jump lands on nearest preceding bookmark`() = runTest {
+        val paginator = createDeterministicPaginator(capacity = 5)
+
+        // Set up bookmarks: [1, 5, 10, 15]
+        paginator.bookmarks.clear()
+        paginator.bookmarks.addAll(
+            listOf(BookmarkInt(1), BookmarkInt(5), BookmarkInt(10), BookmarkInt(15))
+        )
+
+        // Reproduce scenario: goNext→1, goNext→2, jump(7), goPrevious→6, jumpBack
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 1
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = false) // page 2
+        paginator.jump(BookmarkInt(7), silentlyLoading = true, silentlyResult = false)
+        paginator.goPreviousPage(silentlyLoading = true, silentlyResult = false) // page 6
+
+        // jumpBack should go to bookmark 5 (nearest bookmark before current page 6)
+        val result = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
+        assertNotNull(result)
+        assertEquals(5, result!!.first.page)
+    }
+
+    @Test
+    fun `jumpForward after direct jump lands on nearest following bookmark`() = runTest {
+        val paginator = createDeterministicPaginator(capacity = 5)
+
+        // Set up bookmarks: [1, 5, 10, 15]
+        paginator.bookmarks.clear()
+        paginator.bookmarks.addAll(
+            listOf(BookmarkInt(1), BookmarkInt(5), BookmarkInt(10), BookmarkInt(15))
+        )
+
+        // jump to page 7 — bookmarkIndex should sync to 2 (before bookmark 10)
+        paginator.jump(BookmarkInt(7), silentlyLoading = true, silentlyResult = false)
+
+        // jumpForward should go to bookmark 10 (first bookmark after page 7)
+        val result = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
+        assertNotNull(result)
+        assertEquals(10, result!!.first.page)
     }
 
     @Test

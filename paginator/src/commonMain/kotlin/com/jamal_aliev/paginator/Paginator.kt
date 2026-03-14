@@ -125,6 +125,17 @@ open class Paginator<T>(
     var recyclingBookmark = false
     protected var bookmarkIndex: Int = 0
 
+    /**
+     * Synchronises [bookmarkIndex] so that it sits right after the last bookmark
+     * whose page is ≤ [page]. This keeps [jumpForward]/[jumpBack] consistent
+     * after a direct [jump] to an arbitrary page.
+     */
+    private fun syncBookmarkIndex(page: Int) {
+        if (bookmarks.isEmpty()) return
+        val index = bookmarks.indexOfFirst { it.page > page }
+        bookmarkIndex = if (index == -1) bookmarks.size else index
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     //  Jump forward / back
     // ──────────────────────────────────────────────────────────────────────────
@@ -222,7 +233,8 @@ open class Paginator<T>(
         }
 
         if (bookmark != null) {
-            return jump(
+            val savedBookmarkIndex = bookmarkIndex
+            val result = jump(
                 bookmark = bookmark,
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
@@ -234,6 +246,8 @@ open class Paginator<T>(
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
+            bookmarkIndex = savedBookmarkIndex
+            return result
         }
 
         logger?.log(TAG, "jumpForward: no bookmark available")
@@ -306,7 +320,8 @@ open class Paginator<T>(
         }
 
         if (bookmark != null) {
-            return jump(
+            val savedBookmarkIndex = bookmarkIndex
+            val result = jump(
                 bookmark = bookmark,
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
@@ -318,6 +333,8 @@ open class Paginator<T>(
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
+            bookmarkIndex = savedBookmarkIndex
+            return result
         }
 
         logger?.log(TAG, "jumpBack: no bookmark available")
@@ -424,6 +441,7 @@ open class Paginator<T>(
                     core.snapshot()
                 }
                 logger?.log(TAG, "jump: page=${bookmark.page} cache hit")
+                syncBookmarkIndex(bookmark.page)
                 refreshDirtyPagesInContext()
                 return@withLock bookmark to probablySuccessBookmarkPage
             }
@@ -474,6 +492,7 @@ open class Paginator<T>(
             }
 
             logger?.log(TAG, "jump: page=${bookmark.page} result=${resultState::class.simpleName}")
+            syncBookmarkIndex(bookmark.page)
             refreshDirtyPagesInContext()
             return@withLock bookmark to resultState
         }
@@ -810,6 +829,7 @@ open class Paginator<T>(
                 if (!silentlyResult) {
                     core.snapshot(1..1)
                 }
+                syncBookmarkIndex(1)
                 logger?.log(TAG, "restart: result=${resultPageState::class.simpleName}")
             }
         }
