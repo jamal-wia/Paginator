@@ -20,7 +20,7 @@ class SuccessPageStateTest {
     fun `test the integrity of stored data for SuccessPage`() {
         val samplePageNumber = 3
         val sampleListOfData: List<String> =
-            MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
+            MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
 
@@ -45,7 +45,7 @@ class SuccessPageStateTest {
     fun `test hashCode for SuccessPage`() {
         val page = 4
         val sampleListOfData: List<String> =
-            MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
+            MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
         val successPageState: PageState<String> =
@@ -59,7 +59,7 @@ class SuccessPageStateTest {
     @Test
     fun `test compareTo for SuccessPage`() {
         val sampleListOfData: List<String> =
-            MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
+            MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
         val successPageState1: PageState<String> =
@@ -126,7 +126,7 @@ class SuccessPageStateTest {
     @Test
     fun `test true using isSuccessState for SuccessPage`() {
         val sampleListOfData: List<String> =
-            MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
+            MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
         val successPageState: SuccessPage<String> =
@@ -140,7 +140,7 @@ class SuccessPageStateTest {
     @Test
     fun `test using isRealSuccessState for SuccessPage`() {
         val sampleListOfData: List<String> =
-            MutableList(Random.nextInt(from = 0, until = 100)) { index: Int ->
+            MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
         val successPageState: SuccessPage<String> =
