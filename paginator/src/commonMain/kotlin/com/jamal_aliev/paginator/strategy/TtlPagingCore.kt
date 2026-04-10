@@ -48,7 +48,6 @@ class TtlPagingCore<T>(
     }
 
     /** Tracks when each page was last added (or accessed, if [refreshOnAccess]). */
-//    private val timestamps = mutableMapOf<Int, TimeMark>()
     private val timestamps = hashMapOf<Int, TimeMark>()
 
     override fun setState(state: PageState<T>, silently: Boolean) {
