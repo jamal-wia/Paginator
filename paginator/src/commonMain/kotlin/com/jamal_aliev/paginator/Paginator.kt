@@ -22,12 +22,14 @@ import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.PaginatorSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+
+import kotlinx.coroutines.withContext
 
 /**
  * A read-only, reactive pagination manager for Kotlin/Android.
@@ -432,7 +434,13 @@ open class Paginator<T>(
             )
         }
 
-        return@coroutineScope navigationMutex.withLock {
+        var savedStartContextPage: Int = core.startContextPage
+        var savedEndContextPage: Int = core.endContextPage
+        var savedPageState: PageState<T>? = null
+        var shouldCleanup = false
+
+        navigationMutex.lock()
+        try {
             val probablySuccessBookmarkPage: PageState<T>? = core.getStateOf(bookmark.page)
             if (core.isFilledSuccessState(probablySuccessBookmarkPage)) {
                 core.expandStartContextPage(probablySuccessBookmarkPage)
@@ -443,12 +451,17 @@ open class Paginator<T>(
                 logger?.log(TAG, "jump: page=${bookmark.page} cache hit")
                 syncBookmarkIndex(bookmark.page)
                 refreshDirtyPagesInContext()
-                return@withLock bookmark to probablySuccessBookmarkPage
+                return@coroutineScope bookmark to probablySuccessBookmarkPage
             }
 
             if (!loadGuard.invoke(bookmark.page, probablySuccessBookmarkPage)) {
                 throw LoadGuardedException(attemptedPage = bookmark.page)
             }
+
+            savedStartContextPage = core.startContextPage
+            savedEndContextPage = core.endContextPage
+            savedPageState = probablySuccessBookmarkPage
+            shouldCleanup = true
 
             core.startContextPage = bookmark.page
             core.endContextPage = bookmark.page
@@ -477,6 +490,7 @@ open class Paginator<T>(
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
             )
+            shouldCleanup = false
             core.setState(
                 state = resultState,
                 silently = true
@@ -494,7 +508,21 @@ open class Paginator<T>(
             logger?.log(TAG, "jump: page=${bookmark.page} result=${resultState::class.simpleName}")
             syncBookmarkIndex(bookmark.page)
             refreshDirtyPagesInContext()
-            return@withLock bookmark to resultState
+            return@coroutineScope bookmark to resultState
+        } catch (e: CancellationException) {
+            if (shouldCleanup) {
+                core.startContextPage = savedStartContextPage
+                core.endContextPage = savedEndContextPage
+                if (savedPageState != null) {
+                    core.setState(savedPageState, silently = true)
+                } else {
+                    core.removeFromCache(bookmark.page)
+                }
+                core.snapshot()
+            }
+            throw e
+        } finally {
+            navigationMutex.unlock()
         }
     }
 
@@ -553,7 +581,12 @@ open class Paginator<T>(
             return@coroutineScope pageState
         }
 
-        return@coroutineScope navigationMutex.withLock {
+        var savedNextPage = -1
+        var savedNextPageState: PageState<T>? = null
+        var shouldCleanup = false
+
+        navigationMutex.lock()
+        try {
             var pivotContextPage: Int = core.endContextPage
             var pivotContextPageState: PageState<T>? = core.getStateOf(pivotContextPage)
             val isPivotContextPageValid: Boolean = core.isFilledSuccessState(pivotContextPageState)
@@ -581,11 +614,15 @@ open class Paginator<T>(
                 else core.getStateOf(nextPage)
 
             if (nextPageState.isProgressState())
-                return@withLock nextPageState
+                return@coroutineScope nextPageState
 
             if (!loadGuard.invoke(nextPage, nextPageState)) {
                 throw LoadGuardedException(attemptedPage = nextPage)
             }
+
+            savedNextPage = nextPage
+            savedNextPageState = nextPageState
+            shouldCleanup = true
 
             loadOrGetPageState(
                 page = nextPage,
@@ -608,6 +645,7 @@ open class Paginator<T>(
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
             ).also { resultState ->
+                shouldCleanup = false
                 core.setState(
                     state = resultState,
                     silently = true
@@ -630,8 +668,19 @@ open class Paginator<T>(
                     "goNextPage: page=$nextPage result=${resultState::class.simpleName}"
                 )
                 refreshDirtyPagesInContext()
-                return@withLock resultState
             }
+        } catch (e: CancellationException) {
+            if (shouldCleanup) {
+                if (savedNextPageState != null) {
+                    core.setState(savedNextPageState, silently = true)
+                } else {
+                    core.removeFromCache(savedNextPage)
+                }
+                core.snapshot()
+            }
+            throw e
+        } finally {
+            navigationMutex.unlock()
         }
     }
 
@@ -671,7 +720,12 @@ open class Paginator<T>(
                     "Please use jump function to start paginator before use goPreviousPage"
         }
 
-        return@coroutineScope navigationMutex.withLock {
+        var savedPreviousPage = -1
+        var savedPreviousPageState: PageState<T>? = null
+        var shouldCleanup = false
+
+        navigationMutex.lock()
+        try {
             var pivotContextPage: Int = core.startContextPage
             var pivotContextPageState = core.getStateOf(pivotContextPage)
             val pivotContextPageValid = core.isFilledSuccessState(pivotContextPageState)
@@ -692,11 +746,15 @@ open class Paginator<T>(
                 else core.getStateOf(previousPage)
 
             if (previousPageState.isProgressState())
-                return@withLock previousPageState
+                return@coroutineScope previousPageState
 
             if (!loadGuard.invoke(previousPage, previousPageState)) {
                 throw LoadGuardedException(attemptedPage = previousPage)
             }
+
+            savedPreviousPage = previousPage
+            savedPreviousPageState = previousPageState
+            shouldCleanup = true
 
             loadOrGetPageState(
                 page = previousPage,
@@ -719,6 +777,7 @@ open class Paginator<T>(
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
             ).also { resultState: PageState<T> ->
+                shouldCleanup = false
                 core.setState(
                     state = resultState,
                     silently = true
@@ -741,8 +800,19 @@ open class Paginator<T>(
                     "goPreviousPage: page=$previousPage result=${resultState::class.simpleName}"
                 )
                 refreshDirtyPagesInContext()
-                return@withLock resultState
             }
+        } catch (e: CancellationException) {
+            if (shouldCleanup) {
+                if (savedPreviousPageState != null) {
+                    core.setState(savedPreviousPageState, silently = true)
+                } else {
+                    core.removeFromCache(savedPreviousPage)
+                }
+                core.snapshot()
+            }
+            throw e
+        } finally {
+            navigationMutex.unlock()
         }
     }
 
@@ -780,7 +850,16 @@ open class Paginator<T>(
         if (lockRestart) throw RestartWasLockedException()
         logger?.log(TAG, "restart")
 
-        return@coroutineScope navigationMutex.withLock {
+        var savedStartContextPage: Int = core.startContextPage
+        var savedEndContextPage: Int = core.endContextPage
+        var savedFirstPageState: PageState<T>? = null
+        var shouldCleanup = false
+
+        navigationMutex.lock()
+        try {
+            savedStartContextPage = core.startContextPage
+            savedEndContextPage = core.endContextPage
+
             val firstPage: PageState<T>? = core.getStateOf(1)
             core.clear()
             if (firstPage != null) {
@@ -795,6 +874,9 @@ open class Paginator<T>(
             if (!loadGuard.invoke(1, firstPage)) {
                 throw LoadGuardedException(attemptedPage = 1)
             }
+
+            savedFirstPageState = firstPage
+            shouldCleanup = true
 
             core.startContextPage = 1
             core.endContextPage = 1
@@ -819,6 +901,7 @@ open class Paginator<T>(
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
             ).also { resultPageState ->
+                shouldCleanup = false
                 core.setState(
                     state = resultPageState,
                     silently = true
@@ -832,6 +915,20 @@ open class Paginator<T>(
                 syncBookmarkIndex(1)
                 logger?.log(TAG, "restart: result=${resultPageState::class.simpleName}")
             }
+        } catch (e: CancellationException) {
+            if (shouldCleanup) {
+                core.startContextPage = savedStartContextPage
+                core.endContextPage = savedEndContextPage
+                if (savedFirstPageState != null) {
+                    core.setState(savedFirstPageState, silently = true)
+                } else {
+                    core.removeFromCache(1)
+                }
+                core.snapshot()
+            }
+            throw e
+        } finally {
+            navigationMutex.unlock()
         }
     }
 
@@ -874,61 +971,92 @@ open class Paginator<T>(
         if (lockRefresh) throw RefreshWasLockedException()
         logger?.log(TAG, "refresh: pages=$pages")
 
-        // Phase 1: validate guards and set progress states under lock
-        navigationMutex.withLock {
-            pages.forEach { page: Int ->
-                if (!loadGuard.invoke(page, core.getStateOf(page))) {
-                    throw LoadGuardedException(attemptedPage = page)
-                }
-            }
-            pages.forEach { page: Int ->
-                val dataOfPage = core.getStateOf(page)?.data ?: mutableListOf()
-                val progressState = initProgressState.invoke(page, dataOfPage)
-                core.setState(
-                    state = progressState,
-                    silently = true
-                )
-            }
-        }
-        if (enableCacheFlow) {
-            core.repeatCacheFlow()
-        }
-        if (!loadingSilently) {
-            core.snapshot()
-        }
+        var savedStates: Map<Int, PageState<T>?> = emptyMap()
 
-        // Phase 2: load pages in parallel (network I/O — outside lock)
-        pages.map { page: Int ->
-            async {
-                loadOrGetPageState(
-                    page = page,
-                    forceLoading = true,
-                    initEmptyState = initEmptyState,
-                    initSuccessState = initSuccessState,
-                    initErrorState = initErrorState
-                )
-            }
-        }.awaitAll().let { results: List<PageState<T>> ->
-            // Phase 3: write results back under lock
-            navigationMutex.withLock {
-                results.forEach { finalPageState: PageState<T> ->
+        try {
+            // Phase 1: validate guards and set progress states under lock
+            navigationMutex.lock()
+            try {
+                savedStates = pages.associateWith { core.getStateOf(it) }
+                pages.forEach { page: Int ->
+                    if (!loadGuard.invoke(page, savedStates[page])) {
+                        throw LoadGuardedException(attemptedPage = page)
+                    }
+                }
+                pages.forEach { page: Int ->
+                    val dataOfPage = savedStates[page]?.data ?: mutableListOf()
+                    val progressState = initProgressState.invoke(page, dataOfPage)
                     core.setState(
-                        state = finalPageState,
+                        state = progressState,
                         silently = true
                     )
                 }
+            } finally {
+                navigationMutex.unlock()
             }
-        }
+            if (enableCacheFlow) {
+                core.repeatCacheFlow()
+            }
+            if (!loadingSilently) {
+                core.snapshot()
+            }
 
-        core.clearDirty(pages)
+            // Phase 2: load pages in parallel (network I/O — outside lock)
+            pages.map { page: Int ->
+                async {
+                    loadOrGetPageState(
+                        page = page,
+                        forceLoading = true,
+                        initEmptyState = initEmptyState,
+                        initSuccessState = initSuccessState,
+                        initErrorState = initErrorState
+                    )
+                }
+            }.awaitAll().let { results: List<PageState<T>> ->
+                // Phase 3: write results back under lock
+                navigationMutex.lock()
+                try {
+                    results.forEach { finalPageState: PageState<T> ->
+                        core.setState(
+                            state = finalPageState,
+                            silently = true
+                        )
+                    }
+                } finally {
+                    navigationMutex.unlock()
+                }
+            }
 
-        if (enableCacheFlow) {
-            core.repeatCacheFlow()
+            core.clearDirty(pages)
+
+            if (enableCacheFlow) {
+                core.repeatCacheFlow()
+            }
+            if (!finalSilently) {
+                core.snapshot()
+            }
+            logger?.log(TAG, "refresh: pages=$pages completed")
+        } catch (e: CancellationException) {
+            if (savedStates.isNotEmpty()) {
+                withContext(NonCancellable) {
+                    // TODO Maybe lock here is unnecessary
+                    navigationMutex.lock()
+                    try {
+                        savedStates.forEach { (page, state) ->
+                            if (state != null) {
+                                core.setState(state, silently = true)
+                            } else {
+                                core.removeFromCache(page)
+                            }
+                        }
+                        core.snapshot()
+                    } finally {
+                        navigationMutex.unlock()
+                    }
+                }
+            }
+            throw e
         }
-        if (!finalSilently) {
-            core.snapshot()
-        }
-        logger?.log(TAG, "refresh: pages=$pages completed")
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -1059,19 +1187,24 @@ open class Paginator<T>(
      */
     suspend fun saveState(
         contextOnly: Boolean = false,
-    ): PaginatorSnapshot<T> = navigationMutex.withLock {
-        PaginatorSnapshot(
-            coreSnapshot = core.saveState(contextOnly),
-            finalPage = finalPage,
-            bookmarkPages = bookmarks.map { it.page },
-            bookmarkIndex = bookmarkIndex,
-            recyclingBookmark = recyclingBookmark,
-            lockJump = lockJump,
-            lockGoNextPage = lockGoNextPage,
-            lockGoPreviousPage = lockGoPreviousPage,
-            lockRestart = lockRestart,
-            lockRefresh = lockRefresh,
-        )
+    ): PaginatorSnapshot<T> {
+        navigationMutex.lock()
+        try {
+            return PaginatorSnapshot(
+                coreSnapshot = core.saveState(contextOnly),
+                finalPage = finalPage,
+                bookmarkPages = bookmarks.map { it.page },
+                bookmarkIndex = bookmarkIndex,
+                recyclingBookmark = recyclingBookmark,
+                lockJump = lockJump,
+                lockGoNextPage = lockGoNextPage,
+                lockGoPreviousPage = lockGoPreviousPage,
+                lockRestart = lockRestart,
+                lockRefresh = lockRefresh,
+            )
+        } finally {
+            navigationMutex.unlock()
+        }
     }
 
     /**
@@ -1089,27 +1222,32 @@ open class Paginator<T>(
     suspend fun restoreState(
         snapshot: PaginatorSnapshot<T>,
         silently: Boolean = false,
-    ): Unit = navigationMutex.withLock {
-        core.restoreState(snapshot.coreSnapshot, silently)
+    ) {
+        navigationMutex.lock()
+        try {
+            core.restoreState(snapshot.coreSnapshot, silently)
 
-        finalPage = snapshot.finalPage
+            finalPage = snapshot.finalPage
 
-        bookmarks.clear()
-        if (snapshot.bookmarkPages.isEmpty()) {
-            bookmarks.add(BookmarkInt(page = 1))
-        } else {
-            snapshot.bookmarkPages.forEach { page ->
-                bookmarks.add(BookmarkInt(page = page))
+            bookmarks.clear()
+            if (snapshot.bookmarkPages.isEmpty()) {
+                bookmarks.add(BookmarkInt(page = 1))
+            } else {
+                snapshot.bookmarkPages.forEach { page ->
+                    bookmarks.add(BookmarkInt(page = page))
+                }
             }
-        }
-        bookmarkIndex = snapshot.bookmarkIndex.coerceIn(0, bookmarks.size)
+            bookmarkIndex = snapshot.bookmarkIndex.coerceIn(0, bookmarks.size)
 
-        recyclingBookmark = snapshot.recyclingBookmark
-        lockJump = snapshot.lockJump
-        lockGoNextPage = snapshot.lockGoNextPage
-        lockGoPreviousPage = snapshot.lockGoPreviousPage
-        lockRestart = snapshot.lockRestart
-        lockRefresh = snapshot.lockRefresh
+            recyclingBookmark = snapshot.recyclingBookmark
+            lockJump = snapshot.lockJump
+            lockGoNextPage = snapshot.lockGoNextPage
+            lockGoPreviousPage = snapshot.lockGoPreviousPage
+            lockRestart = snapshot.lockRestart
+            lockRefresh = snapshot.lockRefresh
+        } finally {
+            navigationMutex.unlock()
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
