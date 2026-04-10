@@ -51,6 +51,13 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - [State Serialization](#state-serialization)
 - [Lock Flags](#lock-flags)
 - [Prefetch (Auto-Pagination on Scroll)](#prefetch-auto-pagination-on-scroll)
+- [Cache Eviction Strategies](#cache-eviction-strategies)
+    - [LruPagingCore](#lrupagingcore)
+    - [FifoPagingCore](#fifopagingcore)
+    - [TtlPagingCore](#ttlpagingcore)
+    - [SlidingWindowPagingCore](#slidingwindowpagingcore)
+    - [Eviction Listener](#eviction-listener)
+    - [Custom Strategies](#custom-strategies)
 - [Logger](#logger)
 - [Extension Functions](#extension-functions)
     - [PageState Extensions](#pagestate-extensions)
@@ -74,6 +81,9 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - **Final page limit** -- set `finalPage` to enforce a maximum page boundary (typically from backend
   metadata), throwing `FinalPageExceededException` when exceeded
 - **Page caching** -- loaded pages are cached in a sorted map for instant access
+- **Cache eviction strategies** -- pluggable eviction via decorator subclasses of `PagingCore`:
+  LRU, FIFO, TTL, and Sliding Window (context-only). Eviction listener callback for reacting to
+  page removal
 - **Reactive state** -- observe page changes via `snapshot` Flow (visible pages) or `asFlow()` (
   entire cache)
 - **Element-level CRUD** -- get, set, add, remove, and replace individual elements within pages,
@@ -827,6 +837,169 @@ prefetch.reset()
   at runtime immediately affects the next scroll check.
 - **`resize` / `release`:** after `release()` or significant `resize()`, call `prefetch.reset()` to
   re-calibrate from the new list state.
+
+---
+
+## Cache Eviction Strategies
+
+By default, the paginator's cache grows unboundedly -- every loaded page stays in memory
+forever. For long-lived paginators or memory-constrained environments, you can replace the
+default `PagingCore` with a **strategy subclass** that automatically evicts pages based on a
+chosen policy.
+
+All strategies are decorator subclasses of `PagingCore<T>` -- pass them via the `core`
+constructor parameter:
+
+```kotlin
+val paginator = MutablePaginator<Item>(
+    core = LruPagingCore(maxSize = 50),     // <-- strategy here
+    source = { page -> api.loadPage(page) }
+)
+```
+
+Available strategies:
+
+| Strategy                    | Eviction rule                      | Key parameter   |
+|-----------------------------|------------------------------------|-----------------|
+| `PagingCore` (default)      | None -- unlimited cache            | --              |
+| `LruPagingCore`             | Least recently used page           | `maxSize`       |
+| `FifoPagingCore`            | First inserted page                | `maxSize`       |
+| `TtlPagingCore`             | Pages older than TTL               | `ttl: Duration` |
+| `SlidingWindowPagingCore`   | Everything outside context window  | `margin`        |
+
+### LruPagingCore
+
+Evicts the **least recently used** page when the cache exceeds `maxSize`. Both reads
+(`getStateOf`, `getElement`) and writes (`setState`) count as "usage".
+
+```kotlin
+val paginator = MutablePaginator<Item>(
+    core = LruPagingCore(
+        maxSize = 50,                   // max pages in cache
+        protectContextWindow = true,    // never evict visible pages (default)
+    ),
+    source = { page -> api.loadPage(page) }
+)
+```
+
+| Parameter              | Default      | Description                                                   |
+|------------------------|--------------|---------------------------------------------------------------|
+| `maxSize`              | *(required)* | Maximum cached pages. Must be > 0                             |
+| `protectContextWindow` | `true`       | Pages in `startContextPage..endContextPage` are never evicted |
+| `evictionListener`     | `null`       | Callback when a page is evicted                               |
+
+### FifoPagingCore
+
+Evicts the **oldest inserted** page when the cache exceeds `maxSize`. Unlike LRU, reading
+a page does **not** change its eviction priority -- only the original insertion order matters.
+
+```kotlin
+val paginator = MutablePaginator<Item>(
+    core = FifoPagingCore(maxSize = 30),
+    source = { page -> api.loadPage(page) }
+)
+```
+
+Parameters are the same as `LruPagingCore`.
+
+### TtlPagingCore
+
+Evicts pages whose age exceeds a **time-to-live** duration. There is no `maxSize` --
+the cache can hold any number of pages as long as they are fresh.
+
+```kotlin
+import kotlin.time.Duration.Companion.minutes
+
+val paginator = MutablePaginator<Item>(
+    core = TtlPagingCore(
+        ttl = 5.minutes,               // max page age
+        refreshOnAccess = false,        // true = reading resets the timer
+        protectContextWindow = true,
+    ),
+    source = { page -> api.loadPage(page) }
+)
+```
+
+| Parameter              | Default                | Description                                                |
+|------------------------|------------------------|------------------------------------------------------------|
+| `ttl`                  | *(required)*           | Maximum page age. Must be positive                         |
+| `refreshOnAccess`      | `false`                | If `true`, `getStateOf` / `getElement` reset the TTL timer |
+| `protectContextWindow` | `true`                 | Expired pages in the context window are kept               |
+| `timeSource`           | `TimeSource.Monotonic` | Override for deterministic testing                         |
+| `evictionListener`     | `null`                 | Callback when a page is evicted                            |
+
+### SlidingWindowPagingCore
+
+Keeps **only** pages within (or near) the current context window. After a `jump()` to a
+distant page, all pages from the previous location are discarded immediately. This is the
+most aggressive strategy -- ideal for memory-constrained environments.
+
+```kotlin
+val paginator = MutablePaginator<Item>(
+    core = SlidingWindowPagingCore(
+        margin = 2,   // keep 2 extra pages beyond each edge of the context window
+    ),
+    source = { page -> api.loadPage(page) }
+)
+```
+
+| Parameter           | Default  | Description                                              |
+|---------------------|----------|----------------------------------------------------------|
+| `margin`            | `0`      | Pages to keep beyond each edge. `0` = strict window only |
+| `evictionListener`  | `null`   | Callback when a page is evicted                          |
+
+With `margin = 0`, the cache contains exactly `startContextPage..endContextPage`. With
+`margin = 2`, it keeps `(startContextPage - 2)..(endContextPage + 2)`.
+
+### Eviction Listener
+
+All strategies support an optional `evictionListener` to react when a page is removed
+from the cache (e.g., to persist data before it is lost):
+
+```kotlin
+val core = LruPagingCore<Item>(maxSize = 20)
+core.evictionListener = CacheEvictionListener { evictedPage ->
+    println("Evicted page ${evictedPage.page} with ${evictedPage.data.size} items")
+}
+```
+
+The listener is a `fun interface`, so a lambda works directly.
+
+### Custom Strategies
+
+You can create your own eviction strategy by extending `PagingCore<T>` and overriding
+the relevant `open` methods:
+
+```kotlin
+class MyCustomPagingCore<T>(
+    initialCapacity: Int = DEFAULT_CAPACITY,
+) : PagingCore<T>(initialCapacity) {
+
+    override fun setState(state: PageState<T>, silently: Boolean) {
+        super.setState(state, silently)
+        // your eviction logic here
+    }
+
+    override fun removeFromCache(page: Int): PageState<T>? {
+        val result = super.removeFromCache(page)
+        // update your tracking state
+        return result
+    }
+
+    override fun clear() {
+        super.clear()
+        // reset your tracking state
+    }
+
+    override fun release(capacity: Int, silently: Boolean) {
+        super.release(capacity, silently)
+        // reset your tracking state
+    }
+}
+```
+
+Overridable methods: `setState`, `getStateOf`, `getElement`, `removeFromCache`, `clear`,
+`release`.
 
 ---
 

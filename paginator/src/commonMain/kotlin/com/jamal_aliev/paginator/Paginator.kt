@@ -83,6 +83,10 @@ open class Paginator<T>(
      * @see PaginatorLogger
      */
     var logger: PaginatorLogger? = null
+        set(value) {
+            field = value
+            core.logger = value
+        }
 
     // ──────────────────────────────────────────────────────────────────────────
     //  Final page

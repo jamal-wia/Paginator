@@ -10,6 +10,7 @@ import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
@@ -44,6 +45,13 @@ import kotlin.contracts.contract
 open class PagingCore<T>(
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {
+
+    /**
+     * Logger for observing cache operations (eviction, etc.).
+     *
+     * When set via [Paginator.logger], this is automatically kept in sync.
+     */
+    var logger: PaginatorLogger? = null
 
     @PublishedApi
     internal fun indexOfPage(page: Int): Int = searchIndexOfPage(page)
@@ -312,7 +320,7 @@ open class PagingCore<T>(
      * @param page The page number to look up.
      * @return The cached [PageState], or `null` if the page is not in the cache.
      */
-    fun getStateOf(page: Int): PageState<T>? {
+    open fun getStateOf(page: Int): PageState<T>? {
         val index = searchIndexOfPage(page)
         return if (index >= 0) cache[index] else null
     }
@@ -347,7 +355,7 @@ open class PagingCore<T>(
      * @param page The page number to remove.
      * @return The removed [PageState], or `null` if the page was not in the cache.
      */
-    fun removeFromCache(page: Int): PageState<T>? {
+    open fun removeFromCache(page: Int): PageState<T>? {
         val index = searchIndexOfPage(page)
         return if (index >= 0) cache.removeAt(index) else null
     }
@@ -355,7 +363,7 @@ open class PagingCore<T>(
     /**
      * Clears all pages from the cache.
      */
-    fun clear() {
+    open fun clear() {
         cache.clear()
     }
 
@@ -367,7 +375,7 @@ open class PagingCore<T>(
      * @return The element at the specified position, or `null` if the page is not cached.
      * @throws IndexOutOfBoundsException If [index] is out of range for the page's data.
      */
-    fun getElement(
+    open fun getElement(
         page: Int,
         index: Int,
     ): T? {
@@ -806,7 +814,7 @@ open class PagingCore<T>(
      * @param capacity The capacity to set after release. Defaults to [DEFAULT_CAPACITY].
      * @param silently If `true`, the empty snapshot is **not** emitted.
      */
-    fun release(
+    open fun release(
         capacity: Int = DEFAULT_CAPACITY,
         silently: Boolean = false
     ) {
