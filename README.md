@@ -122,7 +122,7 @@ Add the dependency to `commonMain` in your module's `build.gradle.kts`:
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.github.jamal-wia:paginator:7.3.1")
+            implementation("io.github.jamal-wia:paginator:7.4.0")
         }
     }
 }
@@ -135,7 +135,7 @@ from the KMP metadata.
 
 ```kotlin
 dependencies {
-    implementation("io.github.jamal-wia:paginator:7.3.1")
+    implementation("io.github.jamal-wia:paginator:7.4.0")
 }
 ```
 
@@ -143,7 +143,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation("io.github.jamal-wia:paginator-jvm:7.3.1")
+    implementation("io.github.jamal-wia:paginator-jvm:7.4.0")
 }
 ```
 
@@ -1339,7 +1339,7 @@ Make sure the following **GitHub Secrets** are configured in the repository
 In `paginator/build.gradle.kts`, change the `version` property:
 
 ```kotlin
-version = "7.3.1" // ← new version
+version = "7.4.0" // ← new version
 ```
 
 ### Step 2 — Update README Installation Examples
@@ -1351,15 +1351,15 @@ Update the version in all `implementation(...)` snippets in this README
 
 ```bash
 git add -A
-git commit -m "Bump version to 7.3.1"
+git commit -m "Bump version to 7.4.0"
 git push origin master
 ```
 
 ### Step 4 — Create a GitHub Release
 
 1. Go to **[Releases → New release](https://github.com/jamal-wia/Paginator/releases/new)**
-2. Click **"Choose a tag"** and type the new version (e.g. `7.3.1`), then select **"Create new tag on publish"**
-3. Set **Release title** (e.g. `7.3.1`)
+2. Click **"Choose a tag"** and type the new version (e.g. `7.4.0`), then select **"Create new tag on publish"**
+3. Set **Release title** (e.g. `7.4.0`)
 4. Describe the changes in the description
 5. Click **"Publish release"**
 
