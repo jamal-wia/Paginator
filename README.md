@@ -50,6 +50,7 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - [Custom PageState Subclasses](#custom-pagestate-subclasses)
 - [State Serialization](#state-serialization)
 - [Lock Flags](#lock-flags)
+- [Prefetch (Auto-Pagination on Scroll)](#prefetch-auto-pagination-on-scroll)
 - [Logger](#logger)
 - [Extension Functions](#extension-functions)
     - [PageState Extensions](#pagestate-extensions)
@@ -87,6 +88,8 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
   `MutablePaginator` (element-level CRUD, resize, public `setState`)
 - **Lock flags** -- prevent specific operations at runtime (`lockJump`, `lockGoNextPage`,
   `lockGoPreviousPage`, `lockRestart`, `lockRefresh`)
+- **Scroll-based prefetch** -- `PaginatorPrefetchController` monitors scroll position and
+  automatically loads the next/previous page before the user reaches the edge of content
 - **Parallel loading** -- preload multiple pages concurrently with `loadOrGetPageState`
 - **Pluggable logging** -- implement the `PaginatorLogger` interface to receive detailed logs about
   navigation, state changes, and element-level operations. No logging by default (`null`)
@@ -727,6 +730,106 @@ All locks are reset to `false` on `release()`.
 
 ---
 
+## Prefetch (Auto-Pagination on Scroll)
+
+`PaginatorPrefetchController` monitors scroll position and automatically calls `goNextPage()` /
+`goPreviousPage()` **before** the user reaches the edge of loaded content. This eliminates manual
+"load more" buttons and provides a seamless infinite-scroll experience.
+
+The controller is **platform-agnostic** -- it receives visibility information via the `onScroll()`
+method, so the same logic works with RecyclerView, LazyColumn, UITableView, or any other list.
+
+### Creating a Controller
+
+```kotlin
+val prefetch = paginator.prefetchController(
+    scope = viewModelScope,       // coroutine scope for prefetch jobs
+    prefetchDistance = 10,         // start loading when 10 items from the edge
+    enableBackwardPrefetch = true, // also prefetch when scrolling up (default: false)
+)
+```
+
+The first `onScroll()` call is **calibration only** -- it records the initial position without
+triggering any load, preventing a false positive when the list first appears.
+
+### Android RecyclerView
+
+```kotlin
+recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+    override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+        val lm = rv.layoutManager as LinearLayoutManager
+        prefetch.onScroll(
+            firstVisibleIndex = lm.findFirstVisibleItemPosition(),
+            lastVisibleIndex  = lm.findLastVisibleItemPosition(),
+            totalItemCount    = adapter.itemCount,
+        )
+    }
+})
+```
+
+### Jetpack Compose LazyColumn
+
+```kotlin
+val listState = rememberLazyListState()
+
+LaunchedEffect(listState.firstVisibleItemIndex, listState.layoutInfo) {
+    val info = listState.layoutInfo
+    prefetch.onScroll(
+        firstVisibleIndex = listState.firstVisibleItemIndex,
+        lastVisibleIndex  = info.visibleItemsInfo.lastOrNull()?.index ?: 0,
+        totalItemCount    = info.totalItemsCount,
+    )
+}
+```
+
+> **Important:** `totalItemCount` must reflect only **data items**. Do not include headers, footers,
+> dividers, or loading indicators -- otherwise `prefetchDistance` will trigger inaccurately.
+
+### Configuration
+
+All properties can be changed at runtime:
+
+| Property                 | Default                          | Description                                             |
+|--------------------------|----------------------------------|---------------------------------------------------------|
+| `prefetchDistance`       | *(required)*                     | Items from edge to trigger load. Must be > 0            |
+| `enableBackwardPrefetch` | `false`                          | Enable `goPreviousPage()` on scroll up                  |
+| `enabled`                | `true`                           | Master switch. `false` = `onScroll()` is a no-op        |
+| `silentlyLoading`        | `true`                           | Suppress `ProgressPage` emission during prefetch        |
+| `silentlyResult`         | `false`                          | Suppress snapshot emission when prefetched page arrives |
+| `loadGuard`              | `{ _, _ -> true }`               | Guard callback passed to navigation functions           |
+| `onPrefetchError`        | `null`                           | Callback for errors (excluding `CancellationException`) |
+
+### Lifecycle Control
+
+```kotlin
+// Pause prefetching (e.g. modal is shown), in-flight jobs continue
+prefetch.enabled = false
+
+// Cancel in-flight jobs, but new scrolls can still trigger prefetch
+prefetch.cancel()
+
+// Full reset: cancel jobs + clear calibration.
+// Next onScroll() becomes calibration again (no prefetch on first call).
+// Use after jump() or restart() when the list contents change entirely.
+prefetch.reset()
+```
+
+### Interaction with Other Mechanisms
+
+- **Incomplete pages:** if `removeElement()` makes the last loaded page shorter than `capacity`,
+  `goNextPage()` re-fetches that page instead of loading the next one -- this is standard paginator
+  behavior and the prefetch controller respects it transparently.
+- **Dirty pages:** CRUD operations with `isDirty = true` mark pages for refresh. The next prefetch
+  navigation triggers a fire-and-forget refresh for all dirty pages in the context window.
+- **Lock flags:** `lockGoNextPage` / `lockGoPreviousPage` block the corresponding prefetch direction.
+  Unlocking mid-scroll resumes prefetching on the next `onScroll()` call.
+- **`finalPage`:** forward prefetch stops when `endContextPage >= finalPage`. Changing `finalPage`
+  at runtime immediately affects the next scroll check.
+- **`resize` / `release`:** after `release()` or significant `resize()`, call `prefetch.reset()` to
+  re-calibrate from the new list state.
+
+---
+
 ## Logger
 
 The paginator supports pluggable logging via the `PaginatorLogger` interface. By default, no logging is
@@ -769,26 +872,26 @@ val paginator = MutablePaginator<String>(source = { page ->
 
 ### Logged Operations
 
-| Operation                     | Example message                                            |
-|-------------------------------|------------------------------------------------------------|
-| `jump`                        | `jump: page=5`                                             |
-| `jumpForward`                 | `jumpForward: recycling=true`                              |
-| `jumpBack`                    | `jumpBack: recycling=false`                                |
-| `goNextPage`                  | `goNextPage: page=3 result=SuccessPage`                    |
-| `goPreviousPage`              | `goPreviousPage: page=1 result=SuccessPage`                |
-| `restart`                     | `restart`                                                  |
-| `refresh`                     | `refresh: pages=[1, 2, 3]`                                 |
-| `setState`                    | `setState: page=2`                                         |
-| `setElement`                  | `setElement: page=1 index=0 isDirty=false`                 |
-| `removeElement`               | `removeElement: page=2 index=3 isDirty=false`              |
+| Operation                     | Example message                                              |
+|-------------------------------|--------------------------------------------------------------|
+| `jump`                        | `jump: page=5`                                               |
+| `jumpForward`                 | `jumpForward: recycling=true`                                |
+| `jumpBack`                    | `jumpBack: recycling=false`                                  |
+| `goNextPage`                  | `goNextPage: page=3 result=SuccessPage`                      |
+| `goPreviousPage`              | `goPreviousPage: page=1 result=SuccessPage`                  |
+| `restart`                     | `restart`                                                    |
+| `refresh`                     | `refresh: pages=[1, 2, 3]`                                   |
+| `setState`                    | `setState: page=2`                                           |
+| `setElement`                  | `setElement: page=1 index=0 isDirty=false`                   |
+| `removeElement`               | `removeElement: page=2 index=3 isDirty=false`                |
 | `addAllElements`              | `addAllElements: targetPage=1 index=0 count=5 isDirty=false` |
-| `removeState`                 | `removeState: page=3`                                      |
-| `resize`                      | `resize: capacity=10 resize=true`                          |
-| `release`                     | `release`                                                  |
-| `markDirty`                   | `markDirty: page=3`                                        |
-| `clearDirty`                  | `clearDirty: page=3`                                       |
-| `clearAllDirty`               | `clearAllDirty`                                            |
-| `refreshDirtyPagesInContext`  | `refreshDirtyPagesInContext: pages=[2, 3]`                 |
+| `removeState`                 | `removeState: page=3`                                        |
+| `resize`                      | `resize: capacity=10 resize=true`                            |
+| `release`                     | `release`                                                    |
+| `markDirty`                   | `markDirty: page=3`                                          |
+| `clearDirty`                  | `clearDirty: page=3`                                         |
+| `clearAllDirty`               | `clearAllDirty`                                              |
+| `refreshDirtyPagesInContext`  | `refreshDirtyPagesInContext: pages=[2, 3]`                   |
 
 ---
 
@@ -964,70 +1067,70 @@ fun PaginatedList(pages: List<PageState<String>>) {
 
 ### Paginator Properties
 
-| Property              | Type                           | Description                                     |
-|-----------------------|--------------------------------|-------------------------------------------------|
-| `source`              | `suspend Paginator<T>.(Int) -> List<T>` | Data source lambda                    |
-| `logger`              | `PaginatorLogger?`             | Logging interface (`null` by default)           |
-| `capacity`            | `Int` (read-only)              | Expected items per page                         |
-| `isCapacityUnlimited` | `Boolean`                      | `true` if `capacity == 0`                       |
-| `pages`               | `List<Int>`                   | All cached page numbers (sorted)                |
-| `pageStates`          | `List<PageState<T>>`           | All cached page states (sorted)                 |
-| `size`                | `Int`                          | Number of cached pages                          |
-| `dirtyPages`          | `Set<Int>`                    | Snapshot of all dirty page numbers              |
-| `startContextPage`    | `Int`                         | Left boundary of visible context                |
-| `endContextPage`      | `Int`                         | Right boundary of visible context               |
-| `isStarted`           | `Boolean`                      | `true` if context pages are set                 |
-| `finalPage`           | `Int`                         | Maximum allowed page (default `Int.MAX_VALUE`) |
-| `bookmarks`           | `MutableList<Bookmark>`        | Bookmark list (default: page 1)                 |
-| `recyclingBookmark`   | `Boolean`                      | Wrap-around bookmark iteration                  |
-| `snapshot`            | `Flow<List<PageState<T>>>`     | Visible page states flow                        |
-| `lockJump`            | `Boolean`                      | Lock jump operations                            |
-| `lockGoNextPage`      | `Boolean`                      | Lock forward navigation                         |
-| `lockGoPreviousPage`  | `Boolean`                      | Lock backward navigation                        |
-| `lockRestart`         | `Boolean`                      | Lock restart                                    |
-| `lockRefresh`         | `Boolean`                      | Lock refresh                                    |
+| Property              | Type                                    | Description                                     |
+|-----------------------|-----------------------------------------|-------------------------------------------------|
+| `source`              | `suspend Paginator<T>.(Int) -> List<T>` | Data source lambda                              |
+| `logger`              | `PaginatorLogger?`                      | Logging interface (`null` by default)           |
+| `capacity`            | `Int` (read-only)                       | Expected items per page                         |
+| `isCapacityUnlimited` | `Boolean`                               | `true` if `capacity == 0`                       |
+| `pages`               | `List<Int>`                             | All cached page numbers (sorted)                |
+| `pageStates`          | `List<PageState<T>>`                    | All cached page states (sorted)                 |
+| `size`                | `Int`                                   | Number of cached pages                          |
+| `dirtyPages`          | `Set<Int>`                              | Snapshot of all dirty page numbers              |
+| `startContextPage`    | `Int`                                   | Left boundary of visible context                |
+| `endContextPage`      | `Int`                                   | Right boundary of visible context               |
+| `isStarted`           | `Boolean`                               | `true` if context pages are set                 |
+| `finalPage`           | `Int`                                   | Maximum allowed page (default `Int.MAX_VALUE`)  |
+| `bookmarks`           | `MutableList<Bookmark>`                 | Bookmark list (default: page 1)                 |
+| `recyclingBookmark`   | `Boolean`                               | Wrap-around bookmark iteration                  |
+| `snapshot`            | `Flow<List<PageState<T>>>`              | Visible page states flow                        |
+| `lockJump`            | `Boolean`                               | Lock jump operations                            |
+| `lockGoNextPage`      | `Boolean`                               | Lock forward navigation                         |
+| `lockGoPreviousPage`  | `Boolean`                               | Lock backward navigation                        |
+| `lockRestart`         | `Boolean`                               | Lock restart                                    |
+| `lockRefresh`         | `Boolean`                               | Lock refresh                                    |
 
 ### Paginator Methods
 
-| Method                                   | Returns                         | Description                        |
-|------------------------------------------|---------------------------------|------------------------------------|
-| `jump(bookmark)`                         | `Pair<Bookmark, PageState<T>>`  | Jump to a page                     |
-| `jumpForward()`                          | `Pair<Bookmark, PageState<T>>?` | Next bookmark                      |
-| `jumpBack()`                             | `Pair<Bookmark, PageState<T>>?` | Previous bookmark                  |
-| `goNextPage()`                           | `PageState<T>`                  | Load next page                     |
-| `goPreviousPage()`                       | `PageState<T>`                  | Load previous page                 |
-| `restart()`                              | `Unit`                          | Reset and reload page 1            |
-| `refresh(pages)`                         | `Unit`                          | Reload specific pages              |
-| `loadOrGetPageState(page, forceLoading)` | `PageState<T>`                  | Load or get cached page            |
-| `getStateOf(page)`                       | `PageState<T>?`                 | Get cached page state              |
-| `getElement(page, index)`                | `T?`                            | Get element by position            |
-| `markDirty(page)` / `markDirty(pages)`   | `Unit`                          | Mark page(s) as dirty              |
-| `clearDirty(page)` / `clearDirty(pages)` | `Unit`                          | Remove dirty flag from page(s)     |
-| `clearAllDirty()`                        | `Unit`                          | Remove all dirty flags             |
-| `isDirty(page)`                          | `Boolean`                       | Check if page is dirty             |
-| `isFilledSuccessState(state)`            | `Boolean`                       | Check if page is complete          |
-| `snapshot(pageRange?)`                   | `Unit`                          | Emit snapshot                      |
-| `scan(pagesRange)`                       | `List<PageState<T>>`            | Get pages in range                 |
-| `walkWhile(pivot, next, predicate)`      | `PageState<T>?`                 | Traverse pages                     |
-| `findNearContextPage(start, end)`        | `Unit`                          | Find nearest context               |
-| `asFlow()`                               | `Flow<List<PageState<T>>>`     | Full cache flow                    |
-| `resize(capacity, resize, silently)`     | `Unit`                          | Change capacity (via `core`)       |
-| `release(capacity, silently)`            | `Unit`                          | Full reset                         |
-| `saveState(contextOnly)`                 | `PaginatorSnapshot<T>`          | Full state snapshot (suspend)      |
-| `restoreState(snapshot, silently)`       | `Unit`                          | Restore full state (suspend)       |
-| `saveStateToJson(serializer, json)`      | `String`                        | Save full state as JSON (suspend)  |
+| Method                                   | Returns                         | Description                            |
+|------------------------------------------|---------------------------------|----------------------------------------|
+| `jump(bookmark)`                         | `Pair<Bookmark, PageState<T>>`  | Jump to a page                         |
+| `jumpForward()`                          | `Pair<Bookmark, PageState<T>>?` | Next bookmark                          |
+| `jumpBack()`                             | `Pair<Bookmark, PageState<T>>?` | Previous bookmark                      |
+| `goNextPage()`                           | `PageState<T>`                  | Load next page                         |
+| `goPreviousPage()`                       | `PageState<T>`                  | Load previous page                     |
+| `restart()`                              | `Unit`                          | Reset and reload page 1                |
+| `refresh(pages)`                         | `Unit`                          | Reload specific pages                  |
+| `loadOrGetPageState(page, forceLoading)` | `PageState<T>`                  | Load or get cached page                |
+| `getStateOf(page)`                       | `PageState<T>?`                 | Get cached page state                  |
+| `getElement(page, index)`                | `T?`                            | Get element by position                |
+| `markDirty(page)` / `markDirty(pages)`   | `Unit`                          | Mark page(s) as dirty                  |
+| `clearDirty(page)` / `clearDirty(pages)` | `Unit`                          | Remove dirty flag from page(s)         |
+| `clearAllDirty()`                        | `Unit`                          | Remove all dirty flags                 |
+| `isDirty(page)`                          | `Boolean`                       | Check if page is dirty                 |
+| `isFilledSuccessState(state)`            | `Boolean`                       | Check if page is complete              |
+| `snapshot(pageRange?)`                   | `Unit`                          | Emit snapshot                          |
+| `scan(pagesRange)`                       | `List<PageState<T>>`            | Get pages in range                     |
+| `walkWhile(pivot, next, predicate)`      | `PageState<T>?`                 | Traverse pages                         |
+| `findNearContextPage(start, end)`        | `Unit`                          | Find nearest context                   |
+| `asFlow()`                               | `Flow<List<PageState<T>>>`      | Full cache flow                        |
+| `resize(capacity, resize, silently)`     | `Unit`                          | Change capacity (via `core`)           |
+| `release(capacity, silently)`            | `Unit`                          | Full reset                             |
+| `saveState(contextOnly)`                 | `PaginatorSnapshot<T>`          | Full state snapshot (suspend)          |
+| `restoreState(snapshot, silently)`       | `Unit`                          | Restore full state (suspend)           |
+| `saveStateToJson(serializer, json)`      | `String`                        | Save full state as JSON (suspend)      |
 | `restoreStateFromJson(str, serializer)`  | `Unit`                          | Restore full state from JSON (suspend) |
 
 ### MutablePaginator Methods (additional)
 
-| Method                                   | Returns          | Description                              |
-|------------------------------------------|------------------|------------------------------------------|
-| `setState(state, silently)`              | `Unit`           | Set a page state (public)                |
-| `removeState(page, silently)`            | `PageState<T>?`  | Remove a page                            |
-| `setElement(element, page, index, isDirty)` | `Unit`        | Replace element (optionally mark dirty)  |
-| `removeElement(page, index, isDirty)`    | `T`              | Remove element (optionally mark dirty)   |
-| `addAllElements(elements, page, index, isDirty)` | `Unit`   | Insert elements (optionally mark dirty)  |
-| `replaceAllElements(provider, predicate)` | `Unit`           | Bulk replace                             |
+| Method                                           | Returns         | Description                             |
+|--------------------------------------------------|-----------------|-----------------------------------------|
+| `setState(state, silently)`                      | `Unit`          | Set a page state (public)               |
+| `removeState(page, silently)`                    | `PageState<T>?` | Remove a page                           |
+| `setElement(element, page, index, isDirty)`      | `Unit`          | Replace element (optionally mark dirty) |
+| `removeElement(page, index, isDirty)`            | `T`             | Remove element (optionally mark dirty)  |
+| `addAllElements(elements, page, index, isDirty)` | `Unit`          | Insert elements (optionally mark dirty) |
+| `replaceAllElements(provider, predicate)`        | `Unit`          | Bulk replace                            |
 
 ### Operators
 
@@ -1050,13 +1153,13 @@ Step-by-step guide for publishing a new release of the library to Maven Central.
 Make sure the following **GitHub Secrets** are configured in the repository
 (`Settings → Secrets and variables → Actions → Repository secrets`):
 
-| Secret | Description |
-|---|---|
-| `MAVEN_CENTRAL_USERNAME` | Sonatype Central Portal token username |
-| `MAVEN_CENTRAL_PASSWORD` | Sonatype Central Portal token password |
-| `GPG_KEY_ID` | Last 8 characters of your GPG key ID |
-| `GPG_KEY_PASSWORD` | Passphrase for the GPG key |
-| `GPG_KEY` | Base64-encoded GPG private key (`gpg --export-secret-keys <KEY_ID> \| base64`) |
+| Secret                     | Description                                                                    |
+|----------------------------|--------------------------------------------------------------------------------|
+| `MAVEN_CENTRAL_USERNAME`   | Sonatype Central Portal token username                                         |
+| `MAVEN_CENTRAL_PASSWORD`   | Sonatype Central Portal token password                                         |
+| `GPG_KEY_ID`               | Last 8 characters of your GPG key ID                                           |
+| `GPG_KEY_PASSWORD`         | Passphrase for the GPG key                                                     |
+| `GPG_KEY`                  | Base64-encoded GPG private key (`gpg --export-secret-keys <KEY_ID> \| base64`) |
 
 ### Step 1 — Update the Version
 
@@ -1127,13 +1230,13 @@ If you need to publish from your local machine instead of CI:
 
 ### Troubleshooting
 
-| Problem | Solution |
-|---|---|
-| Workflow fails at "Import GPG key" | Re-export and update the `GPG_KEY` secret: `gpg --export-secret-keys <KEY_ID> \| base64` |
-| Deployment stuck at **VALIDATED** | `automaticRelease = true` was not set. Either click "Release" manually in the Central Portal, or re-run with the flag enabled |
-| Deployment **FAILED** | Check the Central Portal for validation errors (missing POM fields, signature issues, etc.) |
-| Artifact not resolvable after PUBLISHED | Wait up to 30 minutes. Maven Central syncing can be slow |
-| Signing error locally | Ensure `signing.secretKeyRingFile` points to a valid `.gpg` file and passphrase is correct |
+| Problem                                 | Solution                                                                                                                      |
+|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| Workflow fails at "Import GPG key"      | Re-export and update the `GPG_KEY` secret: `gpg --export-secret-keys <KEY_ID> \| base64`                                      |
+| Deployment stuck at **VALIDATED**       | `automaticRelease = true` was not set. Either click "Release" manually in the Central Portal, or re-run with the flag enabled |
+| Deployment **FAILED**                   | Check the Central Portal for validation errors (missing POM fields, signature issues, etc.)                                   |
+| Artifact not resolvable after PUBLISHED | Wait up to 30 minutes. Maven Central syncing can be slow                                                                      |
+| Signing error locally                   | Ensure `signing.secretKeyRingFile` points to a valid `.gpg` file and passphrase is correct                                    |
 
 ---
 
