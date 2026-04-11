@@ -48,8 +48,6 @@ class LruPagingCache<T>(
     var evictionListener: CacheEvictionListener<T>? = null,
 ) : PagingCache<T> by cache, WrappablePagingCache<T> {
 
-    internal val wrapped: PagingCache<T> get() = cache
-
     override fun replaceLeaf(newLeaf: PagingCache<T>): LruPagingCache<T> =
         LruPagingCache(cache = cache.withLeaf(newLeaf), maxSize = maxSize,
             protectContextWindow = protectContextWindow, evictionListener = evictionListener)

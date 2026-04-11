@@ -37,8 +37,6 @@ class SlidingWindowPagingCache<T>(
     var evictionListener: CacheEvictionListener<T>? = null,
 ) : PagingCache<T> by cache, WrappablePagingCache<T> {
 
-    internal val wrapped: PagingCache<T> get() = cache
-
     override fun replaceLeaf(newLeaf: PagingCache<T>): SlidingWindowPagingCache<T> =
         SlidingWindowPagingCache(cache = cache.withLeaf(newLeaf), margin = margin, evictionListener = evictionListener)
 
