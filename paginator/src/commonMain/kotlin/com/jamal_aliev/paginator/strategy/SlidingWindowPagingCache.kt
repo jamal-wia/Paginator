@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.strategy
 
-import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.page.PageState
 
 /**
@@ -17,38 +16,26 @@ import com.jamal_aliev.paginator.page.PageState
  *
  * ## Usage
  * ```kotlin
- * val core = PagingCore<Item>(20)
  * val paginator = MutablePaginator(
- *     core = core,
- *     eviction = SlidingWindowPagingCore(delegate = core),
+ *     pagingCore = PagingCore(
+ *         cache = SlidingWindowPagingCache(margin = 1),
+ *         initialCapacity = 20
+ *     ),
  *     source = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param delegate The inner [PagingCache] to delegate to. Defaults to a plain [PagingCore].
+ * @param delegate The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
  * @param margin Number of pages to keep beyond each edge of the context window.
  *   Default is `0` (strict window). For example, `margin = 2` keeps pages in
  *   `(startContextPage - 2)..(endContextPage + 2)`.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
-class SlidingWindowPagingCore<T>(
-    private val delegate: PagingCache<T> = PagingCore(),
+class SlidingWindowPagingCache<T>(
+    private val delegate: PagingCache<T> = DefaultPagingCache(),
     val margin: Int = 0,
     var evictionListener: CacheEvictionListener<T>? = null,
 ) : PagingCache<T> by delegate {
-
-    /**
-     * Backward-compatible constructor that creates a [PagingCore] with the given capacity.
-     */
-    constructor(
-        initialCapacity: Int,
-        margin: Int = 0,
-        evictionListener: CacheEvictionListener<T>? = null,
-    ) : this(
-        delegate = PagingCore(initialCapacity),
-        margin = margin,
-        evictionListener = evictionListener,
-    )
 
     init {
         require(margin >= 0) { "margin must be >= 0, was $margin" }

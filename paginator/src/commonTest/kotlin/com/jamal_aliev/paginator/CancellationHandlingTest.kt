@@ -26,9 +26,9 @@ class CancellationHandlingTest {
                 gate.await() // suspend forever until canceled
                 error("unreachable")
             }
-            MutableList(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+            MutableList(this.core.capacity) { "p${page}_item$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         // Pre-populate pages 1-3
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -84,9 +84,9 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            MutableList(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+            MutableList(this.core.capacity) { "p${page}_item$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         // Pre-populate pages 1-3
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -128,9 +128,9 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            MutableList(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+            MutableList(this.core.capacity) { "p${page}_item$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         // Jump to page 3 directly
         paginator.jump(BookmarkInt(3), silentlyLoading = true, silentlyResult = true)
@@ -168,9 +168,9 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            MutableList(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+            MutableList(this.core.capacity) { "p${page}_item$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         // Pre-populate pages 1-3
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -214,9 +214,9 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            MutableList(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+            MutableList(this.core.capacity) { "p${page}_item$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         // Pre-populate pages 1-3
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -263,9 +263,9 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            MutableList(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+            MutableList(this.core.capacity) { "p${page}_item$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
         val job = launch {

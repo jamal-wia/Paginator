@@ -21,6 +21,7 @@ import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.PaginatorSnapshot
 import com.jamal_aliev.paginator.strategy.PagingCache
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
@@ -67,11 +68,11 @@ import kotlinx.coroutines.withContext
  * @see PagingCore
  */
 open class Paginator<T>(
-    val cache: PagingCache<T> = PagingCore<T>(DEFAULT_CAPACITY),
+    val core: PagingCore<T> = PagingCore(),
     var source: suspend Paginator<T>.(page: Int) -> List<T>
 ) : Comparable<Paginator<*>> {
 
-    val pagingCore : PagingCore<T> get() = cache.pagingCore
+    val cache: PagingCache<T> get() = core.cache
 
     /** Mutex serialising all mutations to cache across concurrent coroutines. */
     protected val navigationMutex = Mutex()
@@ -79,15 +80,14 @@ open class Paginator<T>(
     /**
      * Logger for observing paginator operations.
      *
-     * Setting this also updates [cache]'s logger so cache operations are logged too.
+     * Setting this also updates [core]'s logger so cache operations are logged too.
      *
      * @see PaginatorLogger
      */
     var logger: PaginatorLogger? = null
         set(value) {
             field = value
-            this.cache.logger = value
-            if (cache !== this.cache) cache.logger = value
+            core.logger = value
         }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -189,16 +189,16 @@ open class Paginator<T>(
         finalPage: Int = this.finalPage,
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
-        enableCacheFlow: Boolean = pagingCore.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = pagingCore.initializerProgressPage,
-        initSuccessState: InitializerSuccessPage<T> = pagingCore.initializerSuccessPage,
-        initEmptyState: InitializerEmptyPage<T> = pagingCore.initializerEmptyPage,
-        initErrorState: InitializerErrorPage<T> = pagingCore.initializerErrorPage
+        enableCacheFlow: Boolean = core.enableCacheFlow,
+        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
+        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
+        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
+        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Pair<Bookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
         logger?.log(TAG, "jumpForward: recycling=$recycling")
 
-        val visibleRange: IntRange? = pagingCore.snapshotPageRange()
+        val visibleRange: IntRange? = core.snapshotPageRange()
         var lastSkippedBookmark: Bookmark? = null
         var bookmark: Bookmark? = null
 
@@ -275,16 +275,16 @@ open class Paginator<T>(
         finalPage: Int = this.finalPage,
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
-        enableCacheFlow: Boolean = pagingCore.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = pagingCore.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = pagingCore.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T> = pagingCore.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = pagingCore.initializerErrorPage
+        enableCacheFlow: Boolean = core.enableCacheFlow,
+        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Pair<Bookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
         logger?.log(TAG, "jumpBack: recycling=$recycling")
 
-        val visibleRange: IntRange? = pagingCore.snapshotPageRange()
+        val visibleRange: IntRange? = core.snapshotPageRange()
         var lastSkippedBookmark: Bookmark? = null
         var bookmark: Bookmark? = null
 
@@ -422,11 +422,11 @@ open class Paginator<T>(
         finalPage: Int = this.finalPage,
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
-        enableCacheFlow: Boolean = pagingCore.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = pagingCore.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = pagingCore.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T> = pagingCore.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = pagingCore.initializerErrorPage
+        enableCacheFlow: Boolean = core.enableCacheFlow,
+        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Pair<Bookmark, PageState<T>> = coroutineScope {
         if (lockJump) throw JumpWasLockedException()
 
@@ -448,11 +448,11 @@ open class Paginator<T>(
         navigationMutex.lock()
         try {
             val probablySuccessBookmarkPage: PageState<T>? = cache.getStateOf(bookmark.page)
-            if (pagingCore.isFilledSuccessState(probablySuccessBookmarkPage)) {
-                pagingCore.expandStartContextPage(probablySuccessBookmarkPage)
-                pagingCore.expandEndContextPage(probablySuccessBookmarkPage)
+            if (core.isFilledSuccessState(probablySuccessBookmarkPage)) {
+                core.expandStartContextPage(probablySuccessBookmarkPage)
+                core.expandEndContextPage(probablySuccessBookmarkPage)
                 if (!silentlyResult) {
-                    pagingCore.snapshot()
+                    core.snapshot()
                 }
                 logger?.log(TAG, "jump: page=${bookmark.page} cache hit")
                 syncBookmarkIndex(bookmark.page)
@@ -469,8 +469,8 @@ open class Paginator<T>(
             savedPageState = probablySuccessBookmarkPage
             shouldCleanup = true
 
-            pagingCore.startContextPage = bookmark.page
-            pagingCore.endContextPage = bookmark.page
+            core.startContextPage = bookmark.page
+            core.endContextPage = bookmark.page
 
             val resultState: PageState<T> = loadOrGetPageState(
                 page = bookmark.page,
@@ -482,14 +482,14 @@ open class Paginator<T>(
                         state = progressState,
                         silently = true,
                     )
-                    pagingCore.expandStartContextPage(progressState)
-                    pagingCore.expandEndContextPage(progressState)
+                    core.expandStartContextPage(progressState)
+                    core.expandEndContextPage(progressState)
 
                     if (enableCacheFlow) {
-                        pagingCore.repeatCacheFlow()
+                        core.repeatCacheFlow()
                     }
                     if (!silentlyLoading) {
-                        pagingCore.snapshot()
+                        core.snapshot()
                     }
                 },
                 initEmptyState = initEmptyState,
@@ -501,14 +501,14 @@ open class Paginator<T>(
                 state = resultState,
                 silently = true
             )
-            pagingCore.expandStartContextPage(resultState)
-            pagingCore.expandEndContextPage(resultState)
+            core.expandStartContextPage(resultState)
+            core.expandEndContextPage(resultState)
 
             if (enableCacheFlow) {
-                pagingCore.repeatCacheFlow()
+                core.repeatCacheFlow()
             }
             if (!silentlyResult) {
-                pagingCore.snapshot()
+                core.snapshot()
             }
 
             logger?.log(TAG, "jump: page=${bookmark.page} result=${resultState::class.simpleName}")
@@ -517,14 +517,14 @@ open class Paginator<T>(
             return@coroutineScope bookmark to resultState
         } catch (e: CancellationException) {
             if (shouldCleanup) {
-                pagingCore.startContextPage = savedStartContextPage
-                pagingCore.endContextPage = savedEndContextPage
+                core.startContextPage = savedStartContextPage
+                core.endContextPage = savedEndContextPage
                 if (savedPageState != null) {
                     cache.setState(savedPageState, silently = true)
                 } else {
                     cache.removeFromCache(bookmark.page)
                 }
-                pagingCore.snapshot()
+                core.snapshot()
             }
             throw e
         } finally {
@@ -563,11 +563,11 @@ open class Paginator<T>(
         finalPage: Int = this.finalPage,
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
         lockGoNextPage: Boolean = this.lockGoNextPage,
-        enableCacheFlow: Boolean = pagingCore.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = pagingCore.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = pagingCore.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T> = pagingCore.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = pagingCore.initializerErrorPage
+        enableCacheFlow: Boolean = core.enableCacheFlow,
+        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): PageState<T> = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
         logger?.log(TAG, "goNextPage: endContextPage=${cache.endContextPage}")
@@ -595,9 +595,9 @@ open class Paginator<T>(
         try {
             var pivotContextPage: Int = cache.endContextPage
             var pivotContextPageState: PageState<T>? = cache.getStateOf(pivotContextPage)
-            val isPivotContextPageValid: Boolean = pagingCore.isFilledSuccessState(pivotContextPageState)
+            val isPivotContextPageValid: Boolean = core.isFilledSuccessState(pivotContextPageState)
             if (isPivotContextPageValid) {
-                pagingCore.expandEndContextPage(cache.getStateOf(pivotContextPage + 1))
+                core.expandEndContextPage(cache.getStateOf(pivotContextPage + 1))
                     ?.also { expanded: PageState<T> ->
                         pivotContextPage = expanded.page
                         pivotContextPageState = expanded
@@ -641,10 +641,10 @@ open class Paginator<T>(
                         silently = true,
                     )
                     if (enableCacheFlow) {
-                        pagingCore.repeatCacheFlow()
+                        core.repeatCacheFlow()
                     }
                     if (!silentlyLoading) {
-                        pagingCore.snapshot()
+                        core.snapshot()
                     }
                 },
                 initEmptyState = initEmptyState,
@@ -657,16 +657,16 @@ open class Paginator<T>(
                     silently = true
                 )
                 if (cache.endContextPage == pivotContextPage
-                    && pagingCore.isFilledSuccessState(resultState)
+                    && core.isFilledSuccessState(resultState)
                 ) {
-                    pagingCore.endContextPage = nextPage
-                    pagingCore.expandEndContextPage(cache.getStateOf(nextPage + 1))
+                    core.endContextPage = nextPage
+                    core.expandEndContextPage(cache.getStateOf(nextPage + 1))
                 }
                 if (enableCacheFlow) {
-                    pagingCore.repeatCacheFlow()
+                    core.repeatCacheFlow()
                 }
                 if (!silentlyResult) {
-                    pagingCore.snapshot()
+                    core.snapshot()
                 }
 
                 logger?.log(
@@ -682,7 +682,7 @@ open class Paginator<T>(
                 } else {
                     cache.removeFromCache(savedNextPage)
                 }
-                pagingCore.snapshot()
+                core.snapshot()
             }
             throw e
         } finally {
@@ -712,11 +712,11 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
-        enableCacheFlow: Boolean = pagingCore.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = pagingCore.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = pagingCore.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T> = pagingCore.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = pagingCore.initializerErrorPage
+        enableCacheFlow: Boolean = core.enableCacheFlow,
+        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): PageState<T> = coroutineScope {
         if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
         logger?.log(TAG, "goPreviousPage: startContextPage=${cache.startContextPage}")
@@ -734,9 +734,9 @@ open class Paginator<T>(
         try {
             var pivotContextPage: Int = cache.startContextPage
             var pivotContextPageState = cache.getStateOf(pivotContextPage)
-            val pivotContextPageValid = pagingCore.isFilledSuccessState(pivotContextPageState)
+            val pivotContextPageValid = core.isFilledSuccessState(pivotContextPageState)
             if (pivotContextPageValid) {
-                pagingCore.expandStartContextPage(cache.getStateOf(pivotContextPage - 1))
+                core.expandStartContextPage(cache.getStateOf(pivotContextPage - 1))
                     ?.also { expanded: PageState<T> ->
                         pivotContextPage = expanded.page
                         pivotContextPageState = expanded
@@ -773,10 +773,10 @@ open class Paginator<T>(
                         silently = true
                     )
                     if (enableCacheFlow) {
-                        pagingCore.repeatCacheFlow()
+                        core.repeatCacheFlow()
                     }
                     if (!silentlyLoading) {
-                        pagingCore.snapshot()
+                        core.snapshot()
                     }
                 },
                 initEmptyState = initEmptyState,
@@ -789,16 +789,16 @@ open class Paginator<T>(
                     silently = true
                 )
                 if (cache.startContextPage == pivotContextPage
-                    && pagingCore.isFilledSuccessState(resultState)
+                    && core.isFilledSuccessState(resultState)
                 ) {
-                    pagingCore.startContextPage = previousPage
-                    pagingCore.expandStartContextPage(cache.getStateOf(previousPage - 1))
+                    core.startContextPage = previousPage
+                    core.expandStartContextPage(cache.getStateOf(previousPage - 1))
                 }
                 if (enableCacheFlow) {
-                    pagingCore.repeatCacheFlow()
+                    core.repeatCacheFlow()
                 }
                 if (!silentlyResult) {
-                    pagingCore.snapshot()
+                    core.snapshot()
                 }
 
                 logger?.log(
@@ -814,7 +814,7 @@ open class Paginator<T>(
                 } else {
                     cache.removeFromCache(savedPreviousPage)
                 }
-                pagingCore.snapshot()
+                core.snapshot()
             }
             throw e
         } finally {
@@ -847,11 +847,11 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
-        enableCacheFlow: Boolean = pagingCore.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = pagingCore.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = pagingCore.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T> = pagingCore.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = pagingCore.initializerErrorPage
+        enableCacheFlow: Boolean = core.enableCacheFlow,
+        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Unit = coroutineScope {
         if (lockRestart) throw RestartWasLockedException()
         logger?.log(TAG, "restart")
@@ -875,7 +875,7 @@ open class Paginator<T>(
                 )
             }
 
-            pagingCore.clearAllDirty()
+            core.clearAllDirty()
 
             if (!loadGuard.invoke(1, firstPage)) {
                 throw LoadGuardedException(attemptedPage = 1)
@@ -884,8 +884,8 @@ open class Paginator<T>(
             savedFirstPageState = firstPage
             shouldCleanup = true
 
-            pagingCore.startContextPage = 1
-            pagingCore.endContextPage = 1
+            core.startContextPage = 1
+            core.endContextPage = 1
             loadOrGetPageState(
                 page = 1,
                 forceLoading = true,
@@ -897,10 +897,10 @@ open class Paginator<T>(
                         silently = true
                     )
                     if (enableCacheFlow) {
-                        pagingCore.repeatCacheFlow()
+                        core.repeatCacheFlow()
                     }
                     if (!silentlyLoading) {
-                        pagingCore.snapshot(1..1)
+                        core.snapshot(1..1)
                     }
                 },
                 initEmptyState = initEmptyState,
@@ -913,24 +913,24 @@ open class Paginator<T>(
                     silently = true
                 )
                 if (enableCacheFlow) {
-                    pagingCore.repeatCacheFlow()
+                    core.repeatCacheFlow()
                 }
                 if (!silentlyResult) {
-                    pagingCore.snapshot(1..1)
+                    core.snapshot(1..1)
                 }
                 syncBookmarkIndex(1)
                 logger?.log(TAG, "restart: result=${resultPageState::class.simpleName}")
             }
         } catch (e: CancellationException) {
             if (shouldCleanup) {
-                pagingCore.startContextPage = savedStartContextPage
-                pagingCore.endContextPage = savedEndContextPage
+                core.startContextPage = savedStartContextPage
+                core.endContextPage = savedEndContextPage
                 if (savedFirstPageState != null) {
                     cache.setState(savedFirstPageState, silently = true)
                 } else {
                     cache.removeFromCache(1)
                 }
-                pagingCore.snapshot()
+                core.snapshot()
             }
             throw e
         } finally {
@@ -968,11 +968,11 @@ open class Paginator<T>(
         loadingSilently: Boolean = false,
         finalSilently: Boolean = false,
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
-        enableCacheFlow: Boolean = pagingCore.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = pagingCore.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = pagingCore.initializerEmptyPage,
-        initSuccessState: InitializerSuccessPage<T> = pagingCore.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = pagingCore.initializerErrorPage
+        enableCacheFlow: Boolean = core.enableCacheFlow,
+        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
+        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
+        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
+        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Unit = coroutineScope {
         if (lockRefresh) throw RefreshWasLockedException()
         logger?.log(TAG, "refresh: pages=$pages")
@@ -1001,10 +1001,10 @@ open class Paginator<T>(
                 navigationMutex.unlock()
             }
             if (enableCacheFlow) {
-                pagingCore.repeatCacheFlow()
+                core.repeatCacheFlow()
             }
             if (!loadingSilently) {
-                pagingCore.snapshot()
+                core.snapshot()
             }
 
             // Phase 2: load pages in parallel (network I/O — outside lock)
@@ -1033,13 +1033,13 @@ open class Paginator<T>(
                 }
             }
 
-            pagingCore.clearDirty(pages)
+            core.clearDirty(pages)
 
             if (enableCacheFlow) {
-                pagingCore.repeatCacheFlow()
+                core.repeatCacheFlow()
             }
             if (!finalSilently) {
-                pagingCore.snapshot()
+                core.snapshot()
             }
             logger?.log(TAG, "refresh: pages=$pages completed")
         } catch (e: CancellationException) {
@@ -1055,7 +1055,7 @@ open class Paginator<T>(
                                 cache.removeFromCache(page)
                             }
                         }
-                        pagingCore.snapshot()
+                        core.snapshot()
                     } finally {
                         navigationMutex.unlock()
                     }
@@ -1090,13 +1090,13 @@ open class Paginator<T>(
         forceLoading: Boolean = false,
         loading: ((page: Int, pageState: PageState<T>?) -> Unit) = { _, _ -> },
         noinline source: suspend Paginator<T>.(page: Int) -> List<T> = this.source,
-        noinline initEmptyState: InitializerEmptyPage<T> = pagingCore.initializerEmptyPage,
-        noinline initSuccessState: InitializerSuccessPage<T> = pagingCore.initializerSuccessPage,
-        noinline initErrorState: InitializerErrorPage<T> = pagingCore.initializerErrorPage
+        noinline initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
+        noinline initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
+        noinline initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): PageState<T> {
         logger?.log(TAG, "loadOrGetPageState: page=$page forceLoading=$forceLoading")
         val cachedState: PageState<T>? = cache.getStateOf(page)
-        if (!forceLoading && pagingCore.isFilledSuccessState(cachedState)) {
+        if (!forceLoading && core.isFilledSuccessState(cachedState)) {
             logger?.log(
                 TAG,
                 "loadOrGetPageState: page=$page cachedState(isFilledSuccessState)=$cachedState"
@@ -1136,7 +1136,7 @@ open class Paginator<T>(
     protected fun CoroutineScope.refreshDirtyPagesInContext() {
         if (!cache.isStarted) return
         val dirtyInContext: List<Int> =
-            pagingCore.drainDirtyPagesInRange(cache.startContextPage..cache.endContextPage)
+            core.drainDirtyPagesInRange(cache.startContextPage..cache.endContextPage)
                 ?: return
         logger?.log(TAG, "refreshDirtyPagesInContext: pages=$dirtyInContext")
         launch {
@@ -1165,7 +1165,7 @@ open class Paginator<T>(
         silently: Boolean = false
     ) {
         logger?.log(TAG, "release")
-        cache.release(capacity, silently)
+        core.release(capacity, silently)
         bookmarks.clear()
         bookmarks.add(BookmarkInt(page = 1))
         bookmarkIndex = 0
@@ -1197,7 +1197,7 @@ open class Paginator<T>(
         navigationMutex.lock()
         try {
             return PaginatorSnapshot(
-                coreSnapshot = pagingCore.saveState(contextOnly),
+                coreSnapshot = core.saveState(contextOnly),
                 finalPage = finalPage,
                 bookmarkPages = bookmarks.map { it.page },
                 bookmarkIndex = bookmarkIndex,
@@ -1231,7 +1231,7 @@ open class Paginator<T>(
     ) {
         navigationMutex.lock()
         try {
-            pagingCore.restoreState(snapshot.coreSnapshot, silently)
+            core.restoreState(snapshot.coreSnapshot, silently)
 
             finalPage = snapshot.finalPage
 
@@ -1265,8 +1265,8 @@ open class Paginator<T>(
      */
     override operator fun compareTo(other: Paginator<*>): Int = cache.size - other.cache.size
 
-    operator fun iterator(): MutableIterator<PageState<T>> {
-        return pagingCore.iterator()
+    operator fun iterator(): Iterator<PageState<T>> {
+        return core.iterator()
     }
 
     operator fun contains(page: Int): Boolean = cache.getStateOf(page) != null

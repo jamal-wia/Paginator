@@ -109,8 +109,8 @@ class BookmarkNavigationTest {
 
     @Test
     fun `jumpForward returns null when bookmarks empty`() = runTest {
-        val paginator = MutablePaginator<String> { MutableList(this.cache.pagingCore.capacity) { "item$it" } }
-        paginator.cache.pagingCore.resize(capacity = 5, resize = false, silently = true)
+        val paginator = MutablePaginator<String> { MutableList(this.core.capacity) { "item$it" } }
+        paginator.core.resize(capacity = 5, resize = false, silently = true)
         // Properly release to reset the iterator, then clear
         paginator.release()
         paginator.bookmarks.clear()
@@ -131,9 +131,9 @@ class BookmarkNavigationTest {
         var loadCount = 0
         val paginator = MutablePaginator<String> { page ->
             loadCount++
-            MutableList(this.cache.pagingCore.capacity) { "item_$it" }
+            MutableList(this.core.capacity) { "item_$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 5, resize = false, silently = true)
+        paginator.core.resize(capacity = 5, resize = false, silently = true)
 
         // First jump loads from source
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)

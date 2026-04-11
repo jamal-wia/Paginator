@@ -26,13 +26,13 @@ class ReleaseTest {
         assertEquals(0, paginator.cache.startContextPage)
         assertEquals(0, paginator.cache.endContextPage)
         assertEquals(Int.MAX_VALUE, paginator.finalPage)
-        assertEquals(PagingCore.DEFAULT_CAPACITY, paginator.cache.pagingCore.capacity)
+        assertEquals(PagingCore.DEFAULT_CAPACITY, paginator.core.capacity)
         assertFalse(paginator.lockJump)
         assertFalse(paginator.lockGoNextPage)
         assertFalse(paginator.lockGoPreviousPage)
         assertFalse(paginator.lockRestart)
         assertFalse(paginator.lockRefresh)
-        assertTrue(paginator.cache.pagingCore.dirtyPages.isEmpty())
+        assertTrue(paginator.core.dirtyPages.isEmpty())
     }
 
     @Test
@@ -42,7 +42,7 @@ class ReleaseTest {
 
         paginator.release(capacity = 10)
 
-        assertEquals(10, paginator.cache.pagingCore.capacity)
+        assertEquals(10, paginator.core.capacity)
         assertEquals(0, paginator.cache.size)
     }
 
@@ -80,14 +80,14 @@ class ReleaseTest {
     @Test
     fun `release clears dirty pages`() = runTest {
         val paginator = createDeterministicPaginator()
-        paginator.cache.pagingCore.markDirty(1)
-        paginator.cache.pagingCore.markDirty(2)
-        paginator.cache.pagingCore.markDirty(3)
+        paginator.core.markDirty(1)
+        paginator.core.markDirty(2)
+        paginator.core.markDirty(3)
 
-        assertEquals(3, paginator.cache.pagingCore.dirtyPages.size)
+        assertEquals(3, paginator.core.dirtyPages.size)
 
         paginator.release()
 
-        assertTrue(paginator.cache.pagingCore.dirtyPages.isEmpty())
+        assertTrue(paginator.core.dirtyPages.isEmpty())
     }
 }

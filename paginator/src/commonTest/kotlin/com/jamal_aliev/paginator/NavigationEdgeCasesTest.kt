@@ -122,9 +122,9 @@ class NavigationEdgeCasesTest {
     fun `source error produces ErrorPage`() = runTest {
         val paginator = MutablePaginator<String> { page ->
             if (page == 2) throw RuntimeException("network error")
-            MutableList(this.cache.pagingCore.capacity) { "item_$it" }
+            MutableList(this.core.capacity) { "item_$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 5, resize = false, silently = true)
+        paginator.core.resize(capacity = 5, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         val errorPage = paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
@@ -148,12 +148,12 @@ class NavigationEdgeCasesTest {
         val paginator = MutablePaginator<String> { page ->
             MutableList(10) { "item_$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = PagingCore.UNLIMITED_CAPACITY, resize = false, silently = true)
-        assertTrue(paginator.cache.pagingCore.isCapacityUnlimited)
+        paginator.core.resize(capacity = PagingCore.UNLIMITED_CAPACITY, resize = false, silently = true)
+        assertTrue(paginator.core.isCapacityUnlimited)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         val state = paginator.cache.getStateOf(1)!!
         assertTrue(state.isSuccessState())
-        assertTrue(paginator.cache.pagingCore.isFilledSuccessState(state))
+        assertTrue(paginator.core.isFilledSuccessState(state))
     }
 }

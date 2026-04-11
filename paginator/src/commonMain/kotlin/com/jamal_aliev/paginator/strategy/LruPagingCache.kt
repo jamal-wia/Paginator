@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.strategy
 
-import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.page.PageState
 
 /**
@@ -14,50 +13,40 @@ import com.jamal_aliev.paginator.page.PageState
  *
  * ## Usage
  * ```kotlin
- * val core = PagingCore<Item>(20)
  * val paginator = MutablePaginator(
- *     core = core,
- *     eviction = LruPagingCore(delegate = core, maxSize = 50),
+ *     pagingCore = PagingCore(
+ *         cache = LruPagingCache(maxSize = 50),
+ *         initialCapacity = 20
+ *     ),
  *     source = { page -> api.loadPage(page) }
  * )
  * ```
  *
  * ## Composition
  * ```kotlin
- * val core = PagingCore<Item>(20)
- * val eviction = LruPagingCore(
- *     delegate = TtlPagingCore(delegate = core, ttl = 5.minutes),
- *     maxSize = 50
+ * val paginator = MutablePaginator(
+ *     pagingCore = PagingCore(
+ *         cache = LruPagingCache(
+ *             delegate = TtlPagingCache(ttl = 5.minutes),
+ *             maxSize = 50
+ *         )
+ *     ),
+ *     source = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param delegate The inner [PagingCache] to delegate to. Defaults to a plain [PagingCore].
+ * @param delegate The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
  * @param maxSize Maximum number of pages to keep in cache. Must be > 0.
  * @param protectContextWindow If `true` (default), pages within the visible context window
  *   are never evicted, even if they are the least recently used.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
-class LruPagingCore<T>(
-    private val delegate: PagingCache<T> = PagingCore(),
+class LruPagingCache<T>(
+    private val delegate: PagingCache<T> = DefaultPagingCache(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
 ) : PagingCache<T> by delegate {
-
-    /**
-     * Backward-compatible constructor that creates a [PagingCore] with the given capacity.
-     */
-    constructor(
-        initialCapacity: Int,
-        maxSize: Int,
-        protectContextWindow: Boolean = true,
-        evictionListener: CacheEvictionListener<T>? = null,
-    ) : this(
-        delegate = PagingCore(initialCapacity),
-        maxSize = maxSize,
-        protectContextWindow = protectContextWindow,
-        evictionListener = evictionListener,
-    )
 
     init {
         require(maxSize > 0) { "maxSize must be greater than 0, was $maxSize" }
@@ -127,7 +116,7 @@ class LruPagingCore<T>(
             val evicted = delegate.removeFromCache(victim)
             accessOrder.remove(victim)
             if (evicted != null) {
-                delegate.logger?.log("LruPagingCore", "evict: page=${evicted.page}")
+                delegate.logger?.log("LruPagingCache", "evict: page=${evicted.page}")
                 evictionListener?.onEvicted(evicted)
             }
         }

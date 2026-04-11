@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.strategy
 
-import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -9,21 +8,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class FifoPagingCoreTest {
+class FifoPagingCacheTest {
 
-    private data class CorePair<T>(
-        val pagingCore: PagingCore<T>,
-        val core: FifoPagingCore<T>,
-    )
-
-    private fun createCore(maxSize: Int = 3, protectContextWindow: Boolean = true): CorePair<String> {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = FifoPagingCore(
-            delegate = pagingCore,
+    private fun createCore(maxSize: Int = 3, protectContextWindow: Boolean = true): FifoPagingCache<String> {
+        return FifoPagingCache(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
         )
-        return CorePair(pagingCore, core)
     }
 
     private fun successPage(page: Int, data: List<String> = listOf("item_$page")): PageState.SuccessPage<String> {
@@ -34,7 +25,7 @@ class FifoPagingCoreTest {
 
     @Test
     fun `evicts oldest inserted page when maxSize exceeded`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
@@ -51,7 +42,7 @@ class FifoPagingCoreTest {
 
     @Test
     fun `getStateOf does not change eviction order`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
@@ -68,7 +59,7 @@ class FifoPagingCoreTest {
 
     @Test
     fun `updating page via setState does not change FIFO position`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
@@ -85,12 +76,12 @@ class FifoPagingCoreTest {
 
     @Test
     fun `protectContextWindow true skips pages in context window`() {
-        val (pagingCore, core) = createCore(maxSize = 2, protectContextWindow = true)
+        val core = createCore(maxSize = 2, protectContextWindow = true)
         core.setState(successPage(1, List(5) { "i$it" }), silently = true)
         core.setState(successPage(2, List(5) { "i$it" }), silently = true)
 
-        pagingCore.startContextPage = 1
-        pagingCore.endContextPage = 2
+        core.startContextPage = 1
+        core.endContextPage = 2
 
         core.setState(successPage(3), silently = true)
         // Cannot evict pages 1 or 2 -- all protected
@@ -99,12 +90,12 @@ class FifoPagingCoreTest {
 
     @Test
     fun `protectContextWindow false allows evicting context pages`() {
-        val (pagingCore, core) = createCore(maxSize = 2, protectContextWindow = false)
+        val core = createCore(maxSize = 2, protectContextWindow = false)
         core.setState(successPage(1, List(5) { "i$it" }), silently = true)
         core.setState(successPage(2, List(5) { "i$it" }), silently = true)
 
-        pagingCore.startContextPage = 1
-        pagingCore.endContextPage = 2
+        core.startContextPage = 1
+        core.endContextPage = 2
 
         core.setState(successPage(3), silently = true)
         assertEquals(2, core.size)
@@ -115,7 +106,7 @@ class FifoPagingCoreTest {
 
     @Test
     fun `cache size never exceeds maxSize`() {
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         for (i in 1..10) {
             core.setState(successPage(i), silently = true)
         }
@@ -129,7 +120,7 @@ class FifoPagingCoreTest {
     @Test
     fun `evictionListener is called with evicted page state`() {
         val evicted = mutableListOf<PageState<String>>()
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         core.evictionListener = CacheEvictionListener { evicted.add(it) }
 
         core.setState(successPage(1), silently = true)
@@ -145,7 +136,7 @@ class FifoPagingCoreTest {
 
     @Test
     fun `release clears insertion tracking`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.release(silently = true)
@@ -163,7 +154,7 @@ class FifoPagingCoreTest {
 
     @Test
     fun `clear clears insertion tracking`() {
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         core.setState(successPage(1), silently = true)
         core.clear()
 
@@ -178,7 +169,7 @@ class FifoPagingCoreTest {
 
     @Test
     fun `maxSize 1 keeps only the latest page`() {
-        val (_, core) = createCore(maxSize = 1)
+        val core = createCore(maxSize = 1)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         assertEquals(1, core.size)
@@ -191,7 +182,7 @@ class FifoPagingCoreTest {
     @Test
     fun `maxSize 0 throws`() {
         assertFailsWith<IllegalArgumentException> {
-            FifoPagingCore<String>(maxSize = 0)
+            FifoPagingCache<String>(maxSize = 0)
         }
     }
 
@@ -199,7 +190,7 @@ class FifoPagingCoreTest {
 
     @Test
     fun `removeFromCache updates insertion tracking`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
@@ -218,7 +209,7 @@ class FifoPagingCoreTest {
     @Test
     fun `evictionListener called for each eviction`() {
         val evicted = mutableListOf<Int>()
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
 
         core.setState(successPage(1), silently = true)
@@ -233,7 +224,7 @@ class FifoPagingCoreTest {
 
     @Test
     fun `re-adding evicted page inserts at end of FIFO`() {
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
 

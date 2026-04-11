@@ -143,7 +143,7 @@ class ExtensionFunctionsTest {
     fun `addElement appends to last page at end`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 5)
         // page2 has 5 items (filled at capacity). Increase capacity so there's room.
-        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
+        paginator.core.resize(capacity = 10, resize = false, silently = true)
 
         val result = paginator.addElement(element = "new_element", silently = true)
         assertTrue(result)

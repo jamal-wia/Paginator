@@ -25,7 +25,7 @@ class PaginatorSerializationTest {
                 emptyList()
             }
         }.apply {
-            cache.pagingCore.resize(capacity = capacity, resize = false, silently = true)
+            core.resize(capacity = capacity, resize = false, silently = true)
         }
     }
 
@@ -68,7 +68,7 @@ class PaginatorSerializationTest {
         // Verify core state
         assertEquals(paginator.cache.startContextPage, restored.cache.startContextPage)
         assertEquals(paginator.cache.endContextPage, restored.cache.endContextPage)
-        assertEquals(paginator.cache.pagingCore.capacity, restored.cache.pagingCore.capacity)
+        assertEquals(paginator.core.capacity, restored.core.capacity)
         assertEquals(paginator.cache.pages, restored.cache.pages)
     }
 

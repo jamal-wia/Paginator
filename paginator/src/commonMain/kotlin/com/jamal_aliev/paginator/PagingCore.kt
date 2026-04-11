@@ -19,6 +19,7 @@ import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.PageEntry
 import com.jamal_aliev.paginator.serialization.PageEntryType
 import com.jamal_aliev.paginator.serialization.PagingCoreSnapshot
+import com.jamal_aliev.paginator.strategy.DefaultPagingCache
 import com.jamal_aliev.paginator.strategy.PagingCache
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,63 +31,57 @@ import kotlin.contracts.contract
  * Manages the page cache, context window, dirty page tracking, snapshot emission,
  * and capacity for a [Paginator].
  *
- * This class holds all cache-related state and operations, separated from navigation
- * logic which lives in [Paginator]. It is connected to [Paginator] via composition.
+ * This class orchestrates all cache-related state and operations, delegating
+ * raw storage to [cache] (a [PagingCache] implementation, typically
+ * [DefaultPagingCache] or a chain of eviction strategies).
+ *
+ * Navigation logic lives in [Paginator]; this class is connected to it via composition.
  *
  * **Key concepts:**
- * - **Cache**: a sorted list of [PageState] objects ordered by page number.
+ * - **Cache**: a sorted list of [PageState] objects ordered by page number,
+ *   managed by the underlying [PagingCache].
  * - **Context window** ([startContextPage]..[endContextPage]): the contiguous range of
  *   filled success pages visible to the UI via the [snapshot] flow.
  * - **Capacity**: the expected number of items per page. Pages with fewer items are
  *   considered "incomplete" and will be re-requested on the next navigation.
  * - **Dirty pages**: pages marked for refresh on the next navigation action.
  *
+ * **Strategy safety:** [setState] delegates to [cache], so all writes pass through
+ * the eviction strategy chain. Consumers cannot bypass the strategy even with
+ * direct access to this class.
+ *
+ * @param cache The underlying [PagingCache] (optionally wrapped in eviction strategies).
+ * @param initialCapacity The expected number of items per page. Default: [DEFAULT_CAPACITY].
  * @param T The type of elements contained in each page.
  */
 open class PagingCore<T>(
+    val cache: PagingCache<T> = DefaultPagingCache(),
     initialCapacity: Int = DEFAULT_CAPACITY,
-) : PagingCache<T> {
-
-    override val pagingCore: PagingCore<T> get() = this
+) {
 
     /**
      * Logger for observing cache operations (eviction, etc.).
      *
      * When set via [Paginator.logger], this is automatically kept in sync.
      */
-    override var logger: PaginatorLogger? = null
-
-    @PublishedApi
-    internal fun indexOfPage(page: Int): Int = searchIndexOfPage(page)
-
-    @PublishedApi
-    internal fun stateAtIndex(index: Int): PageState<T> = cache[index]
-
-    /** Internal sorted cache of page states, ordered by page number. */
-    private val cache = mutableListOf<PageState<T>>()
-
-    /**
-     * Finds the index of a page in [cache] via binary search.
-     *
-     * @return A non-negative index if found, or a negative insertion-point encoding
-     *   `-(insertionPoint + 1)` if not found (same semantics as [List.binarySearch]).
-     */
-    @Suppress("NOTHING_TO_INLINE")
-    private inline fun searchIndexOfPage(page: Int): Int {
-        return cache.binarySearch { it.page.compareTo(page) }
-    }
+    var logger: PaginatorLogger? = null
+        set(value) {
+            field = value
+            cache.logger = value
+        }
 
     /** All cached page numbers, sorted in ascending order. */
-    override val pages: List<Int> get() = cache.map { it.page }
+    val pages: List<Int> get() = cache.pages
 
     /** All cached page states, sorted by page number. */
-    val states: List<PageState<T>> get() = cache.toList()
+    val states: List<PageState<T>>
+        get() = cache.pages.mapNotNull { cache.getStateOf(it) }
 
     /** The number of pages currently in the cache. */
-    override val size: Int get() = cache.size
+    val size: Int get() = cache.size
 
     /** Returns the highest page number in the cache, or `null` if empty. */
-    fun lastPage(): Int? = cache.lastOrNull()?.page
+    fun lastPage(): Int? = cache.pages.lastOrNull()
 
     /**
      * The expected number of items per page.
@@ -115,8 +110,11 @@ open class PagingCore<T>(
      *
      * Updated automatically during navigation operations.
      */
-    override var startContextPage = 0
-        internal set
+    var startContextPage: Int
+        get() = cache.startContextPage
+        internal set(value) {
+            cache.startContextPage = value
+        }
 
     /**
      * The right (highest) boundary of the current context window.
@@ -127,14 +125,17 @@ open class PagingCore<T>(
      *
      * Updated automatically during navigation operations.
      */
-    override var endContextPage = 0
-        internal set
+    var endContextPage: Int
+        get() = cache.endContextPage
+        internal set(value) {
+            cache.endContextPage = value
+        }
 
     /**
      * `true` if the paginator has been started, i.e., at least one jump has been performed
      * and both [startContextPage] and [endContextPage] are non-zero.
      */
-    override val isStarted: Boolean get() = startContextPage > 0 && endContextPage > 0
+    val isStarted: Boolean get() = cache.isStarted
 
     /**
      * Walks backward from [pageState] through contiguous filled success pages
@@ -323,13 +324,13 @@ open class PagingCore<T>(
      * @param page The page number to look up.
      * @return The cached [PageState], or `null` if the page is not in the cache.
      */
-    override fun getStateOf(page: Int): PageState<T>? {
-        val index = searchIndexOfPage(page)
-        return if (index >= 0) cache[index] else null
+    fun getStateOf(page: Int): PageState<T>? {
+        return cache.getStateOf(page)
     }
 
     /**
-     * Stores a [PageState] in the cache, replacing any existing state for that page number.
+     * Stores a [PageState] in the cache via the strategy chain, replacing any existing
+     * state for that page number.
      *
      * The page number is determined by [state]`.page`.
      *
@@ -337,16 +338,11 @@ open class PagingCore<T>(
      * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
      *   Set to `true` during batch operations to avoid redundant emissions.
      */
-    override fun setState(
+    fun setState(
         state: PageState<T>,
-        silently: Boolean
+        silently: Boolean = false
     ) {
-        val index = searchIndexOfPage(state.page)
-        if (index >= 0) {
-            cache[index] = state
-        } else {
-            cache.add(-(index + 1), state)
-        }
+        cache.setState(state, silently = true)
         if (!silently) {
             snapshot()
         }
@@ -358,15 +354,14 @@ open class PagingCore<T>(
      * @param page The page number to remove.
      * @return The removed [PageState], or `null` if the page was not in the cache.
      */
-    override fun removeFromCache(page: Int): PageState<T>? {
-        val index = searchIndexOfPage(page)
-        return if (index >= 0) cache.removeAt(index) else null
+    fun removeFromCache(page: Int): PageState<T>? {
+        return cache.removeFromCache(page)
     }
 
     /**
      * Clears all pages from the cache.
      */
-    override fun clear() {
+    fun clear() {
         cache.clear()
     }
 
@@ -378,12 +373,11 @@ open class PagingCore<T>(
      * @return The element at the specified position, or `null` if the page is not cached.
      * @throws IndexOutOfBoundsException If [index] is out of range for the page's data.
      */
-    override fun getElement(
+    fun getElement(
         page: Int,
         index: Int,
     ): T? {
-        return getStateOf(page)
-            ?.data?.get(index)
+        return cache.getElement(page, index)
     }
 
     /**
@@ -419,11 +413,6 @@ open class PagingCore<T>(
      *  - the next page does not exist, or
      *  - its state does not satisfy [predicate].
      *
-     * **Performance:** the first lookup uses binary search O(log n), then each
-     * subsequent step tries the adjacent cache index first (O(1) for sequential
-     * `next = { it + 1 }` or `{ it - 1 }`), falling back to binary search only
-     * when pages are non-contiguous. Total: O(log n + k) for k contiguous steps.
-     *
      * @param pivotState The first page to start traversal from.
      * If null or does not satisfy [predicate], the function returns null.
      *
@@ -444,38 +433,10 @@ open class PagingCore<T>(
         if (pivotState == null) return null
         if (!predicate.invoke(pivotState)) return null
 
-        var index = indexOfPage(pivotState.page)
-        if (index < 0) return pivotState // pivot not in cache — nothing to walk
-
         var resultState: PageState<T> = pivotState
         while (true) {
             val nextPage: Int = next.invoke(resultState.page)
-            val delta: Int = nextPage - resultState.page
-            val candidateIndex: Int = index + delta
-
-            // Fast path: adjacent element in the sorted cache (O(1))
-            val nextState: PageState<T>? =
-                if (candidateIndex in 0 until size) {
-                    val candidate: PageState<T> = stateAtIndex(candidateIndex)
-                    if (candidate.page == nextPage) {
-                        index = candidateIndex
-                        candidate
-                    } else {
-                        // Gap detected — fall back to binary search
-                        val foundIdx = indexOfPage(nextPage)
-                        if (foundIdx >= 0) {
-                            index = foundIdx;
-                            stateAtIndex(foundIdx)
-                        } else null
-                    }
-                } else {
-                    // Out of cache bounds — fall back to binary search
-                    val foundIdx = indexOfPage(nextPage)
-                    if (foundIdx >= 0) {
-                        index = foundIdx;
-                        stateAtIndex(foundIdx)
-                    } else null
-                }
+            val nextState: PageState<T>? = cache.getStateOf(nextPage)
 
             if (nextState != null && predicate.invoke(nextState)) {
                 resultState = nextState
@@ -510,7 +471,7 @@ open class PagingCore<T>(
      * that collectors receive the latest state.
      */
     fun repeatCacheFlow() {
-        _cacheFlow.value = cache.toList()
+        _cacheFlow.value = states
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -812,18 +773,17 @@ open class PagingCore<T>(
     /**
      * Releases all cache resources and resets to initial state.
      *
-     * Clears the cache, resets context window, capacity, dirty pages, and snapshot.
+     * Clears the cache (including eviction strategy state), resets context window,
+     * capacity, dirty pages, and snapshot.
      *
      * @param capacity The capacity to set after release. Defaults to [DEFAULT_CAPACITY].
      * @param silently If `true`, the empty snapshot is **not** emitted.
      */
-    override fun release(
-        capacity: Int,
-        silently: Boolean
+    fun release(
+        capacity: Int = DEFAULT_CAPACITY,
+        silently: Boolean = false
     ) {
-        cache.clear()
-        startContextPage = 0
-        endContextPage = 0
+        cache.release(capacity, silently)
         if (!silently) _snapshot.value = emptyList()
         this.capacity = capacity
         _dirtyPages.clear()
@@ -843,13 +803,14 @@ open class PagingCore<T>(
      * @return A [PagingCoreSnapshot] containing all the state needed for restoration.
      */
     fun saveState(contextOnly: Boolean = false): PagingCoreSnapshot<T> {
-        val cache = if (contextOnly && startContextPage > 0 && endContextPage > 0) {
-            this@PagingCore.cache.filter { it.page in startContextPage..endContextPage }
+        val allStates = this.states
+        val filteredStates = if (contextOnly && startContextPage > 0 && endContextPage > 0) {
+            allStates.filter { it.page in startContextPage..endContextPage }
         } else {
-            this@PagingCore.cache
+            allStates
         }
         val entries: List<PageEntry<T>> =
-            cache.map { state: PageState<T> ->
+            filteredStates.map { state: PageState<T> ->
                 val wasDirty = isDirty(state.page)
                         || state.isErrorState()
                         || state.isProgressState()
@@ -958,8 +919,8 @@ open class PagingCore<T>(
         }
     }
 
-    operator fun iterator(): MutableIterator<PageState<T>> {
-        return cache.iterator()
+    operator fun iterator(): Iterator<PageState<T>> {
+        return states.iterator()
     }
 
     operator fun contains(page: Int): Boolean = getStateOf(page) != null
@@ -970,7 +931,7 @@ open class PagingCore<T>(
 
     operator fun get(page: Int, index: Int): T? = getElement(page, index)
 
-    override fun toString(): String = "PagingCore(pages=$cache)"
+    override fun toString(): String = "PagingCore(pages=${cache.pages})"
 
     override fun equals(other: Any?): Boolean = this === other
 

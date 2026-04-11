@@ -20,15 +20,15 @@ class CacheEvictionIntegrationTest {
         totalPages: Int = 20,
         protectContextWindow: Boolean = true,
     ): MutablePaginator<String> {
-        val pagingCore = PagingCore<String>(initialCapacity = capacity)
-        val eviction = LruPagingCore(
-            delegate = pagingCore,
+        val eviction = LruPagingCache<String>(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
         )
-        return MutablePaginator(core = eviction) { page: Int ->
+        return MutablePaginator(
+            core = PagingCore(cache = eviction, initialCapacity = capacity)
+        ) { page: Int ->
             if (page in 1..totalPages) {
-                List(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+                List(this.core.capacity) { "p${page}_item$it" }
             } else {
                 emptyList()
             }
@@ -41,15 +41,15 @@ class CacheEvictionIntegrationTest {
         totalPages: Int = 20,
         protectContextWindow: Boolean = true,
     ): MutablePaginator<String> {
-        val pagingCore = PagingCore<String>(initialCapacity = capacity)
-        val eviction = FifoPagingCore(
-            delegate = pagingCore,
+        val eviction = FifoPagingCache<String>(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
         )
-        return MutablePaginator(core = eviction) { page: Int ->
+        return MutablePaginator(
+            core = PagingCore(cache = eviction, initialCapacity = capacity)
+        ) { page: Int ->
             if (page in 1..totalPages) {
-                List(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+                List(this.core.capacity) { "p${page}_item$it" }
             } else {
                 emptyList()
             }
@@ -62,15 +62,15 @@ class CacheEvictionIntegrationTest {
         totalPages: Int = 20,
         timeSource: TestTimeSource = TestTimeSource(),
     ): Pair<MutablePaginator<String>, TestTimeSource> {
-        val pagingCore = PagingCore<String>(initialCapacity = capacity)
-        val eviction = TtlPagingCore(
-            delegate = pagingCore,
+        val eviction = TtlPagingCache<String>(
             ttl = ttlMs.milliseconds,
             timeSource = timeSource,
         )
-        val paginator = MutablePaginator(core = eviction) { page: Int ->
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = eviction, initialCapacity = capacity)
+        ) { page: Int ->
             if (page in 1..totalPages) {
-                List(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+                List(this.core.capacity) { "p${page}_item$it" }
             } else {
                 emptyList()
             }
@@ -185,9 +185,10 @@ class CacheEvictionIntegrationTest {
 
     @Test
     fun `restoreState rebuilds LRU tracking correctly`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val eviction = LruPagingCore(delegate = pagingCore, maxSize = 10)
-        val paginator = MutablePaginator(core = eviction) { page: Int ->
+        val eviction = LruPagingCache<String>(maxSize = 10)
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = eviction, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 
@@ -197,8 +198,8 @@ class CacheEvictionIntegrationTest {
         }
 
         val savedPages = paginator.cache.pages.toList()
-        val snapshot = paginator.cache.pagingCore.saveState()
-        paginator.cache.pagingCore.restoreState(snapshot, silently = true)
+        val snapshot = paginator.core.saveState()
+        paginator.core.restoreState(snapshot, silently = true)
 
         // All pages should be restored
         assertEquals(savedPages, paginator.cache.pages.toList())
@@ -208,16 +209,17 @@ class CacheEvictionIntegrationTest {
 
     @Test
     fun `resize clears and rebuilds LRU tracking`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val eviction = LruPagingCore(delegate = pagingCore, maxSize = 10)
-        val paginator = MutablePaginator(core = eviction) { page: Int ->
+        val eviction = LruPagingCache<String>(maxSize = 10)
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = eviction, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
-        paginator.cache.pagingCore.resize(capacity = 2, resize = true, silently = true)
+        paginator.core.resize(capacity = 2, resize = true, silently = true)
 
         // After resize, cache should have pages
         assertTrue(paginator.cache.size > 0)
@@ -242,12 +244,13 @@ class CacheEvictionIntegrationTest {
 
     @Test
     fun `evictionListener called when pages evicted during navigation`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val eviction = LruPagingCore(delegate = pagingCore, maxSize = 3)
+        val eviction = LruPagingCache<String>(maxSize = 3)
         val evicted = mutableListOf<Int>()
         eviction.evictionListener = CacheEvictionListener { evicted.add(it.page) }
 
-        val paginator = MutablePaginator(core = eviction) { page: Int ->
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = eviction, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 
@@ -304,9 +307,10 @@ class CacheEvictionIntegrationTest {
 
     @Test
     fun `serialization roundtrip works with LRU core`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val eviction = LruPagingCore(delegate = pagingCore, maxSize = 10)
-        val paginator = MutablePaginator(core = eviction) { page: Int ->
+        val eviction = LruPagingCache<String>(maxSize = 10)
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = eviction, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 
@@ -314,8 +318,8 @@ class CacheEvictionIntegrationTest {
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
         val savedPages = paginator.cache.pages.toList()
-        val snapshot = paginator.cache.pagingCore.saveState()
-        paginator.cache.pagingCore.restoreState(snapshot, silently = true)
+        val snapshot = paginator.core.saveState()
+        paginator.core.restoreState(snapshot, silently = true)
 
         assertEquals(savedPages, paginator.cache.pages.toList())
     }

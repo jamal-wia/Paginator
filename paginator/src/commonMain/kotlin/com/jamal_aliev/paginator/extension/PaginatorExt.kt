@@ -55,7 +55,7 @@ inline fun <T> Paginator<T>.smartForEach(
         currentState: PageState<T>
     ) -> Boolean
 ): List<PageState<T>> {
-    val states: List<PageState<T>> = this.cache.pagingCore.states
+    val states: List<PageState<T>> = this.core.states
     var index = initialIndex.invoke(states)
     while (0 <= index && index < states.size) {
         val currentState: PageState<T> = states[index]
@@ -76,7 +76,7 @@ inline fun <T> Paginator<T>.smartForEach(
 inline fun <T> Paginator<T>.indexOfFirst(
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
-    for (page in cache.pagingCore.states) {
+    for (page in core.states) {
         val result = page.data.indexOfFirst(predicate)
         if (result != -1) return page.page to result
     }
@@ -113,7 +113,7 @@ inline fun <T> Paginator<T>.indexOfFirst(
 inline fun <T> Paginator<T>.indexOfLast(
     predicate: (T) -> Boolean
 ): Pair<Int, Int>? {
-    for (page in cache.pagingCore.states.asReversed()) {
+    for (page in core.states.asReversed()) {
         val result = page.data.indexOfLast(predicate)
         if (result != -1) return page.page to result
     }
@@ -151,7 +151,7 @@ inline fun <T> Paginator<T>.walkForwardWhile(
     pivotState: PageState<T>?,
     predicate: (PageState<T>) -> Boolean = { true }
 ): PageState<T>? {
-    return cache.pagingCore.walkWhile(
+    return core.walkWhile(
         pivotState = pivotState,
         next = { currentPage: Int ->
             return@walkWhile currentPage + 1
@@ -175,7 +175,7 @@ inline fun <T> Paginator<T>.walkBackwardWhile(
     pivotState: PageState<T>?,
     predicate: (PageState<T>) -> Boolean = { true }
 ): PageState<T>? {
-    return cache.pagingCore.walkWhile(
+    return core.walkWhile(
         pivotState = pivotState,
         next = { currentPage: Int ->
             return@walkWhile currentPage - 1
@@ -215,7 +215,7 @@ fun <T> MutablePaginator<T>.addElement(
     silently: Boolean = false,
     initSuccessPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
 ): Boolean {
-    val lastPage: Int = cache.pagingCore.lastPage() ?: return false
+    val lastPage: Int = core.lastPage() ?: return false
     val lastPageData = cache.getStateOf(lastPage)?.data ?: return false
     addElement(element, lastPage, lastPageData.size, silently, initSuccessPageState)
     return true
@@ -294,11 +294,11 @@ suspend fun <T> Paginator<T>.refreshAll(
     loadingSilently: Boolean = false,
     finalSilently: Boolean = false,
     loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
-    enableCacheFlow: Boolean = this.cache.pagingCore.enableCacheFlow,
-    initProgressState: InitializerProgressPage<T> = this.cache.pagingCore.initializerProgressPage,
-    initEmptyState: InitializerEmptyPage<T> = this.cache.pagingCore.initializerEmptyPage,
-    initSuccessState: InitializerSuccessPage<T> = this.cache.pagingCore.initializerSuccessPage,
-    initErrorState: InitializerErrorPage<T> = this.cache.pagingCore.initializerErrorPage
+    enableCacheFlow: Boolean = this.core.enableCacheFlow,
+    initProgressState: InitializerProgressPage<T> = this.core.initializerProgressPage,
+    initEmptyState: InitializerEmptyPage<T> = this.core.initializerEmptyPage,
+    initSuccessState: InitializerSuccessPage<T> = this.core.initializerSuccessPage,
+    initErrorState: InitializerErrorPage<T> = this.core.initializerErrorPage
 ) {
     if (lockRefresh) throw RefreshWasLockedException()
     return refresh(
@@ -344,11 +344,11 @@ fun <T> Paginator<T>.prefetchController(
     silentlyLoading: Boolean = true,
     silentlyResult: Boolean = false,
     loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
-    enableCacheFlow: Boolean = cache.pagingCore.enableCacheFlow,
-    initProgressState: InitializerProgressPage<T> = cache.pagingCore.initializerProgressPage,
-    initSuccessState: InitializerSuccessPage<T> = cache.pagingCore.initializerSuccessPage,
-    initEmptyState: InitializerEmptyPage<T> = cache.pagingCore.initializerEmptyPage,
-    initErrorState: InitializerErrorPage<T> = cache.pagingCore.initializerErrorPage,
+    enableCacheFlow: Boolean = core.enableCacheFlow,
+    initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
+    initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
+    initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
+    initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     onPrefetchError: ((Exception) -> Unit)? = null,
 ): PaginatorPrefetchController<T> {
     return PaginatorPrefetchController(

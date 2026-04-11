@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.strategy
 
-import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,11 +10,10 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 
-class TtlPagingCoreTest {
+class TtlPagingCacheTest {
 
-    private data class CoreTriple<T>(
-        val pagingCore: PagingCore<T>,
-        val core: TtlPagingCore<T>,
+    private data class CorePair<T>(
+        val core: TtlPagingCache<T>,
         val timeSource: TestTimeSource,
     )
 
@@ -24,16 +22,14 @@ class TtlPagingCoreTest {
         refreshOnAccess: Boolean = false,
         protectContextWindow: Boolean = true,
         timeSource: TestTimeSource = TestTimeSource(),
-    ): CoreTriple<String> {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = TtlPagingCore(
-            delegate = pagingCore,
+    ): CorePair<String> {
+        val core = TtlPagingCache<String>(
             ttl = ttlMs.milliseconds,
             refreshOnAccess = refreshOnAccess,
             protectContextWindow = protectContextWindow,
             timeSource = timeSource,
         )
-        return CoreTriple(pagingCore, core, timeSource)
+        return CorePair(core, timeSource)
     }
 
     private fun successPage(page: Int, data: List<String> = listOf("item_$page")): PageState.SuccessPage<String> {
@@ -45,7 +41,7 @@ class TtlPagingCoreTest {
     @Test
     fun `pages are evicted after TTL expires`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 1000, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
@@ -68,7 +64,7 @@ class TtlPagingCoreTest {
     @Test
     fun `pages within TTL are not evicted`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 5000, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 5000, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
         ts += 100.milliseconds
@@ -85,7 +81,7 @@ class TtlPagingCoreTest {
     @Test
     fun `refreshOnAccess true resets TTL on getStateOf`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 1000, refreshOnAccess = true, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, refreshOnAccess = true, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
@@ -113,7 +109,7 @@ class TtlPagingCoreTest {
     @Test
     fun `refreshOnAccess false does not reset TTL on getStateOf`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 1000, refreshOnAccess = false, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, refreshOnAccess = false, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
 
@@ -134,12 +130,12 @@ class TtlPagingCoreTest {
     @Test
     fun `protectContextWindow true prevents eviction of context pages`() {
         val ts = TestTimeSource()
-        val (pagingCore, core, _) = createCore(ttlMs = 1000, protectContextWindow = true, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, protectContextWindow = true, timeSource = ts)
 
         core.setState(successPage(1, List(5) { "i$it" }), silently = true)
         core.setState(successPage(2, List(5) { "i$it" }), silently = true)
-        pagingCore.startContextPage = 1
-        pagingCore.endContextPage = 2
+        core.startContextPage = 1
+        core.endContextPage = 2
 
         ts += 2000.milliseconds
 
@@ -153,11 +149,11 @@ class TtlPagingCoreTest {
     @Test
     fun `protectContextWindow false allows eviction of expired context pages`() {
         val ts = TestTimeSource()
-        val (pagingCore, core, _) = createCore(ttlMs = 1000, protectContextWindow = false, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, protectContextWindow = false, timeSource = ts)
 
         core.setState(successPage(1, List(5) { "i$it" }), silently = true)
-        pagingCore.startContextPage = 1
-        pagingCore.endContextPage = 1
+        core.startContextPage = 1
+        core.endContextPage = 1
 
         ts += 2000.milliseconds
 
@@ -171,7 +167,7 @@ class TtlPagingCoreTest {
     @Test
     fun `evictionListener is called with expired page`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 500, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 500, timeSource = ts)
         val evicted = mutableListOf<Int>()
         core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
 
@@ -187,7 +183,7 @@ class TtlPagingCoreTest {
     @Test
     fun `release clears all TTL tracking`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 1000, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
         ts += 500.milliseconds
@@ -207,7 +203,7 @@ class TtlPagingCoreTest {
     @Test
     fun `clear clears all TTL tracking`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 1000, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
         core.clear()
@@ -226,7 +222,7 @@ class TtlPagingCoreTest {
     @Test
     fun `custom TimeSource allows deterministic testing`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 2000, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 2000, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
 
@@ -250,12 +246,12 @@ class TtlPagingCoreTest {
     @Test
     fun `all expired pages in protected range are not evicted`() {
         val ts = TestTimeSource()
-        val (pagingCore, core, _) = createCore(ttlMs = 500, protectContextWindow = true, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 500, protectContextWindow = true, timeSource = ts)
 
         core.setState(successPage(1, List(5) { "i$it" }), silently = true)
         core.setState(successPage(2, List(5) { "i$it" }), silently = true)
-        pagingCore.startContextPage = 1
-        pagingCore.endContextPage = 2
+        core.startContextPage = 1
+        core.endContextPage = 2
 
         ts += 1000.milliseconds
 
@@ -270,7 +266,7 @@ class TtlPagingCoreTest {
     @Test
     fun `negative TTL throws`() {
         assertFailsWith<IllegalArgumentException> {
-            TtlPagingCore<String>(ttl = (-1).seconds)
+            TtlPagingCache<String>(ttl = (-1).seconds)
         }
     }
 
@@ -279,7 +275,7 @@ class TtlPagingCoreTest {
     @Test
     fun `removeFromCache removes timestamp`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 1000, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
         core.removeFromCache(1)
@@ -300,7 +296,7 @@ class TtlPagingCoreTest {
     @Test
     fun `setState on existing page refreshes its TTL`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 1000, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
         ts += 800.milliseconds
@@ -320,7 +316,7 @@ class TtlPagingCoreTest {
     @Test
     fun `refreshOnAccess true resets TTL on getElement`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 1000, refreshOnAccess = true, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, refreshOnAccess = true, timeSource = ts)
 
         core.setState(successPage(1, listOf("a", "b")), silently = true)
         ts += 800.milliseconds
@@ -339,7 +335,7 @@ class TtlPagingCoreTest {
     @Test
     fun `pages added at different times expire independently`() {
         val ts = TestTimeSource()
-        val (_, core, _) = createCore(ttlMs = 1000, timeSource = ts)
+        val (core, _) = createCore(ttlMs = 1000, timeSource = ts)
 
         core.setState(successPage(1), silently = true)
         ts += 500.milliseconds

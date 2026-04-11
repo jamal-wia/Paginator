@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.strategy
 
-import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -9,21 +8,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class LruPagingCoreTest {
+class LruPagingCacheTest {
 
-    private data class CorePair<T>(
-        val pagingCore: PagingCore<T>,
-        val core: LruPagingCore<T>,
-    )
-
-    private fun createCore(maxSize: Int = 3, protectContextWindow: Boolean = true): CorePair<String> {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = LruPagingCore(
-            delegate = pagingCore,
+    private fun createCore(maxSize: Int = 3, protectContextWindow: Boolean = true): LruPagingCache<String> {
+        return LruPagingCache(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
         )
-        return CorePair(pagingCore, core)
     }
 
     private fun successPage(page: Int, data: List<String> = listOf("item_$page")): PageState.SuccessPage<String> {
@@ -34,7 +25,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `evicts least recently used page when maxSize exceeded`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
@@ -55,7 +46,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `getStateOf updates access order so page is not evicted`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
@@ -73,7 +64,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `getElement updates access order`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1, listOf("a", "b")), silently = true)
         core.setState(successPage(2, listOf("c")), silently = true)
         core.setState(successPage(3, listOf("d")), silently = true)
@@ -92,13 +83,13 @@ class LruPagingCoreTest {
 
     @Test
     fun `protectContextWindow true skips pages in context window`() {
-        val (pagingCore, core) = createCore(maxSize = 2, protectContextWindow = true)
+        val core = createCore(maxSize = 2, protectContextWindow = true)
         core.setState(successPage(1, List(5) { "i$it" }), silently = true)
         core.setState(successPage(2, List(5) { "i$it" }), silently = true)
 
         // Simulate context window covering pages 1-2
-        pagingCore.startContextPage = 1
-        pagingCore.endContextPage = 2
+        core.startContextPage = 1
+        core.endContextPage = 2
 
         // Add page 3 -- should NOT evict pages 1 or 2 (protected)
         core.setState(successPage(3), silently = true)
@@ -114,12 +105,12 @@ class LruPagingCoreTest {
 
     @Test
     fun `protectContextWindow false allows evicting context pages`() {
-        val (pagingCore, core) = createCore(maxSize = 2, protectContextWindow = false)
+        val core = createCore(maxSize = 2, protectContextWindow = false)
         core.setState(successPage(1, List(5) { "i$it" }), silently = true)
         core.setState(successPage(2, List(5) { "i$it" }), silently = true)
 
-        pagingCore.startContextPage = 1
-        pagingCore.endContextPage = 2
+        core.startContextPage = 1
+        core.endContextPage = 2
 
         // Add page 3 -- page 1 should be evicted even though in context
         core.setState(successPage(3), silently = true)
@@ -131,7 +122,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `cache size never exceeds maxSize after setState`() {
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         for (i in 1..10) {
             core.setState(successPage(i), silently = true)
         }
@@ -146,7 +137,7 @@ class LruPagingCoreTest {
     @Test
     fun `evictionListener is called with correct page state`() {
         val evicted = mutableListOf<PageState<String>>()
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         core.evictionListener = CacheEvictionListener { evicted.add(it) }
 
         core.setState(successPage(1), silently = true)
@@ -162,7 +153,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `release clears access tracking`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
@@ -185,7 +176,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `clear clears access tracking`() {
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.clear()
@@ -203,7 +194,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `maxSize 1 keeps only the latest page`() {
-        val (_, core) = createCore(maxSize = 1)
+        val core = createCore(maxSize = 1)
         core.setState(successPage(1), silently = true)
         assertEquals(1, core.size)
 
@@ -222,12 +213,12 @@ class LruPagingCoreTest {
 
     @Test
     fun `all pages in protected range allows cache to exceed maxSize`() {
-        val (pagingCore, core) = createCore(maxSize = 2, protectContextWindow = true)
+        val core = createCore(maxSize = 2, protectContextWindow = true)
         core.setState(successPage(1, List(5) { "i$it" }), silently = true)
         core.setState(successPage(2, List(5) { "i$it" }), silently = true)
 
-        pagingCore.startContextPage = 1
-        pagingCore.endContextPage = 5
+        core.startContextPage = 1
+        core.endContextPage = 5
 
         core.setState(successPage(3, List(5) { "i$it" }), silently = true)
         core.setState(successPage(4, List(5) { "i$it" }), silently = true)
@@ -240,7 +231,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `re-adding previously evicted page works correctly`() {
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
 
@@ -260,7 +251,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `removeFromCache updates tracking`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
@@ -284,14 +275,14 @@ class LruPagingCoreTest {
     @Test
     fun `maxSize 0 throws`() {
         assertFailsWith<IllegalArgumentException> {
-            LruPagingCore<String>(maxSize = 0)
+            LruPagingCache<String>(maxSize = 0)
         }
     }
 
     @Test
     fun `negative maxSize throws`() {
         assertFailsWith<IllegalArgumentException> {
-            LruPagingCore<String>(maxSize = -1)
+            LruPagingCache<String>(maxSize = -1)
         }
     }
 
@@ -299,7 +290,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `updating existing page via setState refreshes access order`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
@@ -318,7 +309,7 @@ class LruPagingCoreTest {
     @Test
     fun `evictionListener called for each evicted page`() {
         val evicted = mutableListOf<Int>()
-        val (_, core) = createCore(maxSize = 2)
+        val core = createCore(maxSize = 2)
         core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
 
         core.setState(successPage(1), silently = true)
@@ -333,7 +324,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `getStateOf for missing page returns null`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         assertNull(core.getStateOf(999))
     }
 
@@ -341,7 +332,7 @@ class LruPagingCoreTest {
 
     @Test
     fun `getElement for missing page returns null`() {
-        val (_, core) = createCore(maxSize = 3)
+        val core = createCore(maxSize = 3)
         assertNull(core.getElement(999, 0))
     }
 }

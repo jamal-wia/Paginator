@@ -32,7 +32,7 @@ class PrefetchControllerTest {
                 emptyList()
             }
         }
-        paginator.cache.pagingCore.resize(capacity = capacity, resize = false, silently = true)
+        paginator.core.resize(capacity = capacity, resize = false, silently = true)
         paginator.finalPage = totalPages
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         for (i in 2..loadedPages) {
@@ -328,7 +328,7 @@ class PrefetchControllerTest {
             loadCount++
             List(10) { "p${page}_item_$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
+        paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         loadCount = 0 // reset after jump
@@ -793,7 +793,7 @@ class PrefetchControllerTest {
             loadCount++
             List(10) { "p${page}_item_$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
+        paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
         loadCount = 0
@@ -824,7 +824,7 @@ class PrefetchControllerTest {
         val paginator = MutablePaginator<String> { page: Int ->
             List(10) { "p${page}_item_$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
+        paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         // NOT calling jump — paginator is unstarted, endContextPage = 0
 
@@ -981,7 +981,7 @@ class PrefetchControllerTest {
         }
         assertEquals(5, paginator.cache.getStateOf(3)!!.data.size)
 
-        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val totalItems = paginator.core.states.sumOf { it.data.size }
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
         // Calibration
@@ -1008,7 +1008,7 @@ class PrefetchControllerTest {
             index = 0,
             silently = true,
         )
-        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val totalItems = paginator.core.states.sumOf { it.data.size }
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 3)
 
@@ -1035,7 +1035,7 @@ class PrefetchControllerTest {
         paginator.removeState(pageToRemove = 3, silently = true)
 
         val newEndContext = paginator.cache.endContextPage
-        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val totalItems = paginator.core.states.sumOf { it.data.size }
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1081,7 +1081,7 @@ class PrefetchControllerTest {
             if (page == 2) page2LoadCount++
             List(10) { "p${page}_item_$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
+        paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true) // load page 2
@@ -1096,7 +1096,7 @@ class PrefetchControllerTest {
             silently = true,
             isDirty = true,
         )
-        assertTrue(paginator.cache.pagingCore.dirtyPages.contains(2))
+        assertTrue(paginator.core.dirtyPages.contains(2))
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1197,7 +1197,7 @@ class PrefetchControllerTest {
         assertEquals(4, paginator.cache.startContextPage)
         assertEquals(5, paginator.cache.endContextPage)
 
-        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val totalItems = paginator.core.states.sumOf { it.data.size }
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1246,9 +1246,9 @@ class PrefetchControllerTest {
         val paginator = createPrefetchTestPaginator(totalPages = 10, capacity = 10, loadedPages = 3)
 
         // Resize capacity from 10 to 5 — items redistribute into more pages
-        paginator.cache.pagingCore.resize(capacity = 5, resize = true, silently = true)
+        paginator.core.resize(capacity = 5, resize = true, silently = true)
 
-        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val totalItems = paginator.core.states.sumOf { it.data.size }
         val newEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 3)
@@ -1286,7 +1286,7 @@ class PrefetchControllerTest {
         assertEquals(0, paginator.cache.endContextPage)
 
         // Restore capacity to match source output size and re-initialize
-        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
+        paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         assertEquals(1, paginator.cache.endContextPage)
@@ -1427,9 +1427,9 @@ class PrefetchControllerTest {
         }
 
         val page4Size = paginator.cache.getStateOf(4)!!.data.size
-        assertTrue(page4Size < paginator.cache.pagingCore.capacity, "Page 4 should be incomplete after cascading removes")
+        assertTrue(page4Size < paginator.core.capacity, "Page 4 should be incomplete after cascading removes")
 
-        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val totalItems = paginator.core.states.sumOf { it.data.size }
 
         // Continue scrolling forward — goNextPage will re-fetch page 4 (incomplete)
         controller.onScroll(firstVisibleIndex = totalItems - 8, lastVisibleIndex = totalItems - 3, totalItemCount = totalItems)
@@ -1447,7 +1447,7 @@ class PrefetchControllerTest {
             if (page == 1) page1LoadCount++
             List(10) { "p${page}_item_$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
+        paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
@@ -1489,7 +1489,7 @@ class PrefetchControllerTest {
             silently = true,
         )
 
-        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val totalItems = paginator.core.states.sumOf { it.data.size }
         val endContextAfterAdd = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
@@ -1523,7 +1523,7 @@ class PrefetchControllerTest {
         // Modify middle page
         paginator.setElement("CHANGED", page = 5, index = 0, silently = true)
 
-        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val totalItems = paginator.core.states.sumOf { it.data.size }
 
         val controller = paginator.prefetchController(
             scope = this,

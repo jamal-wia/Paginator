@@ -1,12 +1,10 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.extension.far
 import com.jamal_aliev.paginator.extension.smartForEach
 import com.jamal_aliev.paginator.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.extension.walkForwardWhile
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.strategy.PagingCache
 
 /**
  * A full-featured, mutable pagination manager for Kotlin/Android.
@@ -37,7 +35,7 @@ import com.jamal_aliev.paginator.strategy.PagingCache
  * @see PageState
  */
 open class MutablePaginator<T>(
-    core: PagingCache<T> = PagingCore<T>(DEFAULT_CAPACITY),
+    core: PagingCore<T> = PagingCore(),
     source: suspend Paginator<T>.(page: Int) -> List<T>
 ) : Paginator<T>(core, source) {
 
@@ -81,13 +79,13 @@ open class MutablePaginator<T>(
             if (cache.startContextPage <= removedPage && removedPage <= cache.endContextPage) {
                 if (cache.endContextPage - cache.startContextPage > 0) {
                     // Just shrink the context by one page
-                    pagingCore.endContextPage--
+                    core.endContextPage--
                 } else if (removedPage == 1) {
                     // If the first page was removed, find the nearest page
-                    pagingCore.findNearContextPage()
+                    core.findNearContextPage()
                 } else {
                     // Otherwise, find the nearest pages around the removed page
-                    pagingCore.findNearContextPage(removedPage - 1, removedPage + 1)
+                    core.findNearContextPage(removedPage - 1, removedPage + 1)
                 }
             }
         }
@@ -152,7 +150,7 @@ open class MutablePaginator<T>(
             }
         }
         if (!silently && pageStateWillRemove != null) {
-            pagingCore.snapshot()
+            core.snapshot()
         }
         return pageStateWillRemove
     }
@@ -187,7 +185,7 @@ open class MutablePaginator<T>(
             silently = true
         )
 
-        if (isDirty) pagingCore.markDirty(page)
+        if (isDirty) core.markDirty(page)
 
         if (!silently) snapshotIfPageVisible(page)
     }
@@ -222,13 +220,13 @@ open class MutablePaginator<T>(
             .let { it as MutableList }
             .also { removed = it.removeAt(index) }
 
-        if (updatedData.size < pagingCore.capacity && !pagingCore.isCapacityUnlimited) {
+        if (updatedData.size < core.capacity && !core.isCapacityUnlimited) {
             val nextPageState = cache.getStateOf(page + 1)
             if (nextPageState != null
                 &&
                 nextPageState::class == pageState::class
             ) {
-                while (updatedData.size < pagingCore.capacity
+                while (updatedData.size < core.capacity
                     &&
                     nextPageState.data.isNotEmpty()
                 ) {
@@ -255,7 +253,7 @@ open class MutablePaginator<T>(
             )
         }
 
-        if (isDirty) pagingCore.markDirty(page)
+        if (isDirty) core.markDirty(page)
 
         if (!silently) snapshotIfPageVisible(page)
 
@@ -299,8 +297,8 @@ open class MutablePaginator<T>(
         ) { "data of target page state is not mutable" }
         dataOfTargetState.addAll(index, elements)
         val extraElements: MutableList<T>? =
-            if (dataOfTargetState.size > pagingCore.capacity && !pagingCore.isCapacityUnlimited) {
-                MutableList(size = dataOfTargetState.size - pagingCore.capacity) {
+            if (dataOfTargetState.size > core.capacity && !core.isCapacityUnlimited) {
+                MutableList(size = dataOfTargetState.size - core.capacity) {
                     dataOfTargetState.removeAt(dataOfTargetState.lastIndex)
                 }.apply(MutableList<T>::reverse)
             } else {
@@ -325,13 +323,13 @@ open class MutablePaginator<T>(
                     initPageState = initPageState
                 )
             } else {
-                val lastPage = pagingCore.lastPage() ?: return
+                val lastPage = core.lastPage() ?: return
                 val rangePageInvalidated: IntRange = (targetPage + 1)..lastPage
                 rangePageInvalidated.forEach { cache.removeFromCache(it) }
             }
         }
 
-        if (isDirty) pagingCore.markDirty(targetPage)
+        if (isDirty) core.markDirty(targetPage)
 
         if (!silently) snapshotIfPageVisible(targetPage)
     }
@@ -384,7 +382,7 @@ open class MutablePaginator<T>(
             return@smartForEach true
         }
         if (!silently) {
-            pagingCore.snapshot()
+            core.snapshot()
         }
     }
 
@@ -393,11 +391,11 @@ open class MutablePaginator<T>(
      * Extracts the repeated pattern used across CRUD operations.
      */
     private fun snapshotIfPageVisible(affectedPage: Int) {
-        val startState = walkBackwardWhile(pagingCore[cache.startContextPage]) ?: return
-        val endState = walkForwardWhile(pagingCore[cache.endContextPage]) ?: return
+        val startState = walkBackwardWhile(core[cache.startContextPage]) ?: return
+        val endState = walkForwardWhile(core[cache.endContextPage]) ?: return
         val rangeSnapshot = startState.page..endState.page
         if (affectedPage in rangeSnapshot) {
-            pagingCore.snapshot(rangeSnapshot)
+            core.snapshot(rangeSnapshot)
         }
     }
 
@@ -409,7 +407,7 @@ open class MutablePaginator<T>(
         removeState(pageState.page)
     }
 
-    operator fun plusAssign(pageState: PageState<T>): Unit = cache.setState(pageState)
+    operator fun plusAssign(pageState: PageState<T>): Unit = core.setState(pageState)
 
     override fun toString(): String = "MutablePaginator(cache=$cache, bookmarks=$bookmarks)"
 }

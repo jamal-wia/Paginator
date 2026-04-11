@@ -12,7 +12,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class SlidingWindowPagingCoreTest {
+class SlidingWindowPagingCacheTest {
 
     private fun successPage(page: Int, data: List<String> = listOf("item_$page")): PageState.SuccessPage<String> {
         return PageState.SuccessPage(page = page, data = data)
@@ -22,8 +22,7 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `evicts pages outside context window`() {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
+        val core = SlidingWindowPagingCache<String>()
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
@@ -31,8 +30,8 @@ class SlidingWindowPagingCoreTest {
         core.setState(successPage(5), silently = true)
 
         // Set context window to 2..3
-        pagingCore.startContextPage = 2
-        pagingCore.endContextPage = 3
+        core.startContextPage = 2
+        core.endContextPage = 3
 
         // Trigger eviction by adding a page inside the window
         core.setState(successPage(2, listOf("updated")), silently = true)
@@ -46,8 +45,7 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `margin extends the keep range`() {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = SlidingWindowPagingCore(delegate = pagingCore, margin = 1)
+        val core = SlidingWindowPagingCache<String>(margin = 1)
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
@@ -56,8 +54,8 @@ class SlidingWindowPagingCoreTest {
         core.setState(successPage(5), silently = true)
 
         // Context window = 2..4, margin = 1 -> keep range = 1..5
-        pagingCore.startContextPage = 2
-        pagingCore.endContextPage = 4
+        core.startContextPage = 2
+        core.endContextPage = 4
 
         core.setState(successPage(3, listOf("trigger")), silently = true)
 
@@ -70,8 +68,7 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `no eviction when paginator not started`() {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
+        val core = SlidingWindowPagingCache<String>()
 
         // Not started (startContextPage = 0, endContextPage = 0)
         core.setState(successPage(1), silently = true)
@@ -84,8 +81,7 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `evictionListener called for evicted pages`() {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
+        val core = SlidingWindowPagingCache<String>()
         val evicted = mutableListOf<Int>()
         core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
 
@@ -93,8 +89,8 @@ class SlidingWindowPagingCoreTest {
         core.setState(successPage(2), silently = true)
         core.setState(successPage(5), silently = true)
 
-        pagingCore.startContextPage = 2
-        pagingCore.endContextPage = 3
+        core.startContextPage = 2
+        core.endContextPage = 3
 
         // Trigger eviction
         core.setState(successPage(3), silently = true)
@@ -105,8 +101,7 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `clear works correctly`() {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
+        val core = SlidingWindowPagingCache<String>()
         core.setState(successPage(1), silently = true)
         core.clear()
         assertEquals(0, core.size)
@@ -114,8 +109,7 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `release works correctly`() {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
+        val core = SlidingWindowPagingCache<String>()
         core.setState(successPage(1), silently = true)
         core.release(silently = true)
         assertEquals(0, core.size)
@@ -123,15 +117,14 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `margin 0 keeps only context window pages`() {
-        val pagingCore = PagingCore<String>(initialCapacity = 5)
-        val core = SlidingWindowPagingCore(delegate = pagingCore, margin = 0)
+        val core = SlidingWindowPagingCache<String>(margin = 0)
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
         core.setState(successPage(3), silently = true)
 
-        pagingCore.startContextPage = 2
-        pagingCore.endContextPage = 2
+        core.startContextPage = 2
+        core.endContextPage = 2
 
         // Trigger
         core.setState(successPage(2, listOf("update")), silently = true)
@@ -143,7 +136,7 @@ class SlidingWindowPagingCoreTest {
     @Test
     fun `negative margin throws`() {
         assertFailsWith<IllegalArgumentException> {
-            SlidingWindowPagingCore<String>(margin = -1)
+            SlidingWindowPagingCache<String>(margin = -1)
         }
     }
 
@@ -151,9 +144,10 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `jump evicts pages from previous location`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
-        val paginator = MutablePaginator(core = core) { page: Int ->
+        val core = SlidingWindowPagingCache<String>()
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = core, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 
@@ -176,9 +170,10 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `goNextPage keeps context window pages`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
-        val paginator = MutablePaginator(core = core) { page: Int ->
+        val core = SlidingWindowPagingCache<String>()
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = core, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 
@@ -194,9 +189,10 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `margin keeps extra pages after jump`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val core = SlidingWindowPagingCore(delegate = pagingCore, margin = 1)
-        val paginator = MutablePaginator(core = core) { page: Int ->
+        val core = SlidingWindowPagingCache<String>(margin = 1)
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = core, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 
@@ -219,9 +215,10 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `release works after sliding window navigation`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
-        val paginator = MutablePaginator(core = core) { page: Int ->
+        val core = SlidingWindowPagingCache<String>()
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = core, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 
@@ -236,9 +233,10 @@ class SlidingWindowPagingCoreTest {
 
     @Test
     fun `serialization roundtrip works`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
-        val paginator = MutablePaginator(core = core) { page: Int ->
+        val core = SlidingWindowPagingCache<String>()
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = core, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 
@@ -246,20 +244,21 @@ class SlidingWindowPagingCoreTest {
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
         val savedPages = paginator.cache.pages.toList()
-        val snapshot = paginator.cache.pagingCore.saveState()
-        paginator.cache.pagingCore.restoreState(snapshot, silently = true)
+        val snapshot = paginator.core.saveState()
+        paginator.core.restoreState(snapshot, silently = true)
 
         assertEquals(savedPages, paginator.cache.pages.toList())
     }
 
     @Test
     fun `evictionListener called on jump eviction`() = runTest {
-        val pagingCore = PagingCore<String>(initialCapacity = 3)
-        val core = SlidingWindowPagingCore(delegate = pagingCore)
+        val core = SlidingWindowPagingCache<String>()
         val evicted = mutableListOf<Int>()
         core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
 
-        val paginator = MutablePaginator(core = core) { page: Int ->
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = core, initialCapacity = 3)
+        ) { page: Int ->
             List(3) { "p${page}_item$it" }
         }
 

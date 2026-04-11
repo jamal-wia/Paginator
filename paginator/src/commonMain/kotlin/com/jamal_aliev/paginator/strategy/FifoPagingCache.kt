@@ -1,13 +1,12 @@
 package com.jamal_aliev.paginator.strategy
 
-import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.page.PageState
 
 /**
  * A [PagingCache] decorator that enforces a **FIFO (First In, First Out)** eviction policy.
  *
  * When the number of cached pages exceeds [maxSize], the oldest page (first inserted)
- * is evicted. Unlike [LruPagingCore], reading a page does **not** change its eviction priority —
+ * is evicted. Unlike [LruPagingCache], reading a page does **not** change its eviction priority —
  * only the original insertion order matters.
  *
  * Pages within the current context window can optionally be protected from eviction
@@ -15,41 +14,27 @@ import com.jamal_aliev.paginator.page.PageState
  *
  * ## Usage
  * ```kotlin
- * val core = PagingCore<Item>(20)
  * val paginator = MutablePaginator(
- *     core = core,
- *     eviction = FifoPagingCore(delegate = core, maxSize = 30),
+ *     pagingCore = PagingCore(
+ *         cache = FifoPagingCache(maxSize = 30),
+ *         initialCapacity = 20
+ *     ),
  *     source = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param delegate The inner [PagingCache] to delegate to. Defaults to a plain [PagingCore].
+ * @param delegate The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
  * @param maxSize Maximum number of pages to keep in cache. Must be > 0.
  * @param protectContextWindow If `true` (default), pages within the visible context window
  *   are never evicted.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
-class FifoPagingCore<T>(
-    private val delegate: PagingCache<T> = PagingCore(),
+class FifoPagingCache<T>(
+    private val delegate: PagingCache<T> = DefaultPagingCache(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
 ) : PagingCache<T> by delegate {
-
-    /**
-     * Backward-compatible constructor that creates a [PagingCore] with the given capacity.
-     */
-    constructor(
-        initialCapacity: Int,
-        maxSize: Int,
-        protectContextWindow: Boolean = true,
-        evictionListener: CacheEvictionListener<T>? = null,
-    ) : this(
-        delegate = PagingCore(initialCapacity),
-        maxSize = maxSize,
-        protectContextWindow = protectContextWindow,
-        evictionListener = evictionListener,
-    )
 
     init {
         require(maxSize > 0) { "maxSize must be greater than 0, was $maxSize" }

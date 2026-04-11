@@ -36,9 +36,9 @@ class RestartAndRefreshTest {
         var callCount = 0
         val paginator = MutablePaginator<String> { page ->
             callCount++
-            MutableList(this.cache.pagingCore.capacity) { "call${callCount}_item$it" }
+            MutableList(this.core.capacity) { "call${callCount}_item$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         val firstData = paginator.cache.getStateOf(1)!!.data.toList()
@@ -59,9 +59,9 @@ class RestartAndRefreshTest {
         var callCount = 0
         val paginator = MutablePaginator<String> { page ->
             callCount++
-            MutableList(this.cache.pagingCore.capacity) { "call${callCount}_p${page}_item$it" }
+            MutableList(this.core.capacity) { "call${callCount}_p${page}_item$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
@@ -101,9 +101,9 @@ class RestartAndRefreshTest {
         var shouldFail = false
         val paginator = MutablePaginator<String> { page ->
             if (shouldFail && page == 1) throw RuntimeException("refresh error")
-            MutableList(this.cache.pagingCore.capacity) { "p${page}_item$it" }
+            MutableList(this.core.capacity) { "p${page}_item$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         assertTrue(paginator.cache.getStateOf(1)!!.isSuccessState())
@@ -126,9 +126,9 @@ class RestartAndRefreshTest {
         var generation = 0
         val paginator = MutablePaginator<String> { page ->
             generation++
-            MutableList(this.cache.pagingCore.capacity) { "gen${generation}_p${page}_$it" }
+            MutableList(this.core.capacity) { "gen${generation}_p${page}_$it" }
         }
-        paginator.cache.pagingCore.resize(capacity = 3, resize = false, silently = true)
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)

@@ -32,7 +32,7 @@ class PagingCoreSerializationTest {
                 emptyList()
             }
         }.apply {
-            cache.pagingCore.resize(capacity = capacity, resize = false, silently = true)
+            core.resize(capacity = capacity, resize = false, silently = true)
         }
     }
 
@@ -44,13 +44,13 @@ class PagingCoreSerializationTest {
             paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
         }
 
-        val snapshot = paginator.cache.pagingCore.saveState()
+        val snapshot = paginator.core.saveState()
 
         val restored = PagingCore<TestItem>()
         restored.restoreState(snapshot, silently = true)
 
         assertEquals(paginator.cache.pages, restored.pages)
-        assertEquals(paginator.cache.pagingCore.capacity, restored.capacity)
+        assertEquals(paginator.core.capacity, restored.capacity)
         assertEquals(paginator.cache.startContextPage, restored.startContextPage)
         assertEquals(paginator.cache.endContextPage, restored.endContextPage)
 
@@ -80,7 +80,7 @@ class PagingCoreSerializationTest {
             silently = true,
         )
 
-        val snapshot = paginator.cache.pagingCore.saveState()
+        val snapshot = paginator.core.saveState()
 
         // Verify snapshot entry
         val entry = snapshot.entries.first { it.page == 2 }
@@ -110,7 +110,7 @@ class PagingCoreSerializationTest {
             silently = true,
         )
 
-        val snapshot = paginator.cache.pagingCore.saveState()
+        val snapshot = paginator.core.saveState()
 
         val entry = snapshot.entries.first { it.page == 2 }
         assertTrue(entry.wasDirty)
@@ -133,7 +133,7 @@ class PagingCoreSerializationTest {
             silently = true,
         )
 
-        val snapshot = paginator.cache.pagingCore.saveState()
+        val snapshot = paginator.core.saveState()
 
         val entry = snapshot.entries.first { it.page == 2 }
         assertEquals(PageEntryType.EMPTY, entry.type)
@@ -154,10 +154,10 @@ class PagingCoreSerializationTest {
             paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
         }
 
-        paginator.cache.pagingCore.markDirty(1)
-        paginator.cache.pagingCore.markDirty(3)
+        paginator.core.markDirty(1)
+        paginator.core.markDirty(3)
 
-        val snapshot = paginator.cache.pagingCore.saveState()
+        val snapshot = paginator.core.saveState()
 
         val restored = PagingCore<TestItem>()
         restored.restoreState(snapshot, silently = true)
@@ -173,7 +173,7 @@ class PagingCoreSerializationTest {
         paginator.jump(BookmarkInt(2), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
-        val snapshot = paginator.cache.pagingCore.saveState()
+        val snapshot = paginator.core.saveState()
 
         val restored = PagingCore<TestItem>()
         restored.restoreState(snapshot, silently = true)
@@ -188,7 +188,7 @@ class PagingCoreSerializationTest {
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
         val originalId = paginator.cache.getStateOf(1)!!.id
-        val snapshot = paginator.cache.pagingCore.saveState()
+        val snapshot = paginator.core.saveState()
 
         val restored = PagingCore<TestItem>()
         restored.restoreState(snapshot, silently = true)
@@ -223,9 +223,9 @@ class PagingCoreSerializationTest {
         for (i in 2..3) {
             paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
         }
-        paginator.cache.pagingCore.markDirty(2)
+        paginator.core.markDirty(2)
 
-        val json = paginator.cache.pagingCore.saveStateToJson(TestItem.serializer())
+        val json = paginator.core.saveStateToJson(TestItem.serializer())
 
         assertTrue(json.isNotBlank())
 
@@ -233,7 +233,7 @@ class PagingCoreSerializationTest {
         restored.restoreStateFromJson(json, TestItem.serializer(), silently = true)
 
         assertEquals(paginator.cache.pages, restored.pages)
-        assertEquals(paginator.cache.pagingCore.capacity, restored.capacity)
+        assertEquals(paginator.core.capacity, restored.capacity)
         assertEquals(paginator.cache.startContextPage, restored.startContextPage)
         assertEquals(paginator.cache.endContextPage, restored.endContextPage)
         assertTrue(restored.isDirty(2))
@@ -263,7 +263,7 @@ class PagingCoreSerializationTest {
             silently = true,
         )
 
-        val snapshot = paginator.cache.pagingCore.saveState()
+        val snapshot = paginator.core.saveState()
         val entry = snapshot.entries.first { it.page == 2 }
         assertEquals("network timeout", entry.errorMessage)
 
@@ -276,7 +276,7 @@ class PagingCoreSerializationTest {
         val paginator = createTestPaginator()
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
-        val snapshot = paginator.cache.pagingCore.saveState()
+        val snapshot = paginator.core.saveState()
         for (entry in snapshot.entries) {
             assertNull(entry.errorMessage)
         }
@@ -298,7 +298,7 @@ class PagingCoreSerializationTest {
             silently = true,
         )
 
-        val json = paginator.cache.pagingCore.saveStateToJson(TestItem.serializer())
+        val json = paginator.core.saveStateToJson(TestItem.serializer())
         assertTrue(json.contains("bad state"))
 
         val restored = PagingCore<TestItem>()
@@ -322,8 +322,8 @@ class PagingCoreSerializationTest {
         paginator2.goNextPage(silentlyLoading = true, silentlyResult = true) // page 3
         paginator2.goNextPage(silentlyLoading = true, silentlyResult = true) // page 4
 
-        val fullSnapshot = paginator2.cache.pagingCore.saveState(contextOnly = false)
-        val contextSnapshot = paginator2.cache.pagingCore.saveState(contextOnly = true)
+        val fullSnapshot = paginator2.core.saveState(contextOnly = false)
+        val contextSnapshot = paginator2.core.saveState(contextOnly = true)
 
         // Context window is 2..4
         assertEquals(paginator2.cache.startContextPage, contextSnapshot.startContextPage)
@@ -347,7 +347,7 @@ class PagingCoreSerializationTest {
             paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
         }
 
-        val snapshot = paginator.cache.pagingCore.saveState(contextOnly = false)
+        val snapshot = paginator.core.saveState(contextOnly = false)
         assertEquals(5, snapshot.entries.size)
     }
 

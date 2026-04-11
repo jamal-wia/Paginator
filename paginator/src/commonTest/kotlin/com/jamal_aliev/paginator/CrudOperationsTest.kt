@@ -44,7 +44,7 @@ class CrudOperationsTest {
             silently = true,
             isDirty = true
         )
-        assertTrue(paginator.cache.pagingCore.isDirty(1))
+        assertTrue(paginator.core.isDirty(1))
     }
 
     @Test
@@ -89,7 +89,7 @@ class CrudOperationsTest {
     fun `removeElement with isDirty marks page dirty`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
         paginator.removeElement(page = 1, index = 0, silently = true, isDirty = true)
-        assertTrue(paginator.cache.pagingCore.isDirty(1))
+        assertTrue(paginator.core.isDirty(1))
     }
 
     @Test
@@ -149,7 +149,7 @@ class CrudOperationsTest {
             silently = true,
             isDirty = true
         )
-        assertTrue(paginator.cache.pagingCore.isDirty(1))
+        assertTrue(paginator.core.isDirty(1))
     }
 
     @Test

@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.strategy
 
-import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.time.Duration
 import kotlin.time.TimeMark
@@ -18,15 +17,16 @@ import kotlin.time.TimeSource
  *
  * ## Usage
  * ```kotlin
- * val core = PagingCore<Item>(20)
  * val paginator = MutablePaginator(
- *     core = core,
- *     eviction = TtlPagingCore(delegate = core, ttl = 5.minutes),
+ *     pagingCore = PagingCore(
+ *         cache = TtlPagingCache(ttl = 5.minutes),
+ *         initialCapacity = 20
+ *     ),
  *     source = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param delegate The inner [PagingCache] to delegate to. Defaults to a plain [PagingCore].
+ * @param delegate The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
  * @param ttl Maximum time a page can remain in cache before being eligible for eviction.
  * @param refreshOnAccess If `true`, reading a page via [getStateOf] or [getElement]
  *   resets its TTL timer. Default is `false`.
@@ -36,33 +36,14 @@ import kotlin.time.TimeSource
  *   or a test implementation for deterministic testing.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
-class TtlPagingCore<T>(
-    private val delegate: PagingCache<T> = PagingCore(),
+class TtlPagingCache<T>(
+    private val delegate: PagingCache<T> = DefaultPagingCache(),
     val ttl: Duration,
     val refreshOnAccess: Boolean = false,
     val protectContextWindow: Boolean = true,
     val timeSource: TimeSource = TimeSource.Monotonic,
     var evictionListener: CacheEvictionListener<T>? = null,
 ) : PagingCache<T> by delegate {
-
-    /**
-     * Backward-compatible constructor that creates a [PagingCore] with the given capacity.
-     */
-    constructor(
-        initialCapacity: Int,
-        ttl: Duration,
-        refreshOnAccess: Boolean = false,
-        protectContextWindow: Boolean = true,
-        timeSource: TimeSource = TimeSource.Monotonic,
-        evictionListener: CacheEvictionListener<T>? = null,
-    ) : this(
-        delegate = PagingCore(initialCapacity),
-        ttl = ttl,
-        refreshOnAccess = refreshOnAccess,
-        protectContextWindow = protectContextWindow,
-        timeSource = timeSource,
-        evictionListener = evictionListener,
-    )
 
     init {
         require(ttl.isPositive()) { "ttl must be positive, was $ttl" }

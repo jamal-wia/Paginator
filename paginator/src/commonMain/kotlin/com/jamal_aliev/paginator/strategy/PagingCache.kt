@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.strategy
 
-import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
@@ -8,15 +7,17 @@ import com.jamal_aliev.paginator.page.PageState
 /**
  * A minimal interface exposing only the cache operations needed by eviction strategies.
  *
- * [com.jamal_aliev.paginator.PagingCore] implements this interface, allowing it to be
- * passed as a delegate to eviction strategies. Each strategy also implements this
- * interface via Kotlin `by` delegation, enabling arbitrary composition:
+ * [DefaultPagingCache] provides the standard sorted-list implementation.
+ * Each eviction strategy also implements this interface via Kotlin `by` delegation,
+ * enabling arbitrary composition:
  *
  * ```kotlin
  * val paginator = MutablePaginator(
- *     core = LruPagingCore(
- *         delegate = TtlPagingCore(delegate = PagingCore(20), ttl = 5.minutes),
- *         maxSize = 50
+ *     pagingCore = PagingCore(
+ *         cache = LruPagingCache(
+ *             delegate = TtlPagingCache(ttl = 5.minutes),
+ *             maxSize = 50
+ *         )
  *     ),
  *     source = { ... }
  * )
@@ -25,14 +26,6 @@ import com.jamal_aliev.paginator.page.PageState
  * @param T The type of elements contained in each page.
  */
 interface PagingCache<T> {
-
-    /**
-     * The underlying [PagingCore] at the bottom of the delegation chain.
-     *
-     * Strategies delegate this automatically via `by delegate`.
-     * [PagingCore] returns `this`.
-     */
-    val pagingCore: PagingCore<T>
 
     var logger: PaginatorLogger?
 
@@ -46,10 +39,10 @@ interface PagingCache<T> {
     val isStarted: Boolean
 
     /** The left (lowest) boundary of the current context window. `0` = not started. */
-    val startContextPage: Int
+    var startContextPage: Int
 
     /** The right (highest) boundary of the current context window. `0` = not started. */
-    val endContextPage: Int
+    var endContextPage: Int
 
     /** Stores a page state in the cache (replaces existing if present). */
     fun setState(state: PageState<T>, silently: Boolean = false)
