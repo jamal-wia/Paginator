@@ -49,6 +49,7 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
 - [Element-Level Operations](#element-level-operations)
 - [Custom PageState Subclasses](#custom-pagestate-subclasses)
 - [State Serialization](#state-serialization)
+- [Transaction (Atomic Operations)](#transaction-atomic-operations)
 - [Lock Flags](#lock-flags)
 - [Prefetch (Auto-Pagination on Scroll)](#prefetch-auto-pagination-on-scroll)
 - [Cache Eviction Strategies](#cache-eviction-strategies)
@@ -105,6 +106,8 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
   navigation, state changes, and element-level operations. No logging by default (`null`)
 - **State serialization** -- save and restore the paginator's cache to/from JSON via
   `kotlinx.serialization`, enabling seamless recovery after process death on any KMP target
+- **Transaction** -- execute a block of operations atomically with `transaction { }`. If any
+  exception occurs (including coroutine cancellation), the entire paginator state is rolled back
 - **Context window** -- the paginator tracks a contiguous range of successfully loaded pages (
   `startContextPage..endContextPage`), which defines the visible snapshot
 
@@ -248,6 +251,7 @@ The library provides two classes with different levels of access:
 | **CRUD** | -- | `setElement`, `removeElement`, `addAllElements`, `replaceAllElements` |
 | **Capacity** | Read-only `capacity` | `core.resize()` |
 | **Dirty pages** | `markDirty`, `clearDirty`, `isDirty` | Inherits + `isDirty` param on CRUD ops |
+| **Transaction** | `transaction { }` | Inherits |
 | **Lifecycle** | `release()` | Inherits |
 
 **When to use `Paginator`:** Use it when you only need to navigate and observe pages (e.g., a
@@ -716,6 +720,125 @@ val snapshot: PaginatorSnapshot<Article> = paginator.saveState()
 
 // Restore from a snapshot object (suspend, thread-safe)
 paginator.restoreState(snapshot)
+```
+
+---
+
+## Transaction (Atomic Operations)
+
+The `transaction` method executes a block of operations atomically: if anything inside the block
+throws an exception (including `CancellationException`), the paginator's entire state is rolled
+back to the point before the block was entered.
+
+```kotlin
+paginator.transaction {
+    (this as MutablePaginator).setElement(updatedItem, page = 1, index = 0)
+    removeElement(page = 2, index = 3)
+    addAllElements(listOf(newItem), targetPage = 3, index = 0)
+    // If any operation fails, ALL changes are reverted
+}
+```
+
+### Return Value
+
+`transaction` returns whatever the block returns:
+
+```kotlin
+val removedItem: String = paginator.transaction {
+    (this as MutablePaginator).removeElement(page = 1, index = 0)
+}
+```
+
+### What Gets Rolled Back
+
+On failure, **everything** is restored to the pre-transaction state:
+
+| State                          | Rolled back |
+|--------------------------------|-------------|
+| Cache (all page states & data) | Yes         |
+| Context window boundaries      | Yes         |
+| Capacity                       | Yes         |
+| Dirty page flags               | Yes         |
+| `finalPage`                    | Yes         |
+| Bookmarks & bookmark position  | Yes         |
+| Lock flags                     | Yes         |
+| `recyclingBookmark`            | Yes         |
+
+### Cancellation Safety
+
+If the coroutine running the transaction is cancelled, the rollback is performed inside
+`withContext(NonCancellable)` to guarantee the state is fully restored before the
+`CancellationException` propagates.
+
+### Nesting
+
+Nested `transaction` calls work as nested savepoints:
+
+```kotlin
+paginator.transaction {
+    // outer changes...
+
+    try {
+        transaction {
+            // inner changes...
+            throw RuntimeException("inner failure")
+        }
+    } catch (e: RuntimeException) {
+        // inner rolled back, outer changes still intact
+    }
+
+    // outer continues...
+}
+```
+
+### Difference from `saveState` / `restoreState`
+
+`transaction` uses an in-memory deep copy that **preserves exact `PageState` types**
+(`ErrorPage`, `ProgressPage`, etc.). In contrast, `saveState`/`restoreState` are designed for
+serialization and convert `ErrorPage`/`ProgressPage` to `SuccessPage`/`EmptyPage` (marking them
+dirty for re-fetch). Use `transaction` for runtime atomicity; use `saveState`/`restoreState` for
+persistence across process death.
+
+### Navigation Inside Transactions
+
+Navigation operations (`jump`, `goNextPage`, `goPreviousPage`, `restart`, `refresh`) work inside
+`transaction` blocks without deadlock. The `navigationMutex` is not held during the block --
+each navigation operation acquires and releases it independently.
+
+```kotlin
+paginator.transaction {
+    jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
+    goNextPage(silentlyLoading = true, silentlyResult = true)
+    // If goNextPage fails, both the jump and goNextPage are reverted
+}
+```
+
+### Optimistic Updates
+
+A common pattern: apply a change immediately in the UI, make the server request, and roll back
+automatically if the request fails.
+
+```kotlin
+data class Post(val id: Long, val title: String, val liked: Boolean, val likesCount: Int)
+
+fun likePost(post: Post, page: Int, index: Int) = viewModelScope.launch {
+    try {
+        paginator.transaction {
+            // 1. Optimistically apply the change — UI updates immediately
+            (this as MutablePaginator).setElement(
+                element = post.copy(liked = true, likesCount = post.likesCount + 1),
+                page = page,
+                index = index,
+            )
+
+            // 2. Send the request — if it throws, the setElement above is rolled back
+            api.likePost(post.id)
+        }
+    } catch (e: Exception) {
+        showError("Failed to like post")
+        // No manual rollback needed — transaction already restored the original state
+    }
+}
 ```
 
 ---
@@ -1312,6 +1435,7 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | `asFlow()`                               | `Flow<List<PageState<T>>>`      | Full cache flow                        |
 | `resize(capacity, resize, silently)`     | `Unit`                          | Change capacity (via `core`)           |
 | `release(capacity, silently)`            | `Unit`                          | Full reset                             |
+| `transaction(block)`                     | `R`                             | Atomic block with rollback on failure  |
 | `saveState(contextOnly)`                 | `PaginatorSnapshot<T>`          | Full state snapshot (suspend)          |
 | `restoreState(snapshot, silently)`       | `Unit`                          | Restore full state (suspend)           |
 | `saveStateToJson(serializer, json)`      | `String`                        | Save full state as JSON (suspend)      |

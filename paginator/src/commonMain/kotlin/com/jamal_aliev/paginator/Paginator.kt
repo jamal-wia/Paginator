@@ -1257,6 +1257,109 @@ open class Paginator<T>(
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    //  Transactional operations
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Executes [block] as an atomic operation: if [block] throws any exception
+     * (including [CancellationException]), the paginator's entire state is rolled back
+     * to the point before the block was entered.
+     *
+     * On success, the block's return value is returned and all state changes are kept.
+     *
+     * **Snapshot fidelity:** unlike [saveState]/[restoreState] (which are designed for
+     * serialization and convert [PageState.ErrorPage]/[PageState.ProgressPage] to success entries),
+     * this method preserves exact [PageState] types through an in-memory deep copy.
+     *
+     * **Concurrency:** the [navigationMutex] is **not** held during [block] execution,
+     * so navigation operations inside the block work without deadlock. This matches the
+     * concurrency model of CRUD operations.
+     *
+     * **Nesting:** nested `transaction` calls work naturally — each creates its own
+     * save point. An inner failure rolls back to the inner save point; an outer failure
+     * rolls back to the outer save point.
+     *
+     * @param R The return type of the block.
+     * @param block The transactional block to execute with this paginator as receiver.
+     * @return The result of [block] if it completes successfully.
+     * @throws Throwable Re-throws whatever [block] threw, after rolling back state.
+     */
+    private class TransactionSavepoint<T>(
+        val states: List<PageState<T>>,
+        val startContextPage: Int,
+        val endContextPage: Int,
+        val capacity: Int,
+        val dirtyPages: Set<Int>,
+        val finalPage: Int,
+        val bookmarks: List<Bookmark>,
+        val bookmarkIndex: Int,
+        val recyclingBookmark: Boolean,
+        val lockJump: Boolean,
+        val lockGoNextPage: Boolean,
+        val lockGoPreviousPage: Boolean,
+        val lockRestart: Boolean,
+        val lockRefresh: Boolean,
+    )
+
+    private fun createSavepoint() = TransactionSavepoint(
+        states = core.states.map { it.copy(data = it.data.toMutableList()) },
+        startContextPage = cache.startContextPage,
+        endContextPage = cache.endContextPage,
+        capacity = core.capacity,
+        dirtyPages = core.dirtyPages,
+        finalPage = finalPage,
+        bookmarks = bookmarks.toList(),
+        bookmarkIndex = bookmarkIndex,
+        recyclingBookmark = recyclingBookmark,
+        lockJump = lockJump,
+        lockGoNextPage = lockGoNextPage,
+        lockGoPreviousPage = lockGoPreviousPage,
+        lockRestart = lockRestart,
+        lockRefresh = lockRefresh,
+    )
+
+    private fun rollback(savepoint: TransactionSavepoint<T>) {
+        cache.clear()
+        core.clearAllDirty()
+
+        savepoint.states.forEach { cache.setState(it, silently = true) }
+        savepoint.dirtyPages.forEach { core.markDirty(it) }
+
+        core.capacity = savepoint.capacity
+        core.startContextPage = savepoint.startContextPage
+        core.endContextPage = savepoint.endContextPage
+
+        finalPage = savepoint.finalPage
+        bookmarks.clear()
+        bookmarks.addAll(savepoint.bookmarks)
+        bookmarkIndex = savepoint.bookmarkIndex
+        recyclingBookmark = savepoint.recyclingBookmark
+        lockJump = savepoint.lockJump
+        lockGoNextPage = savepoint.lockGoNextPage
+        lockGoPreviousPage = savepoint.lockGoPreviousPage
+        lockRestart = savepoint.lockRestart
+        lockRefresh = savepoint.lockRefresh
+
+        core.snapshot()
+        if (core.enableCacheFlow) {
+            core.repeatCacheFlow()
+        }
+    }
+
+    open suspend fun <R> transaction(block: suspend Paginator<T>.() -> R): R {
+        val savepoint = createSavepoint()
+        try {
+            return block()
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) { rollback(savepoint) }
+            throw e
+        } catch (e: Throwable) {
+            rollback(savepoint)
+            throw e
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     //  Operators (delegating to cache)
     // ──────────────────────────────────────────────────────────────────────────
 
