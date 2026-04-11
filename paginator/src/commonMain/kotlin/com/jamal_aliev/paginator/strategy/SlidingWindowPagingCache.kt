@@ -25,24 +25,29 @@ import com.jamal_aliev.paginator.page.PageState
  * )
  * ```
  *
- * @param delegate The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
+ * @param cache The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
  * @param margin Number of pages to keep beyond each edge of the context window.
  *   Default is `0` (strict window). For example, `margin = 2` keeps pages in
  *   `(startContextPage - 2)..(endContextPage + 2)`.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
 class SlidingWindowPagingCache<T>(
-    private val delegate: PagingCache<T> = DefaultPagingCache(),
+    private val cache: PagingCache<T> = DefaultPagingCache(),
     val margin: Int = 0,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCache<T> by delegate {
+) : PagingCache<T> by cache, WrappablePagingCache<T> {
+
+    override val wrapped: PagingCache<T> get() = cache
+
+    override fun wrap(inner: PagingCache<T>): SlidingWindowPagingCache<T> =
+        SlidingWindowPagingCache(cache = inner, margin = margin, evictionListener = evictionListener)
 
     init {
         require(margin >= 0) { "margin must be >= 0, was $margin" }
     }
 
     override fun setState(state: PageState<T>, silently: Boolean) {
-        delegate.setState(state, silently)
+        cache.setState(state, silently)
         performEviction(justAddedPage = state.page)
     }
 
@@ -54,19 +59,19 @@ class SlidingWindowPagingCache<T>(
      *   to avoid evicting a page before the context window has expanded to include it.
      */
     private fun performEviction(justAddedPage: Int = -1) {
-        if (!delegate.isStarted) return
+        if (!cache.isStarted) return
 
-        val keepRange = (delegate.startContextPage - margin)..(delegate.endContextPage + margin)
+        val keepRange = (cache.startContextPage - margin)..(cache.endContextPage + margin)
 
         // Collect pages to evict (iterate over a copy to avoid concurrent modification)
-        val pagesToEvict = delegate.pages.filter { page ->
+        val pagesToEvict = cache.pages.filter { page ->
             page != justAddedPage && page !in keepRange
         }
 
         for (page in pagesToEvict) {
-            val evicted = delegate.removeFromCache(page)
+            val evicted = cache.removeFromCache(page)
             if (evicted != null) {
-                delegate.logger?.log("SlidingWindowPagingCore", "evict: page=${evicted.page}")
+                cache.logger?.log("SlidingWindowPagingCore", "evict: page=${evicted.page}")
                 evictionListener?.onEvicted(evicted)
             }
         }

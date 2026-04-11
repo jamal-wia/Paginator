@@ -35,18 +35,24 @@ import com.jamal_aliev.paginator.page.PageState
  * )
  * ```
  *
- * @param delegate The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
+ * @param cache The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
  * @param maxSize Maximum number of pages to keep in cache. Must be > 0.
  * @param protectContextWindow If `true` (default), pages within the visible context window
  *   are never evicted, even if they are the least recently used.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
 class LruPagingCache<T>(
-    private val delegate: PagingCache<T> = DefaultPagingCache(),
+    private val cache: PagingCache<T> = DefaultPagingCache(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCache<T> by delegate {
+) : PagingCache<T> by cache, WrappablePagingCache<T> {
+
+    override val wrapped: PagingCache<T> get() = cache
+
+    override fun wrap(inner: PagingCache<T>): LruPagingCache<T> =
+        LruPagingCache(cache = inner, maxSize = maxSize,
+            protectContextWindow = protectContextWindow, evictionListener = evictionListener)
 
     init {
         require(maxSize > 0) { "maxSize must be greater than 0, was $maxSize" }
@@ -56,36 +62,36 @@ class LruPagingCache<T>(
     private val accessOrder = mutableListOf<Int>()
 
     override fun setState(state: PageState<T>, silently: Boolean) {
-        delegate.setState(state, silently)
+        cache.setState(state, silently)
         touchPage(state.page)
         performEviction(justAddedPage = state.page)
     }
 
     override fun getStateOf(page: Int): PageState<T>? {
-        val result = delegate.getStateOf(page)
+        val result = cache.getStateOf(page)
         if (result != null) touchPage(page)
         return result
     }
 
     override fun getElement(page: Int, index: Int): T? {
-        val result = delegate.getElement(page, index)
+        val result = cache.getElement(page, index)
         if (result != null) touchPage(page)
         return result
     }
 
     override fun removeFromCache(page: Int): PageState<T>? {
-        val result = delegate.removeFromCache(page)
+        val result = cache.removeFromCache(page)
         accessOrder.remove(page)
         return result
     }
 
     override fun clear() {
-        delegate.clear()
+        cache.clear()
         accessOrder.clear()
     }
 
     override fun release(capacity: Int, silently: Boolean) {
-        delegate.release(capacity, silently)
+        cache.release(capacity, silently)
         accessOrder.clear()
     }
 
@@ -103,20 +109,20 @@ class LruPagingCache<T>(
      *   to avoid immediately evicting a freshly inserted page.
      */
     private fun performEviction(justAddedPage: Int = -1) {
-        while (delegate.size > maxSize) {
-            val protectedRange = if (protectContextWindow && delegate.isStarted)
-                delegate.startContextPage..delegate.endContextPage else null
+        while (cache.size > maxSize) {
+            val protectedRange = if (protectContextWindow && cache.isStarted)
+                cache.startContextPage..cache.endContextPage else null
 
             val victim = accessOrder.firstOrNull { page ->
                 page != justAddedPage &&
-                    delegate.getStateOf(page) != null &&
+                    cache.getStateOf(page) != null &&
                     (protectedRange == null || page !in protectedRange)
             } ?: break // all pages are protected — cannot evict
 
-            val evicted = delegate.removeFromCache(victim)
+            val evicted = cache.removeFromCache(victim)
             accessOrder.remove(victim)
             if (evicted != null) {
-                delegate.logger?.log("LruPagingCache", "evict: page=${evicted.page}")
+                cache.logger?.log("LruPagingCache", "evict: page=${evicted.page}")
                 evictionListener?.onEvicted(evicted)
             }
         }

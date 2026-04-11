@@ -26,7 +26,7 @@ import kotlin.time.TimeSource
  * )
  * ```
  *
- * @param delegate The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
+ * @param cache The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
  * @param ttl Maximum time a page can remain in cache before being eligible for eviction.
  * @param refreshOnAccess If `true`, reading a page via [getStateOf] or [getElement]
  *   resets its TTL timer. Default is `false`.
@@ -37,13 +37,20 @@ import kotlin.time.TimeSource
  * @param evictionListener Optional listener notified when a page is evicted.
  */
 class TtlPagingCache<T>(
-    private val delegate: PagingCache<T> = DefaultPagingCache(),
+    private val cache: PagingCache<T> = DefaultPagingCache(),
     val ttl: Duration,
     val refreshOnAccess: Boolean = false,
     val protectContextWindow: Boolean = true,
     val timeSource: TimeSource = TimeSource.Monotonic,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCache<T> by delegate {
+) : PagingCache<T> by cache, WrappablePagingCache<T> {
+
+    override val wrapped: PagingCache<T> get() = cache
+
+    override fun wrap(inner: PagingCache<T>): TtlPagingCache<T> =
+        TtlPagingCache(cache = inner, ttl = ttl, refreshOnAccess = refreshOnAccess,
+            protectContextWindow = protectContextWindow, timeSource = timeSource,
+            evictionListener = evictionListener)
 
     init {
         require(ttl.isPositive()) { "ttl must be positive, was $ttl" }
@@ -53,13 +60,13 @@ class TtlPagingCache<T>(
     private val timestamps = hashMapOf<Int, TimeMark>()
 
     override fun setState(state: PageState<T>, silently: Boolean) {
-        delegate.setState(state, silently)
+        cache.setState(state, silently)
         timestamps[state.page] = timeSource.markNow()
         performEviction()
     }
 
     override fun getStateOf(page: Int): PageState<T>? {
-        val result = delegate.getStateOf(page)
+        val result = cache.getStateOf(page)
         if (result != null && refreshOnAccess) {
             timestamps[page] = timeSource.markNow()
         }
@@ -67,7 +74,7 @@ class TtlPagingCache<T>(
     }
 
     override fun getElement(page: Int, index: Int): T? {
-        val result = delegate.getElement(page, index)
+        val result = cache.getElement(page, index)
         if (result != null && refreshOnAccess) {
             timestamps[page] = timeSource.markNow()
         }
@@ -75,18 +82,18 @@ class TtlPagingCache<T>(
     }
 
     override fun removeFromCache(page: Int): PageState<T>? {
-        val result = delegate.removeFromCache(page)
+        val result = cache.removeFromCache(page)
         if (result != null) timestamps.remove(page)
         return result
     }
 
     override fun clear() {
-        delegate.clear()
+        cache.clear()
         timestamps.clear()
     }
 
     override fun release(capacity: Int, silently: Boolean) {
-        delegate.release(capacity, silently)
+        cache.release(capacity, silently)
         timestamps.clear()
     }
 
@@ -95,22 +102,22 @@ class TtlPagingCache<T>(
      * Pages in the context window are skipped when [protectContextWindow] is `true`.
      */
     private fun performEviction() {
-        val protectedRange = if (protectContextWindow && delegate.isStarted)
-            delegate.startContextPage..delegate.endContextPage else null
+        val protectedRange = if (protectContextWindow && cache.isStarted)
+            cache.startContextPage..cache.endContextPage else null
 
         val expired = timestamps.entries
             .filter { (_, mark) -> mark.elapsedNow() > ttl }
             .map { (page, _) -> page }
             .filter { page ->
-                delegate.getStateOf(page) != null &&
+                cache.getStateOf(page) != null &&
                     (protectedRange == null || page !in protectedRange)
             }
 
         for (page in expired) {
-            val evicted = delegate.removeFromCache(page)
+            val evicted = cache.removeFromCache(page)
             timestamps.remove(page)
             if (evicted != null) {
-                delegate.logger?.log("TtlPagingCore", "evict: page=${evicted.page} (ttl expired)")
+                cache.logger?.log("TtlPagingCore", "evict: page=${evicted.page} (ttl expired)")
                 evictionListener?.onEvicted(evicted)
             }
         }

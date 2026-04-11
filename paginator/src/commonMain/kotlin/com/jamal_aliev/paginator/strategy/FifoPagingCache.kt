@@ -23,18 +23,24 @@ import com.jamal_aliev.paginator.page.PageState
  * )
  * ```
  *
- * @param delegate The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
+ * @param cache The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
  * @param maxSize Maximum number of pages to keep in cache. Must be > 0.
  * @param protectContextWindow If `true` (default), pages within the visible context window
  *   are never evicted.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
 class FifoPagingCache<T>(
-    private val delegate: PagingCache<T> = DefaultPagingCache(),
+    private val cache: PagingCache<T> = DefaultPagingCache(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCache<T> by delegate {
+) : PagingCache<T> by cache, WrappablePagingCache<T> {
+
+    override val wrapped: PagingCache<T> get() = cache
+
+    override fun wrap(inner: PagingCache<T>): FifoPagingCache<T> =
+        FifoPagingCache(cache = inner, maxSize = maxSize,
+            protectContextWindow = protectContextWindow, evictionListener = evictionListener)
 
     init {
         require(maxSize > 0) { "maxSize must be greater than 0, was $maxSize" }
@@ -44,8 +50,8 @@ class FifoPagingCache<T>(
     private val insertionOrder = mutableListOf<Int>()
 
     override fun setState(state: PageState<T>, silently: Boolean) {
-        val isNew = delegate.getStateOf(state.page) == null
-        delegate.setState(state, silently)
+        val isNew = cache.getStateOf(state.page) == null
+        cache.setState(state, silently)
         if (isNew) {
             insertionOrder.add(state.page)
         }
@@ -53,18 +59,18 @@ class FifoPagingCache<T>(
     }
 
     override fun removeFromCache(page: Int): PageState<T>? {
-        val result = delegate.removeFromCache(page)
+        val result = cache.removeFromCache(page)
         if (result != null) insertionOrder.remove(page)
         return result
     }
 
     override fun clear() {
-        delegate.clear()
+        cache.clear()
         insertionOrder.clear()
     }
 
     override fun release(capacity: Int, silently: Boolean) {
-        delegate.release(capacity, silently)
+        cache.release(capacity, silently)
         insertionOrder.clear()
     }
 
@@ -75,20 +81,20 @@ class FifoPagingCache<T>(
      * @param justAddedPage The page that was just added — never evicted in the same call.
      */
     private fun performEviction(justAddedPage: Int = -1) {
-        while (delegate.size > maxSize) {
-            val protectedRange = if (protectContextWindow && delegate.isStarted)
-                delegate.startContextPage..delegate.endContextPage else null
+        while (cache.size > maxSize) {
+            val protectedRange = if (protectContextWindow && cache.isStarted)
+                cache.startContextPage..cache.endContextPage else null
 
             val victim = insertionOrder.firstOrNull { page ->
                 page != justAddedPage &&
-                    delegate.getStateOf(page) != null &&
+                    cache.getStateOf(page) != null &&
                     (protectedRange == null || page !in protectedRange)
             } ?: break
 
-            val evicted = delegate.removeFromCache(victim)
+            val evicted = cache.removeFromCache(victim)
             insertionOrder.remove(victim)
             if (evicted != null) {
-                delegate.logger?.log("FifoPagingCore", "evict: page=${evicted.page}")
+                cache.logger?.log("FifoPagingCore", "evict: page=${evicted.page}")
                 evictionListener?.onEvicted(evicted)
             }
         }
