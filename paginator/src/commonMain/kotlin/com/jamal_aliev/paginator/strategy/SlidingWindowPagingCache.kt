@@ -37,10 +37,10 @@ class SlidingWindowPagingCache<T>(
     var evictionListener: CacheEvictionListener<T>? = null,
 ) : PagingCache<T> by cache, WrappablePagingCache<T> {
 
-    override val wrapped: PagingCache<T> get() = cache
+    internal val wrapped: PagingCache<T> get() = cache
 
-    override fun wrap(inner: PagingCache<T>): SlidingWindowPagingCache<T> =
-        SlidingWindowPagingCache(cache = inner, margin = margin, evictionListener = evictionListener)
+    override fun replaceLeaf(newLeaf: PagingCache<T>): SlidingWindowPagingCache<T> =
+        SlidingWindowPagingCache(cache = cache.withLeaf(newLeaf), margin = margin, evictionListener = evictionListener)
 
     init {
         require(margin >= 0) { "margin must be >= 0, was $margin" }

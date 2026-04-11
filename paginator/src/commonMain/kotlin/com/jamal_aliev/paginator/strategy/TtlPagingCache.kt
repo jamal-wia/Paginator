@@ -45,10 +45,10 @@ class TtlPagingCache<T>(
     var evictionListener: CacheEvictionListener<T>? = null,
 ) : PagingCache<T> by cache, WrappablePagingCache<T> {
 
-    override val wrapped: PagingCache<T> get() = cache
+    internal val wrapped: PagingCache<T> get() = cache
 
-    override fun wrap(inner: PagingCache<T>): TtlPagingCache<T> =
-        TtlPagingCache(cache = inner, ttl = ttl, refreshOnAccess = refreshOnAccess,
+    override fun replaceLeaf(newLeaf: PagingCache<T>): TtlPagingCache<T> =
+        TtlPagingCache(cache = cache.withLeaf(newLeaf), ttl = ttl, refreshOnAccess = refreshOnAccess,
             protectContextWindow = protectContextWindow, timeSource = timeSource,
             evictionListener = evictionListener)
 

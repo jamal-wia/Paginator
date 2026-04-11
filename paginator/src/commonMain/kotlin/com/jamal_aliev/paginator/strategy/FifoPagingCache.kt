@@ -36,10 +36,10 @@ class FifoPagingCache<T>(
     var evictionListener: CacheEvictionListener<T>? = null,
 ) : PagingCache<T> by cache, WrappablePagingCache<T> {
 
-    override val wrapped: PagingCache<T> get() = cache
+    internal val wrapped: PagingCache<T> get() = cache
 
-    override fun wrap(inner: PagingCache<T>): FifoPagingCache<T> =
-        FifoPagingCache(cache = inner, maxSize = maxSize,
+    override fun replaceLeaf(newLeaf: PagingCache<T>): FifoPagingCache<T> =
+        FifoPagingCache(cache = cache.withLeaf(newLeaf), maxSize = maxSize,
             protectContextWindow = protectContextWindow, evictionListener = evictionListener)
 
     init {
