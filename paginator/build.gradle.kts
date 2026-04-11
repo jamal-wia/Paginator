@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "io.github.jamal-wia"
-version = "7.5.0"
+version = "7.6.0"
 
 mavenPublishing {
     configure(KotlinMultiplatform(javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty()))
