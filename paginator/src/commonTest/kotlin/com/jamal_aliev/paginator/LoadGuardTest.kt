@@ -98,7 +98,7 @@ class LoadGuardTest {
             silentlyResult = true,
             loadGuard = { page, _ -> page <= 2 }
         )
-        assertEquals(2, paginator.core.endContextPage)
+        assertEquals(2, paginator.cache.endContextPage)
 
         assertFailsWith<LoadGuardedException> {
             runBlocking {

@@ -17,11 +17,11 @@ class NavigationEdgeCasesTest {
     @Test
     fun `goNextPage without jump auto-starts at page 1`() = runTest {
         val paginator = createDeterministicPaginator(capacity = 5)
-        assertFalse(paginator.core.isStarted)
+        assertFalse(paginator.cache.isStarted)
 
         val result = paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
-        assertTrue(paginator.core.isStarted)
+        assertTrue(paginator.cache.isStarted)
         assertTrue(result.isSuccessState())
         assertEquals(1, result.page)
     }
@@ -53,28 +53,28 @@ class NavigationEdgeCasesTest {
     fun `goNextPage expands context window`() = runTest {
         val paginator = createDeterministicPaginator(capacity = 5)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(1, paginator.core.endContextPage)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(1, paginator.cache.endContextPage)
 
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(2, paginator.core.endContextPage)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(2, paginator.cache.endContextPage)
 
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
     }
 
     @Test
     fun `goPreviousPage expands context window backward`() = runTest {
         val paginator = createDeterministicPaginator(capacity = 5)
         paginator.jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
-        assertEquals(5, paginator.core.startContextPage)
-        assertEquals(5, paginator.core.endContextPage)
+        assertEquals(5, paginator.cache.startContextPage)
+        assertEquals(5, paginator.cache.endContextPage)
 
         paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
-        assertEquals(4, paginator.core.startContextPage)
-        assertEquals(5, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.startContextPage)
+        assertEquals(5, paginator.cache.endContextPage)
     }
 
     @Test
@@ -83,13 +83,13 @@ class NavigationEdgeCasesTest {
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
 
         // Jump to page 10 — context should reset
         paginator.jump(BookmarkInt(10), silentlyLoading = true, silentlyResult = true)
-        assertEquals(10, paginator.core.startContextPage)
-        assertEquals(10, paginator.core.endContextPage)
+        assertEquals(10, paginator.cache.startContextPage)
+        assertEquals(10, paginator.cache.endContextPage)
     }
 
     @Test
@@ -122,9 +122,9 @@ class NavigationEdgeCasesTest {
     fun `source error produces ErrorPage`() = runTest {
         val paginator = MutablePaginator<String> { page ->
             if (page == 2) throw RuntimeException("network error")
-            MutableList(this.core.capacity) { "item_$it" }
+            MutableList(this.cache.pagingCore.capacity) { "item_$it" }
         }
-        paginator.core.resize(capacity = 5, resize = false, silently = true)
+        paginator.cache.pagingCore.resize(capacity = 5, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         val errorPage = paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
@@ -136,10 +136,10 @@ class NavigationEdgeCasesTest {
     @Test
     fun `isStarted is false initially and true after jump`() = runTest {
         val paginator = createDeterministicPaginator()
-        assertFalse(paginator.core.isStarted)
+        assertFalse(paginator.cache.isStarted)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
-        assertTrue(paginator.core.isStarted)
+        assertTrue(paginator.cache.isStarted)
     }
 
     @Test
@@ -148,12 +148,12 @@ class NavigationEdgeCasesTest {
         val paginator = MutablePaginator<String> { page ->
             MutableList(10) { "item_$it" }
         }
-        paginator.core.resize(capacity = PagingCore.UNLIMITED_CAPACITY, resize = false, silently = true)
-        assertTrue(paginator.core.isCapacityUnlimited)
+        paginator.cache.pagingCore.resize(capacity = PagingCore.UNLIMITED_CAPACITY, resize = false, silently = true)
+        assertTrue(paginator.cache.pagingCore.isCapacityUnlimited)
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
-        val state = paginator.core.getStateOf(1)!!
+        val state = paginator.cache.getStateOf(1)!!
         assertTrue(state.isSuccessState())
-        assertTrue(paginator.core.isFilledSuccessState(state))
+        assertTrue(paginator.cache.pagingCore.isFilledSuccessState(state))
     }
 }

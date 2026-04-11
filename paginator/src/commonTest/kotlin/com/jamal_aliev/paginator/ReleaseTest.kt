@@ -16,23 +16,23 @@ class ReleaseTest {
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
-        assertTrue(paginator.core.size > 0)
-        assertTrue(paginator.core.isStarted)
+        assertTrue(paginator.cache.size > 0)
+        assertTrue(paginator.cache.isStarted)
 
         paginator.release()
 
-        assertEquals(0, paginator.core.size)
-        assertFalse(paginator.core.isStarted)
-        assertEquals(0, paginator.core.startContextPage)
-        assertEquals(0, paginator.core.endContextPage)
+        assertEquals(0, paginator.cache.size)
+        assertFalse(paginator.cache.isStarted)
+        assertEquals(0, paginator.cache.startContextPage)
+        assertEquals(0, paginator.cache.endContextPage)
         assertEquals(Int.MAX_VALUE, paginator.finalPage)
-        assertEquals(PagingCore.DEFAULT_CAPACITY, paginator.core.capacity)
+        assertEquals(PagingCore.DEFAULT_CAPACITY, paginator.cache.pagingCore.capacity)
         assertFalse(paginator.lockJump)
         assertFalse(paginator.lockGoNextPage)
         assertFalse(paginator.lockGoPreviousPage)
         assertFalse(paginator.lockRestart)
         assertFalse(paginator.lockRefresh)
-        assertTrue(paginator.core.dirtyPages.isEmpty())
+        assertTrue(paginator.cache.pagingCore.dirtyPages.isEmpty())
     }
 
     @Test
@@ -42,8 +42,8 @@ class ReleaseTest {
 
         paginator.release(capacity = 10)
 
-        assertEquals(10, paginator.core.capacity)
-        assertEquals(0, paginator.core.size)
+        assertEquals(10, paginator.cache.pagingCore.capacity)
+        assertEquals(0, paginator.cache.size)
     }
 
     @Test
@@ -80,14 +80,14 @@ class ReleaseTest {
     @Test
     fun `release clears dirty pages`() = runTest {
         val paginator = createDeterministicPaginator()
-        paginator.core.markDirty(1)
-        paginator.core.markDirty(2)
-        paginator.core.markDirty(3)
+        paginator.cache.pagingCore.markDirty(1)
+        paginator.cache.pagingCore.markDirty(2)
+        paginator.cache.pagingCore.markDirty(3)
 
-        assertEquals(3, paginator.core.dirtyPages.size)
+        assertEquals(3, paginator.cache.pagingCore.dirtyPages.size)
 
         paginator.release()
 
-        assertTrue(paginator.core.dirtyPages.isEmpty())
+        assertTrue(paginator.cache.pagingCore.dirtyPages.isEmpty())
     }
 }

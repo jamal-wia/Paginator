@@ -28,13 +28,13 @@ class MutablePaginatorTest {
                 createRandomPageState(page = index, listOf("$index page"))
             }
         pageStates.shuffled().forEach { pageState: PageState<String> ->
-            paginator.core.setState(pageState, silently = true)
+            paginator.cache.setState(pageState, silently = true)
         }
 
-        assertEquals(pageStates.size, paginator.core.size)
+        assertEquals(pageStates.size, paginator.cache.size)
 
-        assertEquals(pageStates, paginator.core.states)
-        assertEquals(pageStates.map { it.page }, paginator.core.pages)
+        assertEquals(pageStates, paginator.cache.pagingCore.states)
+        assertEquals(pageStates.map { it.page }, paginator.cache.pages)
         pageStates.forEach { pageState: PageState<String> ->
             assertEquals(pageState, paginator[pageState.page])
         }
@@ -44,58 +44,58 @@ class MutablePaginatorTest {
             assertEquals(pageState.data, removed.data)
         }
 
-        assertEquals(0, paginator.core.size)
+        assertEquals(0, paginator.cache.size)
     }
 
     @Test
     fun `test jump and next`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
-            Source.getByPage(page, this.core.capacity)
+            Source.getByPage(page, this.cache.pagingCore.capacity)
         }
         do {
             paginator.jump(BookmarkInt(page = 1))
         } while (paginator[1] !is SuccessPage<*>)
-        assertEquals(1, paginator.core.size)
+        assertEquals(1, paginator.cache.size)
 
         do {
             paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        } while (paginator.core.size < 10)
-        assertEquals(10, paginator.core.size)
+        } while (paginator.cache.size < 10)
+        assertEquals(10, paginator.cache.size)
         assertEquals(
             listOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
-            paginator.core.pages
+            paginator.cache.pages
         )
     }
 
     @Test
     fun `test jump and previous`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
-            Source.getByPage(page, this.core.capacity)
+            Source.getByPage(page, this.cache.pagingCore.capacity)
         }
         do {
             paginator.jump(BookmarkInt(page = 10))
         } while (paginator[10] !is SuccessPage<*>)
-        assertEquals(1, paginator.core.size)
+        assertEquals(1, paginator.cache.size)
 
         do {
             paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
-        } while (paginator.core.size < 10)
-        assertEquals(10, paginator.core.size)
+        } while (paginator.cache.size < 10)
+        assertEquals(10, paginator.cache.size)
         assertEquals(
             listOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
-            paginator.core.pages
+            paginator.cache.pages
         )
     }
 
     @Test
     fun `test jump next previous`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
-            Source.getByPage(page, this.core.capacity)
+            Source.getByPage(page, this.cache.pagingCore.capacity)
         }
         do {
             paginator.jump(BookmarkInt(page = 20))
         } while (paginator[20] !is SuccessPage<*>)
-        assertEquals(1, paginator.core.size)
+        assertEquals(1, paginator.cache.size)
 
         do {
             paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
@@ -103,13 +103,13 @@ class MutablePaginatorTest {
         do {
             paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
         } while (paginator[1] !is SuccessPage<*>)
-        assertEquals((1..40).toList(), paginator.core.pages)
+        assertEquals((1..40).toList(), paginator.cache.pages)
     }
 
     @Test
     fun `test jump jump and remove`(): Unit = runTest {
         val paginator = MutablePaginator { emptyList<String>() }.apply {
-            core.resize(capacity = 1, resize = false, silently = true)
+            cache.pagingCore.resize(capacity = 1, resize = false, silently = true)
         }
         val data = listOf(
             SuccessPage(page = 1, data = listOf("data of page")), // 0
@@ -123,12 +123,12 @@ class MutablePaginatorTest {
             SuccessPage(page = 23, data = listOf("data of page")), // 8
         )
 
-        assertFalse(paginator.core.isStarted)
-        assertEquals(0, paginator.core.size)
-        data.forEach(paginator.core::setState)
-        assertEquals(data.size, paginator.core.size)
+        assertFalse(paginator.cache.isStarted)
+        assertEquals(0, paginator.cache.size)
+        data.forEach(paginator.cache::setState)
+        assertEquals(data.size, paginator.cache.size)
         paginator.jump(BookmarkInt(page = 13))
-        assertTrue(paginator.core.isStarted)
+        assertTrue(paginator.cache.isStarted)
         assertEquals(data[0], paginator[1])
         assertEquals(data[1], paginator[2])
         assertEquals(data[2], paginator[3])
@@ -138,8 +138,8 @@ class MutablePaginatorTest {
         assertEquals(data[6], paginator[21])
         assertEquals(data[7], paginator[22])
         assertEquals(data[8], paginator[23])
-        assertEquals(11, paginator.core.startContextPage)
-        assertEquals(13, paginator.core.endContextPage)
+        assertEquals(11, paginator.cache.startContextPage)
+        assertEquals(13, paginator.cache.endContextPage)
 
         assertEquals(data[1], paginator.removeState(pageToRemove = 2))
         assertEquals(data[0], paginator[1])
@@ -151,8 +151,8 @@ class MutablePaginatorTest {
         assertEquals(data[7], paginator[21])
         assertEquals(data[8], paginator[22])
         assertNull(paginator[23])
-        assertEquals(11, paginator.core.startContextPage)
-        assertEquals(12, paginator.core.endContextPage)
+        assertEquals(11, paginator.cache.startContextPage)
+        assertEquals(12, paginator.cache.endContextPage)
 
         assertEquals(data[8], paginator.removeState(pageToRemove = 22))
         assertEquals(data[0], paginator[1])
@@ -164,8 +164,8 @@ class MutablePaginatorTest {
         assertEquals(data[7], paginator[21])
         assertNull(paginator[22])
         assertNull(paginator[23])
-        assertEquals(11, paginator.core.startContextPage)
-        assertEquals(12, paginator.core.endContextPage)
+        assertEquals(11, paginator.cache.startContextPage)
+        assertEquals(12, paginator.cache.endContextPage)
 
         assertEquals(data[5], paginator.removeState(pageToRemove = 12))
         assertEquals(data[0], paginator[1])
@@ -177,8 +177,8 @@ class MutablePaginatorTest {
         assertNull(paginator[21])
         assertNull(paginator[22])
         assertNull(paginator[23])
-        assertEquals(11, paginator.core.startContextPage)
-        assertEquals(11, paginator.core.endContextPage)
+        assertEquals(11, paginator.cache.startContextPage)
+        assertEquals(11, paginator.cache.endContextPage)
 
         assertEquals(data[0], paginator.removeState(pageToRemove = 1))
         assertEquals(data[2], paginator[1])
@@ -190,8 +190,8 @@ class MutablePaginatorTest {
         assertNull(paginator[21])
         assertNull(paginator[22])
         assertNull(paginator[23])
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(1, paginator.core.endContextPage)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(1, paginator.cache.endContextPage)
 
         assertEquals(data[2], paginator.removeState(pageToRemove = 1))
         assertNull(paginator[1])
@@ -203,16 +203,16 @@ class MutablePaginatorTest {
         assertNull(paginator[21])
         assertNull(paginator[22])
         assertNull(paginator[23])
-        assertEquals(0, paginator.core.size)
-        assertEquals(0, paginator.core.startContextPage)
-        assertEquals(0, paginator.core.endContextPage)
+        assertEquals(0, paginator.cache.size)
+        assertEquals(0, paginator.cache.startContextPage)
+        assertEquals(0, paginator.cache.endContextPage)
     }
 
 
     @Test
     fun `test context findNearContextPage`(): Unit = runTest {
         val paginator = MutablePaginator { emptyList<String>() }.apply {
-            core.resize(capacity = 1, resize = false, silently = true)
+            cache.pagingCore.resize(capacity = 1, resize = false, silently = true)
         }
         val data = listOf(
             SuccessPage(page = 1, data = listOf("data of page")), // 0
@@ -225,45 +225,45 @@ class MutablePaginatorTest {
             SuccessPage(page = 22, data = listOf("data of page")), // 7
             SuccessPage(page = 23, data = listOf("data of page")), // 8
         )
-        assertFalse(paginator.core.isStarted)
-        assertEquals(0, paginator.core.size)
-        data.forEach(paginator.core::setState)
-        assertEquals(data.size, paginator.core.size)
+        assertFalse(paginator.cache.isStarted)
+        assertEquals(0, paginator.cache.size)
+        data.forEach(paginator.cache::setState)
+        assertEquals(data.size, paginator.cache.size)
 
-        paginator.core.findNearContextPage(startPoint = 1)
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(3, paginator.core.endContextPage)
+        paginator.cache.pagingCore.findNearContextPage(startPoint = 1)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
 
-        paginator.core.findNearContextPage(startPoint = 5, endPoint = 12)
-        assertEquals(11, paginator.core.startContextPage)
-        assertEquals(13, paginator.core.endContextPage)
+        paginator.cache.pagingCore.findNearContextPage(startPoint = 5, endPoint = 12)
+        assertEquals(11, paginator.cache.startContextPage)
+        assertEquals(13, paginator.cache.endContextPage)
 
-        paginator.core.findNearContextPage(startPoint = 4, endPoint = 6)
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(3, paginator.core.endContextPage)
+        paginator.cache.pagingCore.findNearContextPage(startPoint = 4, endPoint = 6)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
 
-        paginator.core.findNearContextPage(startPoint = 7)
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(3, paginator.core.endContextPage)
+        paginator.cache.pagingCore.findNearContextPage(startPoint = 7)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
 
-        paginator.core.findNearContextPage(startPoint = 7, endPoint = 8)
-        assertEquals(11, paginator.core.startContextPage)
-        assertEquals(13, paginator.core.endContextPage)
+        paginator.cache.pagingCore.findNearContextPage(startPoint = 7, endPoint = 8)
+        assertEquals(11, paginator.cache.startContextPage)
+        assertEquals(13, paginator.cache.endContextPage)
 
-        paginator.core.findNearContextPage(startPoint = 9, endPoint = 15)
-        assertEquals(11, paginator.core.startContextPage)
-        assertEquals(13, paginator.core.endContextPage)
+        paginator.cache.pagingCore.findNearContextPage(startPoint = 9, endPoint = 15)
+        assertEquals(11, paginator.cache.startContextPage)
+        assertEquals(13, paginator.cache.endContextPage)
 
-        paginator.core.findNearContextPage(startPoint = 9, endPoint = 20)
-        assertEquals(21, paginator.core.startContextPage)
-        assertEquals(23, paginator.core.endContextPage)
+        paginator.cache.pagingCore.findNearContextPage(startPoint = 9, endPoint = 20)
+        assertEquals(21, paginator.cache.startContextPage)
+        assertEquals(23, paginator.cache.endContextPage)
     }
 
     @Test
     fun `test finalPage with goNextPage`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Deterministic source - no random exceptions
-            List(this.core.capacity) { "item $it of page $page" }
+            List(this.cache.pagingCore.capacity) { "item $it of page $page" }
         }
         paginator.finalPage = 3
 
@@ -295,7 +295,7 @@ class MutablePaginatorTest {
     fun `test finalPage with jump`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Deterministic source - no random exceptions
-            List(this.core.capacity) { "item $it of page $page" }
+            List(this.cache.pagingCore.capacity) { "item $it of page $page" }
         }
         paginator.finalPage = 5
 
@@ -324,7 +324,7 @@ class MutablePaginatorTest {
         val paginator = MutablePaginator { page: Int ->
             // Use a simple source that doesn't throw random exceptions
             if (page <= 10) {
-                List(this.core.capacity) { "item $it of page $page" }
+                List(this.cache.pagingCore.capacity) { "item $it of page $page" }
             } else {
                 emptyList()
             }

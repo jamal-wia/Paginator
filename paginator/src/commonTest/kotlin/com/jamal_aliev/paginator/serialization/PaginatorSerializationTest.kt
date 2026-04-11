@@ -25,7 +25,7 @@ class PaginatorSerializationTest {
                 emptyList()
             }
         }.apply {
-            core.resize(capacity = capacity, resize = false, silently = true)
+            cache.pagingCore.resize(capacity = capacity, resize = false, silently = true)
         }
     }
 
@@ -66,10 +66,10 @@ class PaginatorSerializationTest {
         assertFalse(restored.lockRefresh)
 
         // Verify core state
-        assertEquals(paginator.core.startContextPage, restored.core.startContextPage)
-        assertEquals(paginator.core.endContextPage, restored.core.endContextPage)
-        assertEquals(paginator.core.capacity, restored.core.capacity)
-        assertEquals(paginator.core.pages, restored.core.pages)
+        assertEquals(paginator.cache.startContextPage, restored.cache.startContextPage)
+        assertEquals(paginator.cache.endContextPage, restored.cache.endContextPage)
+        assertEquals(paginator.cache.pagingCore.capacity, restored.cache.pagingCore.capacity)
+        assertEquals(paginator.cache.pages, restored.cache.pages)
     }
 
     @Test
@@ -135,7 +135,7 @@ class PaginatorSerializationTest {
         assertEquals(2, restored.bookmarks.size)
         assertEquals(10, restored.bookmarks[1].page)
         assertTrue(restored.lockJump)
-        assertEquals(paginator.core.pages, restored.core.pages)
+        assertEquals(paginator.cache.pages, restored.cache.pages)
     }
 
     @Test

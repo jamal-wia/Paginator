@@ -32,7 +32,7 @@ class PrefetchControllerTest {
                 emptyList()
             }
         }
-        paginator.core.resize(capacity = capacity, resize = false, silently = true)
+        paginator.cache.pagingCore.resize(capacity = capacity, resize = false, silently = true)
         paginator.finalPage = totalPages
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         for (i in 2..loadedPages) {
@@ -83,7 +83,7 @@ class PrefetchControllerTest {
     @Test
     fun `first onScroll is calibration only - no prefetch`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -98,13 +98,13 @@ class PrefetchControllerTest {
         )
         advanceUntilIdle()
 
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     @Test
     fun `second onScroll with forward movement triggers prefetch`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -117,7 +117,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(initialEndContext + 1, paginator.core.endContextPage)
+        assertEquals(initialEndContext + 1, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -127,7 +127,7 @@ class PrefetchControllerTest {
     @Test
     fun `onScroll is no-op when enabled is false`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -140,13 +140,13 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     @Test
     fun `onScroll is no-op when totalItemCount is zero`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -157,7 +157,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 0, lastVisibleIndex = 0, totalItemCount = 0)
         advanceUntilIdle()
 
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -178,14 +178,14 @@ class PrefetchControllerTest {
         // Trigger forward prefetch (page 4)
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
 
         controller.cancel()
 
         // Scroll further in expanded list (page 5)
         controller.onScroll(firstVisibleIndex = 32, lastVisibleIndex = 37, totalItemCount = 40)
         advanceUntilIdle()
-        assertEquals(5, paginator.core.endContextPage)
+        assertEquals(5, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -205,14 +205,14 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 20, lastVisibleIndex = 22, totalItemCount = 30)
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
 
         controller.reset()
 
         // This should be calibration again — no prefetch even though near end
         controller.onScroll(firstVisibleIndex = 32, lastVisibleIndex = 37, totalItemCount = 40)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -224,7 +224,7 @@ class PrefetchControllerTest {
         val paginator = createPrefetchTestPaginator(loadedPages = 1)
         // Jump to page 5 so there are pages before
         paginator.jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
-        val initialStartContext = paginator.core.startContextPage
+        val initialStartContext = paginator.cache.startContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -237,7 +237,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 2, lastVisibleIndex = 7, totalItemCount = 10)
         advanceUntilIdle()
 
-        assertEquals(initialStartContext, paginator.core.startContextPage)
+        assertEquals(initialStartContext, paginator.cache.startContextPage)
     }
 
     @Test
@@ -245,7 +245,7 @@ class PrefetchControllerTest {
         val paginator = createPrefetchTestPaginator(loadedPages = 1)
         // Jump to page 5 so pages 1-4 are before
         paginator.jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
-        val initialStartContext = paginator.core.startContextPage
+        val initialStartContext = paginator.cache.startContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -260,7 +260,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         assertTrue(
-            paginator.core.startContextPage < initialStartContext,
+            paginator.cache.startContextPage < initialStartContext,
             "startContextPage should decrease after backward prefetch"
         )
     }
@@ -273,7 +273,7 @@ class PrefetchControllerTest {
     fun `no forward prefetch when lockGoNextPage is true`() = runTest {
         val paginator = createPrefetchTestPaginator()
         paginator.lockGoNextPage = true
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -285,7 +285,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -328,7 +328,7 @@ class PrefetchControllerTest {
             loadCount++
             List(10) { "p${page}_item_$it" }
         }
-        paginator.core.resize(capacity = 10, resize = false, silently = true)
+        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         loadCount = 0 // reset after jump
@@ -375,7 +375,7 @@ class PrefetchControllerTest {
     @Test
     fun `negative firstVisibleIndex is ignored - RecyclerView NO_POSITION`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -394,13 +394,13 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         // Should prefetch because negative calls were skipped entirely
-        assertEquals(initialEndContext + 1, paginator.core.endContextPage)
+        assertEquals(initialEndContext + 1, paginator.cache.endContextPage)
     }
 
     @Test
     fun `negative totalItemCount does not crash or trigger prefetch`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -411,14 +411,14 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 0, lastVisibleIndex = 5, totalItemCount = -1)
         advanceUntilIdle()
 
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     @Test
     fun `inverted range - firstVisibleIndex greater than lastVisibleIndex`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
-        val initialStartContext = paginator.core.startContextPage
+        val initialEndContext = paginator.cache.endContextPage
+        val initialStartContext = paginator.cache.startContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -435,7 +435,7 @@ class PrefetchControllerTest {
         // Should not trigger forward prefetch (lastVisibleIndex went DOWN)
         // But might incorrectly trigger backward prefetch because firstVisibleIndex went UP?
         // Actually firstVisibleIndex=15 > prevFirstVisible=10, so scrollingBackward=false — that's fine.
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -445,7 +445,7 @@ class PrefetchControllerTest {
     @Test
     fun `exactly at the last item triggers prefetch - itemsFromEnd is 0`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -458,7 +458,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 25, lastVisibleIndex = 29, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(initialEndContext + 1, paginator.core.endContextPage)
+        assertEquals(initialEndContext + 1, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -468,7 +468,7 @@ class PrefetchControllerTest {
     @Test
     fun `lastVisibleIndex exceeding totalItemCount is clamped`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -482,7 +482,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 25, lastVisibleIndex = 35, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(initialEndContext + 1, paginator.core.endContextPage)
+        assertEquals(initialEndContext + 1, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -493,7 +493,7 @@ class PrefetchControllerTest {
     fun `no forward prefetch when endContextPage equals finalPage`() = runTest {
         val paginator = createPrefetchTestPaginator(totalPages = 3, loadedPages = 3)
         // All pages loaded, endContextPage should be 3 == finalPage
-        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
         assertEquals(3, paginator.finalPage)
 
         val controller = paginator.prefetchController(
@@ -508,7 +508,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         // Should not try to load page 4
-        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -518,7 +518,7 @@ class PrefetchControllerTest {
     @Test
     fun `no backward prefetch when startContextPage is 1`() = runTest {
         val paginator = createPrefetchTestPaginator(loadedPages = 3)
-        assertEquals(1, paginator.core.startContextPage)
+        assertEquals(1, paginator.cache.startContextPage)
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -532,7 +532,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 2, lastVisibleIndex = 7, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(1, paginator.core.startContextPage)
+        assertEquals(1, paginator.cache.startContextPage)
     }
 
     // =========================================================================
@@ -543,7 +543,7 @@ class PrefetchControllerTest {
     fun `no backward prefetch when lockGoPreviousPage is true`() = runTest {
         val paginator = createPrefetchTestPaginator(loadedPages = 1)
         paginator.jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
-        val initialStartContext = paginator.core.startContextPage
+        val initialStartContext = paginator.cache.startContextPage
         paginator.lockGoPreviousPage = true
 
         val controller = paginator.prefetchController(
@@ -558,7 +558,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 2, lastVisibleIndex = 6, totalItemCount = 10)
         advanceUntilIdle()
 
-        assertEquals(initialStartContext, paginator.core.startContextPage)
+        assertEquals(initialStartContext, paginator.cache.startContextPage)
     }
 
     // =========================================================================
@@ -568,7 +568,7 @@ class PrefetchControllerTest {
     @Test
     fun `same position repeated after calibration does not trigger prefetch`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -582,7 +582,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         // No direction detected, so no prefetch should trigger
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -592,7 +592,7 @@ class PrefetchControllerTest {
     @Test
     fun `single item list - forward scroll triggers prefetch`() = runTest {
         val paginator = createPrefetchTestPaginator(capacity = 1, loadedPages = 1)
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -606,7 +606,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         // Same position, no forward detected
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -617,8 +617,8 @@ class PrefetchControllerTest {
     fun `viewport expansion - firstVisible decreases AND lastVisible increases`() = runTest {
         val paginator = createPrefetchTestPaginator(loadedPages = 1)
         paginator.jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
-        val initialStartContext = paginator.core.startContextPage
-        val initialEndContext = paginator.core.endContextPage
+        val initialStartContext = paginator.cache.startContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -636,8 +636,8 @@ class PrefetchControllerTest {
         // backward because firstVisible decreased
         // This tests whether simultaneous forward+backward prefetch works correctly
         assertTrue(
-            paginator.core.endContextPage > initialEndContext
-                    || paginator.core.startContextPage < initialStartContext,
+            paginator.cache.endContextPage > initialEndContext
+                    || paginator.cache.startContextPage < initialStartContext,
             "At least one direction should have prefetched"
         )
     }
@@ -649,7 +649,7 @@ class PrefetchControllerTest {
     @Test
     fun `prefetchDistance larger than totalItemCount triggers prefetch immediately`() = runTest {
         val paginator = createPrefetchTestPaginator(capacity = 5, loadedPages = 1)
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -663,7 +663,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         // itemsFromEnd = 5 - 3 - 1 = 1, which is <= 100 => should prefetch
-        assertEquals(initialEndContext + 1, paginator.core.endContextPage)
+        assertEquals(initialEndContext + 1, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -673,7 +673,7 @@ class PrefetchControllerTest {
     @Test
     fun `re-enabling controller after disable preserves calibration state`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -692,13 +692,13 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 23, lastVisibleIndex = 28, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(initialEndContext + 1, paginator.core.endContextPage)
+        assertEquals(initialEndContext + 1, paginator.cache.endContextPage)
     }
 
     @Test
     fun `disabling during calibration phase - positions tracked, re-enable still needs calibration`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -715,7 +715,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         // Should NOT prefetch because initialized is still false
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -725,7 +725,7 @@ class PrefetchControllerTest {
     @Test
     fun `disable-reenable tracks scroll position - correct direction after re-enable`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -747,7 +747,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         // No forward prefetch because direction is correctly detected as backward
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -793,7 +793,7 @@ class PrefetchControllerTest {
             loadCount++
             List(10) { "p${page}_item_$it" }
         }
-        paginator.core.resize(capacity = 10, resize = false, silently = true)
+        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
         loadCount = 0
@@ -824,7 +824,7 @@ class PrefetchControllerTest {
         val paginator = MutablePaginator<String> { page: Int ->
             List(10) { "p${page}_item_$it" }
         }
-        paginator.core.resize(capacity = 10, resize = false, silently = true)
+        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         // NOT calling jump — paginator is unstarted, endContextPage = 0
 
@@ -842,7 +842,7 @@ class PrefetchControllerTest {
         // endContextPage=0 < finalPage=10, so it should try goNextPage
         // goNextPage on unstarted paginator jumps to page 1
         assertTrue(
-            paginator.core.endContextPage >= 1,
+            paginator.cache.endContextPage >= 1,
             "Prefetch should start the paginator by loading page 1"
         )
     }
@@ -854,7 +854,7 @@ class PrefetchControllerTest {
     @Test
     fun `changing prefetchDistance at runtime affects subsequent scrolls`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -866,7 +866,7 @@ class PrefetchControllerTest {
         // Forward scroll — itemsFromEnd = 30 - 25 - 1 = 4, which is > 1 => no prefetch
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 25, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
 
         // Increase prefetchDistance
         controller.prefetchDistance = 10
@@ -876,7 +876,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         // itemsFromEnd = 30 - 26 - 1 = 3, which is <= 10 => should prefetch now
-        assertEquals(initialEndContext + 1, paginator.core.endContextPage)
+        assertEquals(initialEndContext + 1, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -886,7 +886,7 @@ class PrefetchControllerTest {
     @Test
     fun `very large indices do not overflow or crash`() = runTest {
         val paginator = createPrefetchTestPaginator()
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -909,7 +909,7 @@ class PrefetchControllerTest {
 
         // itemsFromEnd = MAX_VALUE - (MAX_VALUE - 40) - 1 = 39, which is > 5
         // So no prefetch expected, but it should not crash
-        assertEquals(initialEndContext, paginator.core.endContextPage)
+        assertEquals(initialEndContext, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -923,7 +923,7 @@ class PrefetchControllerTest {
             capacity = 10,
             loadedPages = 1,
         )
-        assertEquals(1, paginator.core.endContextPage)
+        assertEquals(1, paginator.cache.endContextPage)
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -935,17 +935,17 @@ class PrefetchControllerTest {
         // Scroll near end to trigger page 2
         controller.onScroll(firstVisibleIndex = 5, lastVisibleIndex = 9, totalItemCount = 10)
         advanceUntilIdle()
-        assertEquals(2, paginator.core.endContextPage)
+        assertEquals(2, paginator.cache.endContextPage)
 
         // Now totalItemCount increased, scroll further for page 3
         controller.onScroll(firstVisibleIndex = 15, lastVisibleIndex = 19, totalItemCount = 20)
         advanceUntilIdle()
-        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
 
         // And page 4
         controller.onScroll(firstVisibleIndex = 25, lastVisibleIndex = 29, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -957,7 +957,7 @@ class PrefetchControllerTest {
         val paginator = createPrefetchTestPaginator(totalPages = 10, capacity = 10, loadedPages = 3)
         // Modify an element on page 1
         paginator.setElement(element = "MODIFIED", page = 1, index = 0, silently = true)
-        assertEquals("MODIFIED", paginator.core.getStateOf(1)!!.data[0])
+        assertEquals("MODIFIED", paginator.cache.getStateOf(1)!!.data[0])
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -966,9 +966,9 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
         // Modified element on page 1 must remain intact
-        assertEquals("MODIFIED", paginator.core.getStateOf(1)!!.data[0])
+        assertEquals("MODIFIED", paginator.cache.getStateOf(1)!!.data[0])
     }
 
     @Test
@@ -979,9 +979,9 @@ class PrefetchControllerTest {
         repeat(5) {
             paginator.removeElement(page = 3, index = 0, silently = true)
         }
-        assertEquals(5, paginator.core.getStateOf(3)!!.data.size)
+        assertEquals(5, paginator.cache.getStateOf(3)!!.data.size)
 
-        val totalItems = paginator.core.states.sumOf { it.data.size }
+        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
         // Calibration
@@ -992,14 +992,14 @@ class PrefetchControllerTest {
 
         // goNextPage detects page 3 as incomplete and re-fetches it (restoring to full capacity)
         // endContextPage stays at 3 but page 3 data is refreshed to full 10 items
-        assertEquals(3, paginator.core.endContextPage)
-        assertEquals(10, paginator.core.getStateOf(3)!!.data.size)
+        assertEquals(3, paginator.cache.endContextPage)
+        assertEquals(10, paginator.cache.getStateOf(3)!!.data.size)
     }
 
     @Test
     fun `addAllElements increases totalItemCount — prefetch may not trigger until further scroll`() = runTest {
         val paginator = createPrefetchTestPaginator(totalPages = 10, capacity = 10, loadedPages = 3)
-        val initialEndContext = paginator.core.endContextPage
+        val initialEndContext = paginator.cache.endContextPage
 
         // Add 10 elements to page 2, so total grows (page rebalancing may occur)
         paginator.addAllElements(
@@ -1008,7 +1008,7 @@ class PrefetchControllerTest {
             index = 0,
             silently = true,
         )
-        val totalItems = paginator.core.states.sumOf { it.data.size }
+        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 3)
 
@@ -1020,22 +1020,22 @@ class PrefetchControllerTest {
 
         val itemsFromEnd = totalItems - 20 - 1
         if (itemsFromEnd > 3) {
-            assertEquals(initialEndContext, paginator.core.endContextPage)
+            assertEquals(initialEndContext, paginator.cache.endContextPage)
         } else {
-            assertEquals(initialEndContext + 1, paginator.core.endContextPage)
+            assertEquals(initialEndContext + 1, paginator.cache.endContextPage)
         }
     }
 
     @Test
     fun `removeState collapses pages — prefetch respects new endContextPage`() = runTest {
         val paginator = createPrefetchTestPaginator(totalPages = 10, capacity = 10, loadedPages = 5)
-        assertEquals(5, paginator.core.endContextPage)
+        assertEquals(5, paginator.cache.endContextPage)
 
         // Remove page 3 — pages collapse
         paginator.removeState(pageToRemove = 3, silently = true)
 
-        val newEndContext = paginator.core.endContextPage
-        val totalItems = paginator.core.states.sumOf { it.data.size }
+        val newEndContext = paginator.cache.endContextPage
+        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1046,7 +1046,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         assertTrue(
-            paginator.core.endContextPage > newEndContext,
+            paginator.cache.endContextPage > newEndContext,
             "Prefetch should load a new page after removeState collapsed the context"
         )
     }
@@ -1069,9 +1069,9 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
         // Replaced elements should still be uppercase
-        assertTrue(paginator.core.getStateOf(1)!!.data[0].startsWith("P1_"))
+        assertTrue(paginator.cache.getStateOf(1)!!.data[0].startsWith("P1_"))
     }
 
     @Test
@@ -1081,7 +1081,7 @@ class PrefetchControllerTest {
             if (page == 2) page2LoadCount++
             List(10) { "p${page}_item_$it" }
         }
-        paginator.core.resize(capacity = 10, resize = false, silently = true)
+        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true) // load page 2
@@ -1096,7 +1096,7 @@ class PrefetchControllerTest {
             silently = true,
             isDirty = true,
         )
-        assertTrue(paginator.core.dirtyPages.contains(2))
+        assertTrue(paginator.cache.pagingCore.dirtyPages.contains(2))
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1106,7 +1106,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
         // Page 2 should have been re-fetched (dirty refresh)
         assertTrue(page2LoadCount > 0, "Dirty page 2 should have been refreshed")
     }
@@ -1125,12 +1125,12 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 20, lastVisibleIndex = 22, totalItemCount = 30)
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
 
         // Jump to page 7 — context resets
         paginator.jump(BookmarkInt(7), silentlyLoading = true, silentlyResult = true)
-        assertEquals(7, paginator.core.startContextPage)
-        assertEquals(7, paginator.core.endContextPage)
+        assertEquals(7, paginator.cache.startContextPage)
+        assertEquals(7, paginator.cache.endContextPage)
 
         // Reset controller because the list changed entirely
         controller.reset()
@@ -1140,18 +1140,18 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 3, lastVisibleIndex = 8, totalItemCount = 10)
         advanceUntilIdle()
 
-        assertEquals(8, paginator.core.endContextPage)
+        assertEquals(8, paginator.cache.endContextPage)
     }
 
     @Test
     fun `restart clears everything — prefetch works from page 1 again`() = runTest {
         val paginator = createPrefetchTestPaginator(totalPages = 10, capacity = 10, loadedPages = 5)
-        assertEquals(5, paginator.core.endContextPage)
+        assertEquals(5, paginator.cache.endContextPage)
 
         // Restart reloads from page 1
         paginator.restart(silentlyLoading = true, silentlyResult = true)
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(1, paginator.core.endContextPage)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(1, paginator.cache.endContextPage)
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1160,7 +1160,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 3, lastVisibleIndex = 8, totalItemCount = 10)
         advanceUntilIdle()
 
-        assertEquals(2, paginator.core.endContextPage)
+        assertEquals(2, paginator.cache.endContextPage)
     }
 
     @Test
@@ -1174,8 +1174,8 @@ class PrefetchControllerTest {
             finalSilently = true,
         )
 
-        assertEquals(1, paginator.core.startContextPage)
-        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1184,7 +1184,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
 
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
     }
 
     @Test
@@ -1194,10 +1194,10 @@ class PrefetchControllerTest {
 
         // Manually go to previous page (page 4)
         paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
-        assertEquals(4, paginator.core.startContextPage)
-        assertEquals(5, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.startContextPage)
+        assertEquals(5, paginator.cache.endContextPage)
 
-        val totalItems = paginator.core.states.sumOf { it.data.size }
+        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1206,7 +1206,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = totalItems - 8, lastVisibleIndex = totalItems - 3, totalItemCount = totalItems)
         advanceUntilIdle()
 
-        assertEquals(6, paginator.core.endContextPage)
+        assertEquals(6, paginator.cache.endContextPage)
     }
 
     @Test
@@ -1216,8 +1216,8 @@ class PrefetchControllerTest {
 
         // Manually go to next page (page 6)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        assertEquals(5, paginator.core.startContextPage)
-        assertEquals(6, paginator.core.endContextPage)
+        assertEquals(5, paginator.cache.startContextPage)
+        assertEquals(6, paginator.cache.endContextPage)
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -1232,7 +1232,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         assertTrue(
-            paginator.core.startContextPage < 5,
+            paginator.cache.startContextPage < 5,
             "Backward prefetch should have loaded page 4"
         )
     }
@@ -1246,10 +1246,10 @@ class PrefetchControllerTest {
         val paginator = createPrefetchTestPaginator(totalPages = 10, capacity = 10, loadedPages = 3)
 
         // Resize capacity from 10 to 5 — items redistribute into more pages
-        paginator.core.resize(capacity = 5, resize = true, silently = true)
+        paginator.cache.pagingCore.resize(capacity = 5, resize = true, silently = true)
 
-        val totalItems = paginator.core.states.sumOf { it.data.size }
-        val newEndContext = paginator.core.endContextPage
+        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val newEndContext = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 3)
 
@@ -1260,7 +1260,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         assertTrue(
-            paginator.core.endContextPage > newEndContext,
+            paginator.cache.endContextPage > newEndContext,
             "Prefetch should load a new page after resize"
         )
     }
@@ -1279,17 +1279,17 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 20, lastVisibleIndex = 22, totalItemCount = 30)
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
 
         // Release resets the paginator entirely (capacity resets to DEFAULT_CAPACITY=20)
         paginator.release(silently = true)
-        assertEquals(0, paginator.core.endContextPage)
+        assertEquals(0, paginator.cache.endContextPage)
 
         // Restore capacity to match source output size and re-initialize
-        paginator.core.resize(capacity = 10, resize = false, silently = true)
+        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
-        assertEquals(1, paginator.core.endContextPage)
+        assertEquals(1, paginator.cache.endContextPage)
 
         // Reset controller for new state
         controller.reset()
@@ -1299,7 +1299,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 3, lastVisibleIndex = 8, totalItemCount = 10)
         advanceUntilIdle()
 
-        assertEquals(2, paginator.core.endContextPage)
+        assertEquals(2, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -1316,7 +1316,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 20, lastVisibleIndex = 22, totalItemCount = 30)
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
 
         // Server told us there are only 4 pages total
         paginator.finalPage = 4
@@ -1325,14 +1325,14 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 32, lastVisibleIndex = 37, totalItemCount = 40)
         advanceUntilIdle()
 
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
     }
 
     @Test
     fun `increasing finalPage mid-scroll allows further prefetch`() = runTest {
         val paginator = createPrefetchTestPaginator(totalPages = 10, capacity = 10, loadedPages = 3)
         paginator.finalPage = 3 // initially only 3 pages allowed
-        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1340,7 +1340,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 20, lastVisibleIndex = 22, totalItemCount = 30)
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
 
         // Server says more pages available
         paginator.finalPage = 10
@@ -1348,7 +1348,7 @@ class PrefetchControllerTest {
         // Scroll again — now should load page 4
         controller.onScroll(firstVisibleIndex = 23, lastVisibleIndex = 28, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
     }
 
     // =========================================================================
@@ -1366,7 +1366,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 20, lastVisibleIndex = 22, totalItemCount = 30)
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
 
         // Unlock
         paginator.lockGoNextPage = false
@@ -1374,7 +1374,7 @@ class PrefetchControllerTest {
         // Scroll again — should prefetch now
         controller.onScroll(firstVisibleIndex = 23, lastVisibleIndex = 28, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
     }
 
     @Test
@@ -1393,7 +1393,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 5, lastVisibleIndex = 9, totalItemCount = 10)
         controller.onScroll(firstVisibleIndex = 2, lastVisibleIndex = 6, totalItemCount = 10)
         advanceUntilIdle()
-        assertEquals(5, paginator.core.startContextPage)
+        assertEquals(5, paginator.cache.startContextPage)
 
         // Unlock
         paginator.lockGoPreviousPage = false
@@ -1401,7 +1401,7 @@ class PrefetchControllerTest {
         // Scroll backward again — should prefetch now
         controller.onScroll(firstVisibleIndex = 1, lastVisibleIndex = 5, totalItemCount = 10)
         advanceUntilIdle()
-        assertTrue(paginator.core.startContextPage < 5)
+        assertTrue(paginator.cache.startContextPage < 5)
     }
 
     // =========================================================================
@@ -1418,7 +1418,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 20, lastVisibleIndex = 22, totalItemCount = 30)
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
 
         // Remove elements from page 2 between prefetches.
         // Cascading pulls from page 3 → page 3 from page 4 → page 4 becomes incomplete.
@@ -1426,18 +1426,18 @@ class PrefetchControllerTest {
             paginator.removeElement(page = 2, index = 0, silently = true)
         }
 
-        val page4Size = paginator.core.getStateOf(4)!!.data.size
-        assertTrue(page4Size < paginator.core.capacity, "Page 4 should be incomplete after cascading removes")
+        val page4Size = paginator.cache.getStateOf(4)!!.data.size
+        assertTrue(page4Size < paginator.cache.pagingCore.capacity, "Page 4 should be incomplete after cascading removes")
 
-        val totalItems = paginator.core.states.sumOf { it.data.size }
+        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
 
         // Continue scrolling forward — goNextPage will re-fetch page 4 (incomplete)
         controller.onScroll(firstVisibleIndex = totalItems - 8, lastVisibleIndex = totalItems - 3, totalItemCount = totalItems)
         advanceUntilIdle()
 
         // endContextPage stays at 4, but page 4 data is refreshed to full capacity
-        assertEquals(4, paginator.core.endContextPage)
-        assertEquals(10, paginator.core.getStateOf(4)!!.data.size)
+        assertEquals(4, paginator.cache.endContextPage)
+        assertEquals(10, paginator.cache.getStateOf(4)!!.data.size)
     }
 
     @Test
@@ -1447,7 +1447,7 @@ class PrefetchControllerTest {
             if (page == 1) page1LoadCount++
             List(10) { "p${page}_item_$it" }
         }
-        paginator.core.resize(capacity = 10, resize = false, silently = true)
+        paginator.cache.pagingCore.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
@@ -1460,7 +1460,7 @@ class PrefetchControllerTest {
         controller.onScroll(firstVisibleIndex = 20, lastVisibleIndex = 22, totalItemCount = 30)
         controller.onScroll(firstVisibleIndex = 22, lastVisibleIndex = 27, totalItemCount = 30)
         advanceUntilIdle()
-        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.endContextPage)
 
         // Mark page 1 dirty via setElement
         paginator.setElement("DIRTY", page = 1, index = 0, silently = true, isDirty = true)
@@ -1468,7 +1468,7 @@ class PrefetchControllerTest {
         // Next prefetch navigation (page 5) should also refresh dirty page 1
         controller.onScroll(firstVisibleIndex = 32, lastVisibleIndex = 37, totalItemCount = 40)
         advanceUntilIdle()
-        assertEquals(5, paginator.core.endContextPage)
+        assertEquals(5, paginator.cache.endContextPage)
         assertTrue(page1LoadCount > 0, "Dirty page 1 should have been refreshed during navigation")
     }
 
@@ -1479,7 +1479,7 @@ class PrefetchControllerTest {
     @Test
     fun `addAllElements overflows into new pages — prefetch loads beyond them`() = runTest {
         val paginator = createPrefetchTestPaginator(totalPages = 10, capacity = 10, loadedPages = 2)
-        assertEquals(2, paginator.core.endContextPage)
+        assertEquals(2, paginator.cache.endContextPage)
 
         // Add 15 elements to page 2 — overflow creates page 3 (or extends page 2)
         paginator.addAllElements(
@@ -1489,8 +1489,8 @@ class PrefetchControllerTest {
             silently = true,
         )
 
-        val totalItems = paginator.core.states.sumOf { it.data.size }
-        val endContextAfterAdd = paginator.core.endContextPage
+        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
+        val endContextAfterAdd = paginator.cache.endContextPage
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)
 
@@ -1500,7 +1500,7 @@ class PrefetchControllerTest {
         advanceUntilIdle()
 
         assertTrue(
-            paginator.core.endContextPage > endContextAfterAdd,
+            paginator.cache.endContextPage > endContextAfterAdd,
             "Prefetch should load beyond pages created by addAllElements overflow"
         )
     }
@@ -1517,13 +1517,13 @@ class PrefetchControllerTest {
         // Load neighbors manually
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true) // page 6
         paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true) // page 4
-        assertEquals(4, paginator.core.startContextPage)
-        assertEquals(6, paginator.core.endContextPage)
+        assertEquals(4, paginator.cache.startContextPage)
+        assertEquals(6, paginator.cache.endContextPage)
 
         // Modify middle page
         paginator.setElement("CHANGED", page = 5, index = 0, silently = true)
 
-        val totalItems = paginator.core.states.sumOf { it.data.size }
+        val totalItems = paginator.cache.pagingCore.states.sumOf { it.data.size }
 
         val controller = paginator.prefetchController(
             scope = this,
@@ -1539,10 +1539,10 @@ class PrefetchControllerTest {
 
         // At least one direction should have prefetched
         assertTrue(
-            paginator.core.startContextPage < 4 || paginator.core.endContextPage > 6,
+            paginator.cache.startContextPage < 4 || paginator.cache.endContextPage > 6,
             "Prefetch should extend context in at least one direction"
         )
         // Modified element should persist
-        assertEquals("CHANGED", paginator.core.getStateOf(5)!!.data[0])
+        assertEquals("CHANGED", paginator.cache.getStateOf(5)!!.data[0])
     }
 }

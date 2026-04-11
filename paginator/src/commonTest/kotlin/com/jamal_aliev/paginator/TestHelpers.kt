@@ -8,12 +8,12 @@ fun createDeterministicPaginator(
     totalItems: Int = 100,
 ): MutablePaginator<String> {
     return MutablePaginator<String> { page: Int ->
-        val startIndex = (page - 1) * this.core.capacity
-        val endIndex = minOf(startIndex + this.core.capacity, totalItems)
+        val startIndex = (page - 1) * this.cache.pagingCore.capacity
+        val endIndex = minOf(startIndex + this.cache.pagingCore.capacity, totalItems)
         if (startIndex >= totalItems) emptyList()
         else List(endIndex - startIndex) { "item_${startIndex + it}" }
     }.apply {
-        core.resize(capacity = capacity, resize = false, silently = true)
+        cache.pagingCore.resize(capacity = capacity, resize = false, silently = true)
     }
 }
 
@@ -33,7 +33,7 @@ suspend fun createPopulatedPaginator(
             emptyList()
         }
     }
-    paginator.core.resize(capacity = capacity, resize = false, silently = true)
+    paginator.cache.pagingCore.resize(capacity = capacity, resize = false, silently = true)
     // Load all pages via navigation
     paginator.jump(
         bookmark = com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt(1),
