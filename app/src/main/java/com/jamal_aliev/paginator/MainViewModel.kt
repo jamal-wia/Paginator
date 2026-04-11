@@ -39,7 +39,7 @@ class MainViewModel(
     val paginator = MutablePaginator<String>(source = { page ->
         SampleRepository.loadPage(page)
     }).apply {
-        core.resize(SampleRepository.PAGE_SIZE, resize = false, silently = true)
+        cache.resize(SampleRepository.PAGE_SIZE, resize = false, silently = true)
         finalPage = SampleRepository.FINAL_PAGE
         // Default bookmarks already has page 1, add more
         bookmarks.addAll(
@@ -54,7 +54,7 @@ class MainViewModel(
     }
 
     init {
-        paginator.core.snapshot
+        paginator.cache.snapshot
             .filter { it.isNotEmpty() }
             .onEach { data ->
                 updateStateFromPaginator(data)
@@ -83,7 +83,7 @@ class MainViewModel(
      * Called after each snapshot update so the state is always up to date.
      */
     private fun savePaginatorState() {
-        val json = paginator.core.saveStateToJson(String.serializer())
+        val json = paginator.cache.saveStateToJson(String.serializer())
         savedStateHandle[KEY_PAGINATOR_STATE] = json
     }
 
@@ -96,7 +96,7 @@ class MainViewModel(
     private fun restorePaginatorState(): Boolean {
         val json = savedStateHandle.get<String>(KEY_PAGINATOR_STATE) ?: return false
         return try {
-            paginator.core.restoreStateFromJson(json, String.serializer())
+            paginator.cache.restoreStateFromJson(json, String.serializer())
             Log.d("MainViewModel", "Paginator state restored from SavedStateHandle")
             true
         } catch (e: Exception) {
@@ -110,12 +110,12 @@ class MainViewModel(
         _state.update { current ->
             current.copy(
                 data = snapshotData,
-                startContextPage = paginator.core.startContextPage,
-                endContextPage = paginator.core.endContextPage,
+                startContextPage = paginator.cache.startContextPage,
+                endContextPage = paginator.cache.endContextPage,
                 finalPage = paginator.finalPage,
                 bookmarks = paginator.bookmarks.map { it.page },
-                cachedPages = paginator.core.pages.map { page ->
-                    val pageState = paginator.core.getStateOf(page)
+                cachedPages = paginator.cache.pages.map { page ->
+                    val pageState = paginator.cache.getStateOf(page)
                     CachedPageInfo(
                         page = page,
                         type = when {
@@ -130,7 +130,7 @@ class MainViewModel(
                         itemCount = pageState?.data?.size ?: 0
                     )
                 },
-                totalCachedItems = paginator.core.states.sumOf { it.data.size },
+                totalCachedItems = paginator.cache.states.sumOf { it.data.size },
             )
         }
     }

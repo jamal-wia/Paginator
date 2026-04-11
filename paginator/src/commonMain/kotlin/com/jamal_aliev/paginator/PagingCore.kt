@@ -19,6 +19,7 @@ import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.PageEntry
 import com.jamal_aliev.paginator.serialization.PageEntryType
 import com.jamal_aliev.paginator.serialization.PagingCoreSnapshot
+import com.jamal_aliev.paginator.strategy.PagingCache
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,14 +45,16 @@ import kotlin.contracts.contract
  */
 open class PagingCore<T>(
     initialCapacity: Int = DEFAULT_CAPACITY,
-) {
+) : PagingCache<T> {
+
+    override val pagingCore: PagingCore<T> get() = this
 
     /**
      * Logger for observing cache operations (eviction, etc.).
      *
      * When set via [Paginator.logger], this is automatically kept in sync.
      */
-    var logger: PaginatorLogger? = null
+    override var logger: PaginatorLogger? = null
 
     @PublishedApi
     internal fun indexOfPage(page: Int): Int = searchIndexOfPage(page)
@@ -74,13 +77,13 @@ open class PagingCore<T>(
     }
 
     /** All cached page numbers, sorted in ascending order. */
-    val pages: List<Int> get() = cache.map { it.page }
+    override val pages: List<Int> get() = cache.map { it.page }
 
     /** All cached page states, sorted by page number. */
     val states: List<PageState<T>> get() = cache.toList()
 
     /** The number of pages currently in the cache. */
-    val size: Int get() = cache.size
+    override val size: Int get() = cache.size
 
     /** Returns the highest page number in the cache, or `null` if empty. */
     fun lastPage(): Int? = cache.lastOrNull()?.page
@@ -112,7 +115,7 @@ open class PagingCore<T>(
      *
      * Updated automatically during navigation operations.
      */
-    var startContextPage = 0
+    override var startContextPage = 0
         internal set
 
     /**
@@ -124,14 +127,14 @@ open class PagingCore<T>(
      *
      * Updated automatically during navigation operations.
      */
-    var endContextPage = 0
+    override var endContextPage = 0
         internal set
 
     /**
      * `true` if the paginator has been started, i.e., at least one jump has been performed
      * and both [startContextPage] and [endContextPage] are non-zero.
      */
-    val isStarted: Boolean get() = startContextPage > 0 && endContextPage > 0
+    override val isStarted: Boolean get() = startContextPage > 0 && endContextPage > 0
 
     /**
      * Walks backward from [pageState] through contiguous filled success pages
@@ -320,7 +323,7 @@ open class PagingCore<T>(
      * @param page The page number to look up.
      * @return The cached [PageState], or `null` if the page is not in the cache.
      */
-    open fun getStateOf(page: Int): PageState<T>? {
+    override fun getStateOf(page: Int): PageState<T>? {
         val index = searchIndexOfPage(page)
         return if (index >= 0) cache[index] else null
     }
@@ -334,9 +337,9 @@ open class PagingCore<T>(
      * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
      *   Set to `true` during batch operations to avoid redundant emissions.
      */
-    open fun setState(
+    override fun setState(
         state: PageState<T>,
-        silently: Boolean = false
+        silently: Boolean
     ) {
         val index = searchIndexOfPage(state.page)
         if (index >= 0) {
@@ -355,7 +358,7 @@ open class PagingCore<T>(
      * @param page The page number to remove.
      * @return The removed [PageState], or `null` if the page was not in the cache.
      */
-    open fun removeFromCache(page: Int): PageState<T>? {
+    override fun removeFromCache(page: Int): PageState<T>? {
         val index = searchIndexOfPage(page)
         return if (index >= 0) cache.removeAt(index) else null
     }
@@ -363,7 +366,7 @@ open class PagingCore<T>(
     /**
      * Clears all pages from the cache.
      */
-    open fun clear() {
+    override fun clear() {
         cache.clear()
     }
 
@@ -375,7 +378,7 @@ open class PagingCore<T>(
      * @return The element at the specified position, or `null` if the page is not cached.
      * @throws IndexOutOfBoundsException If [index] is out of range for the page's data.
      */
-    open fun getElement(
+    override fun getElement(
         page: Int,
         index: Int,
     ): T? {
@@ -814,9 +817,9 @@ open class PagingCore<T>(
      * @param capacity The capacity to set after release. Defaults to [DEFAULT_CAPACITY].
      * @param silently If `true`, the empty snapshot is **not** emitted.
      */
-    open fun release(
-        capacity: Int = DEFAULT_CAPACITY,
-        silently: Boolean = false
+    override fun release(
+        capacity: Int,
+        silently: Boolean
     ) {
         cache.clear()
         startContextPage = 0

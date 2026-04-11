@@ -7,7 +7,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 /**
- * A [PagingCore] decorator that enforces a **TTL (Time To Live)** eviction policy.
+ * A [PagingCache] decorator that enforces a **TTL (Time To Live)** eviction policy.
  *
  * Each page has a timestamp recorded when it is first added to the cache.
  * When a new page is added (via [setState]), any pages whose age exceeds [ttl]
@@ -18,13 +18,15 @@ import kotlin.time.TimeSource
  *
  * ## Usage
  * ```kotlin
- * val paginator = MutablePaginator<Item>(
- *     core = TtlPagingCore(ttl = 5.minutes),
+ * val core = PagingCore<Item>(20)
+ * val paginator = MutablePaginator(
+ *     core = core,
+ *     eviction = TtlPagingCore(delegate = core, ttl = 5.minutes),
  *     source = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param initialCapacity Expected items per page (passed to [PagingCore]).
+ * @param delegate The inner [PagingCache] to delegate to. Defaults to a plain [PagingCore].
  * @param ttl Maximum time a page can remain in cache before being eligible for eviction.
  * @param refreshOnAccess If `true`, reading a page via [getStateOf] or [getElement]
  *   resets its TTL timer. Default is `false`.
@@ -35,13 +37,32 @@ import kotlin.time.TimeSource
  * @param evictionListener Optional listener notified when a page is evicted.
  */
 class TtlPagingCore<T>(
-    initialCapacity: Int = DEFAULT_CAPACITY,
+    private val delegate: PagingCache<T> = PagingCore(),
     val ttl: Duration,
     val refreshOnAccess: Boolean = false,
     val protectContextWindow: Boolean = true,
     val timeSource: TimeSource = TimeSource.Monotonic,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCore<T>(initialCapacity) {
+) : PagingCache<T> by delegate {
+
+    /**
+     * Backward-compatible constructor that creates a [PagingCore] with the given capacity.
+     */
+    constructor(
+        initialCapacity: Int,
+        ttl: Duration,
+        refreshOnAccess: Boolean = false,
+        protectContextWindow: Boolean = true,
+        timeSource: TimeSource = TimeSource.Monotonic,
+        evictionListener: CacheEvictionListener<T>? = null,
+    ) : this(
+        delegate = PagingCore(initialCapacity),
+        ttl = ttl,
+        refreshOnAccess = refreshOnAccess,
+        protectContextWindow = protectContextWindow,
+        timeSource = timeSource,
+        evictionListener = evictionListener,
+    )
 
     init {
         require(ttl.isPositive()) { "ttl must be positive, was $ttl" }
@@ -51,13 +72,13 @@ class TtlPagingCore<T>(
     private val timestamps = hashMapOf<Int, TimeMark>()
 
     override fun setState(state: PageState<T>, silently: Boolean) {
-        super.setState(state, silently)
+        delegate.setState(state, silently)
         timestamps[state.page] = timeSource.markNow()
         performEviction()
     }
 
     override fun getStateOf(page: Int): PageState<T>? {
-        val result = super.getStateOf(page)
+        val result = delegate.getStateOf(page)
         if (result != null && refreshOnAccess) {
             timestamps[page] = timeSource.markNow()
         }
@@ -65,7 +86,7 @@ class TtlPagingCore<T>(
     }
 
     override fun getElement(page: Int, index: Int): T? {
-        val result = super.getElement(page, index)
+        val result = delegate.getElement(page, index)
         if (result != null && refreshOnAccess) {
             timestamps[page] = timeSource.markNow()
         }
@@ -73,18 +94,18 @@ class TtlPagingCore<T>(
     }
 
     override fun removeFromCache(page: Int): PageState<T>? {
-        val result = super.removeFromCache(page)
+        val result = delegate.removeFromCache(page)
         if (result != null) timestamps.remove(page)
         return result
     }
 
     override fun clear() {
-        super.clear()
+        delegate.clear()
         timestamps.clear()
     }
 
     override fun release(capacity: Int, silently: Boolean) {
-        super.release(capacity, silently)
+        delegate.release(capacity, silently)
         timestamps.clear()
     }
 
@@ -93,19 +114,22 @@ class TtlPagingCore<T>(
      * Pages in the context window are skipped when [protectContextWindow] is `true`.
      */
     private fun performEviction() {
-        val protectedRange = if (protectContextWindow && isStarted)
-            startContextPage..endContextPage else null
+        val protectedRange = if (protectContextWindow && delegate.isStarted)
+            delegate.startContextPage..delegate.endContextPage else null
 
         val expired = timestamps.entries
             .filter { (_, mark) -> mark.elapsedNow() > ttl }
             .map { (page, _) -> page }
-            .filter { page -> protectedRange == null || page !in protectedRange }
+            .filter { page ->
+                delegate.getStateOf(page) != null &&
+                    (protectedRange == null || page !in protectedRange)
+            }
 
         for (page in expired) {
-            val evicted = super.removeFromCache(page)
+            val evicted = delegate.removeFromCache(page)
             timestamps.remove(page)
             if (evicted != null) {
-                logger?.log("TtlPagingCore", "evict: page=${evicted.page} (ttl expired)")
+                delegate.logger?.log("TtlPagingCore", "evict: page=${evicted.page} (ttl expired)")
                 evictionListener?.onEvicted(evicted)
             }
         }

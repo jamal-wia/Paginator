@@ -4,7 +4,7 @@ import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.page.PageState
 
 /**
- * A [PagingCore] decorator that keeps **only** pages within the current context window.
+ * A [PagingCache] decorator that keeps **only** pages within the current context window.
  *
  * Every time a page is added via [setState], any pages outside the range
  * `startContextPage..endContextPage` are immediately evicted. This is ideal
@@ -17,30 +17,45 @@ import com.jamal_aliev.paginator.page.PageState
  *
  * ## Usage
  * ```kotlin
- * val paginator = MutablePaginator<Item>(
- *     core = SlidingWindowPagingCore(),
+ * val core = PagingCore<Item>(20)
+ * val paginator = MutablePaginator(
+ *     core = core,
+ *     eviction = SlidingWindowPagingCore(delegate = core),
  *     source = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param initialCapacity Expected items per page (passed to [PagingCore]).
+ * @param delegate The inner [PagingCache] to delegate to. Defaults to a plain [PagingCore].
  * @param margin Number of pages to keep beyond each edge of the context window.
  *   Default is `0` (strict window). For example, `margin = 2` keeps pages in
  *   `(startContextPage - 2)..(endContextPage + 2)`.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
 class SlidingWindowPagingCore<T>(
-    initialCapacity: Int = DEFAULT_CAPACITY,
+    private val delegate: PagingCache<T> = PagingCore(),
     val margin: Int = 0,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCore<T>(initialCapacity) {
+) : PagingCache<T> by delegate {
+
+    /**
+     * Backward-compatible constructor that creates a [PagingCore] with the given capacity.
+     */
+    constructor(
+        initialCapacity: Int,
+        margin: Int = 0,
+        evictionListener: CacheEvictionListener<T>? = null,
+    ) : this(
+        delegate = PagingCore(initialCapacity),
+        margin = margin,
+        evictionListener = evictionListener,
+    )
 
     init {
         require(margin >= 0) { "margin must be >= 0, was $margin" }
     }
 
     override fun setState(state: PageState<T>, silently: Boolean) {
-        super.setState(state, silently)
+        delegate.setState(state, silently)
         performEviction(justAddedPage = state.page)
     }
 
@@ -52,19 +67,19 @@ class SlidingWindowPagingCore<T>(
      *   to avoid evicting a page before the context window has expanded to include it.
      */
     private fun performEviction(justAddedPage: Int = -1) {
-        if (!isStarted) return
+        if (!delegate.isStarted) return
 
-        val keepRange = (startContextPage - margin)..(endContextPage + margin)
+        val keepRange = (delegate.startContextPage - margin)..(delegate.endContextPage + margin)
 
         // Collect pages to evict (iterate over a copy to avoid concurrent modification)
-        val pagesToEvict = pages.filter { page ->
+        val pagesToEvict = delegate.pages.filter { page ->
             page != justAddedPage && page !in keepRange
         }
 
         for (page in pagesToEvict) {
-            val evicted = super.removeFromCache(page)
+            val evicted = delegate.removeFromCache(page)
             if (evicted != null) {
-                logger?.log("SlidingWindowPagingCore", "evict: page=${evicted.page}")
+                delegate.logger?.log("SlidingWindowPagingCore", "evict: page=${evicted.page}")
                 evictionListener?.onEvicted(evicted)
             }
         }

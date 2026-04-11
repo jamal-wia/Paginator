@@ -97,11 +97,11 @@ class PaginatorPrefetchController<T>(
     var silentlyLoading: Boolean = true,
     var silentlyResult: Boolean = false,
     var loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
-    var enableCacheFlow: Boolean = paginator.core.enableCacheFlow,
-    var initProgressState: InitializerProgressPage<T> = paginator.core.initializerProgressPage,
-    var initSuccessState: InitializerSuccessPage<T> = paginator.core.initializerSuccessPage,
-    var initEmptyState: InitializerEmptyPage<T> = paginator.core.initializerEmptyPage,
-    var initErrorState: InitializerErrorPage<T> = paginator.core.initializerErrorPage,
+    var enableCacheFlow: Boolean = paginator.cache.pagingCore.enableCacheFlow,
+    var initProgressState: InitializerProgressPage<T> = paginator.cache.pagingCore.initializerProgressPage,
+    var initSuccessState: InitializerSuccessPage<T> = paginator.cache.pagingCore.initializerSuccessPage,
+    var initEmptyState: InitializerEmptyPage<T> = paginator.cache.pagingCore.initializerEmptyPage,
+    var initErrorState: InitializerErrorPage<T> = paginator.cache.pagingCore.initializerErrorPage,
     var onPrefetchError: ((Exception) -> Unit)? = null,
 ) {
 
@@ -192,7 +192,7 @@ class PaginatorPrefetchController<T>(
             if (itemsFromEnd <= prefetchDistance
                 && forwardJob?.isActive != true
                 && !paginator.lockGoNextPage
-                && paginator.core.endContextPage < paginator.finalPage
+                && paginator.cache.endContextPage < paginator.finalPage
             ) {
                 forwardJob = scope.launch {
                     try {
@@ -220,7 +220,7 @@ class PaginatorPrefetchController<T>(
             if (firstVisibleIndex <= prefetchDistance
                 && backwardJob?.isActive != true
                 && !paginator.lockGoPreviousPage
-                && paginator.core.startContextPage > 1
+                && paginator.cache.startContextPage > 1
             ) {
                 backwardJob = scope.launch {
                     try {

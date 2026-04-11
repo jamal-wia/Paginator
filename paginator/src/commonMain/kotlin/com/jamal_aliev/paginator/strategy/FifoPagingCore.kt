@@ -4,7 +4,7 @@ import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.page.PageState
 
 /**
- * A [PagingCore] decorator that enforces a **FIFO (First In, First Out)** eviction policy.
+ * A [PagingCache] decorator that enforces a **FIFO (First In, First Out)** eviction policy.
  *
  * When the number of cached pages exceeds [maxSize], the oldest page (first inserted)
  * is evicted. Unlike [LruPagingCore], reading a page does **not** change its eviction priority —
@@ -15,24 +15,41 @@ import com.jamal_aliev.paginator.page.PageState
  *
  * ## Usage
  * ```kotlin
- * val paginator = MutablePaginator<Item>(
- *     core = FifoPagingCore(maxSize = 30),
+ * val core = PagingCore<Item>(20)
+ * val paginator = MutablePaginator(
+ *     core = core,
+ *     eviction = FifoPagingCore(delegate = core, maxSize = 30),
  *     source = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param initialCapacity Expected items per page (passed to [PagingCore]).
+ * @param delegate The inner [PagingCache] to delegate to. Defaults to a plain [PagingCore].
  * @param maxSize Maximum number of pages to keep in cache. Must be > 0.
  * @param protectContextWindow If `true` (default), pages within the visible context window
  *   are never evicted.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
 class FifoPagingCore<T>(
-    initialCapacity: Int = DEFAULT_CAPACITY,
+    private val delegate: PagingCache<T> = PagingCore(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCore<T>(initialCapacity) {
+) : PagingCache<T> by delegate {
+
+    /**
+     * Backward-compatible constructor that creates a [PagingCore] with the given capacity.
+     */
+    constructor(
+        initialCapacity: Int,
+        maxSize: Int,
+        protectContextWindow: Boolean = true,
+        evictionListener: CacheEvictionListener<T>? = null,
+    ) : this(
+        delegate = PagingCore(initialCapacity),
+        maxSize = maxSize,
+        protectContextWindow = protectContextWindow,
+        evictionListener = evictionListener,
+    )
 
     init {
         require(maxSize > 0) { "maxSize must be greater than 0, was $maxSize" }
@@ -42,8 +59,8 @@ class FifoPagingCore<T>(
     private val insertionOrder = mutableListOf<Int>()
 
     override fun setState(state: PageState<T>, silently: Boolean) {
-        val isNew = getStateOfDirect(state.page) == null
-        super.setState(state, silently)
+        val isNew = delegate.getStateOf(state.page) == null
+        delegate.setState(state, silently)
         if (isNew) {
             insertionOrder.add(state.page)
         }
@@ -51,28 +68,19 @@ class FifoPagingCore<T>(
     }
 
     override fun removeFromCache(page: Int): PageState<T>? {
-        val result = super.removeFromCache(page)
+        val result = delegate.removeFromCache(page)
         if (result != null) insertionOrder.remove(page)
         return result
     }
 
     override fun clear() {
-        super.clear()
+        delegate.clear()
         insertionOrder.clear()
     }
 
     override fun release(capacity: Int, silently: Boolean) {
-        super.release(capacity, silently)
+        delegate.release(capacity, silently)
         insertionOrder.clear()
-    }
-
-    /**
-     * Direct cache lookup without side effects.
-     * Used internally to check existence before setState without triggering
-     * any tracking logic in potential subclasses.
-     */
-    private fun getStateOfDirect(page: Int): PageState<T>? {
-        return super.getStateOf(page)
     }
 
     /**
@@ -82,19 +90,20 @@ class FifoPagingCore<T>(
      * @param justAddedPage The page that was just added — never evicted in the same call.
      */
     private fun performEviction(justAddedPage: Int = -1) {
-        while (size > maxSize) {
-            val protectedRange = if (protectContextWindow && isStarted)
-                startContextPage..endContextPage else null
+        while (delegate.size > maxSize) {
+            val protectedRange = if (protectContextWindow && delegate.isStarted)
+                delegate.startContextPage..delegate.endContextPage else null
 
             val victim = insertionOrder.firstOrNull { page ->
                 page != justAddedPage &&
+                    delegate.getStateOf(page) != null &&
                     (protectedRange == null || page !in protectedRange)
             } ?: break
 
-            val evicted = super.removeFromCache(victim)
+            val evicted = delegate.removeFromCache(victim)
             insertionOrder.remove(victim)
             if (evicted != null) {
-                logger?.log("FifoPagingCore", "evict: page=${evicted.page}")
+                delegate.logger?.log("FifoPagingCore", "evict: page=${evicted.page}")
                 evictionListener?.onEvicted(evicted)
             }
         }
