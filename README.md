@@ -13,13 +13,17 @@ simple "load next page" patterns. It provides a full-featured page management sy
 for jumping to arbitrary pages, bidirectional navigation, bookmarks, page caching, element-level
 CRUD, incomplete page handling, capacity management, and reactive state via Kotlin Flows.
 
+Built entirely with pure Kotlin and without platform-specific dependencies, 
+Paginator can be seamlessly used across all layers of an application 
+— from data to domain to presentation — while preserving Clean Architecture principles and proper layer separation.
+
 **Supported targets:** Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64
 
 ---
 ## AI Docs - https://deepwiki.com/jamal-wia/Paginator
 ---
 
-[Telegram Community](https://t.me/+0eeAM-EJpqgwNGZi) | [YouTube Tutorial (RU)](https://www.youtube.com/watch?v=YsUX7-FgKgA)
+[Telegram Community](https://t.me/+0eeAM-EJpqgwNGZi)
 
 ---
 
