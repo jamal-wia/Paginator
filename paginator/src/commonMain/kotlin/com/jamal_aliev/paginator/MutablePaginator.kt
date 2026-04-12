@@ -1,12 +1,15 @@
 package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.extension.far
-import com.jamal_aliev.paginator.extension.isEmptyState
+import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.extension.smartForEach
 import com.jamal_aliev.paginator.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.extension.walkForwardWhile
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.strategy.PersistentPagingCache
+import kotlinx.atomicfu.AtomicRef
+import kotlinx.atomicfu.atomic
 
 /**
  * A full-featured, mutable pagination manager for Kotlin/Android.
@@ -47,8 +50,33 @@ open class MutablePaginator<T>(
      * Populated automatically by [setElement], [removeElement], [addAllElements],
      * [removeState], and [plusAssign]. Flushed by [persistModifiedPages] or
      * automatically when [transaction] completes successfully.
+     *
+     * Thread-safe via [AtomicRef] with copy-on-write semantics.
      */
-    private val _affectedPages = mutableSetOf<Int>()
+    private val _affectedPages: AtomicRef<Set<Int>> = atomic(emptySet())
+
+    private fun markAffected(page: Int) {
+        while (true) {
+            val current = _affectedPages.value
+            if (_affectedPages.compareAndSet(current, current + page)) return
+        }
+    }
+
+    private fun markAffectedAll(pages: Set<Int>) {
+        if (pages.isEmpty()) return
+        while (true) {
+            val current = _affectedPages.value
+            if (_affectedPages.compareAndSet(current, current + pages)) return
+        }
+    }
+
+    private fun markAffectedAll(pages: IntRange) {
+        markAffectedAll(pages.toSet())
+    }
+
+    private fun drainAffectedPages(): Set<Int> {
+        return _affectedPages.getAndSet(emptySet())
+    }
 
     /**
      * Removes the state of the specified page from the cache and adjusts surrounding pages and context.
@@ -162,8 +190,7 @@ open class MutablePaginator<T>(
                 return@smartForEach true
             }
         }
-        val pagesAfter = cache.pages.toSet()
-        _affectedPages.addAll(pagesBefore + pagesAfter)
+        markAffectedAll(pagesBefore)
 
         if (!silently && pageStateWillRemove != null) {
             core.snapshot()
@@ -173,6 +200,10 @@ open class MutablePaginator<T>(
 
     /**
      * Replaces an element at a specific position within a cached page.
+     *
+     * **L2 note:** this operation only modifies L1. Call [persistModifiedPages] afterwards
+     * to flush the change to the persistent cache, or use [transaction] which flushes
+     * automatically on success.
      *
      * @param element The new element to place at the given position.
      * @param page The page number containing the element.
@@ -201,7 +232,7 @@ open class MutablePaginator<T>(
             silently = true
         )
 
-        _affectedPages.add(page)
+        markAffected(page)
 
         if (isDirty) core.markDirty(page)
 
@@ -213,6 +244,10 @@ open class MutablePaginator<T>(
      *
      * When removing an element causes the page to have fewer items than capacity, elements
      * are pulled from the **next** page (if it exists and is the same type) to fill the gap.
+     *
+     * **L2 note:** this operation only modifies L1. Call [persistModifiedPages] afterwards
+     * to flush the change to the persistent cache, or use [transaction] which flushes
+     * automatically on success.
      *
      * @param page The page number containing the element.
      * @param index The zero-based index of the element to remove within the page's data list.
@@ -229,10 +264,10 @@ open class MutablePaginator<T>(
         isDirty: Boolean = false,
     ): T {
         logger?.log(TAG, "removeElement: page=$page index=$index isDirty=$isDirty")
-        _affectedPages.add(page)
         val pageState: PageState<T> = requireNotNull(
             value = cache.getStateOf(page)
         ) { "page-$page was not created" }
+        markAffected(page)
         val removed: T
 
         val updatedData = pageState.data
@@ -285,6 +320,10 @@ open class MutablePaginator<T>(
      * If inserting the elements causes the page to exceed capacity, the excess elements
      * are cascaded to the **next** page (recursively).
      *
+     * **L2 note:** this operation only modifies L1. Call [persistModifiedPages] afterwards
+     * to flush the change to the persistent cache, or use [transaction] which flushes
+     * automatically on success.
+     *
      * @param elements The elements to insert.
      * @param targetPage The page number to insert into.
      * @param index The zero-based position within the page's data list where elements are inserted.
@@ -305,7 +344,7 @@ open class MutablePaginator<T>(
             TAG,
             "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty"
         )
-        _affectedPages.add(targetPage)
+        markAffected(targetPage)
         val targetState: PageState<T> =
             (cache.getStateOf(targetPage) ?: initPageState?.invoke(targetPage, mutableListOf()))
                 ?: throw IndexOutOfBoundsException(
@@ -345,7 +384,7 @@ open class MutablePaginator<T>(
             } else {
                 val lastPage = core.lastPage() ?: return
                 val rangePageInvalidated: IntRange = (targetPage + 1)..lastPage
-                _affectedPages.addAll(rangePageInvalidated)
+                markAffectedAll(rangePageInvalidated)
                 rangePageInvalidated.forEach { cache.removeFromCache(it) }
             }
         }
@@ -440,25 +479,26 @@ open class MutablePaginator<T>(
      * operations have been performed since the last flush.
      */
     suspend fun persistModifiedPages() {
-        val pc = core.persistentCache ?: return
-        val pagesToFlush = _affectedPages.toSet()
+        val pagingCache: PersistentPagingCache<T> = core.persistentCache ?: return
+        val pagesToFlush: Set<Int> = drainAffectedPages()
         if (pagesToFlush.isEmpty()) return
-        _affectedPages.clear()
 
         val toSave = mutableListOf<PageState<T>>()
         val toRemove = mutableListOf<Int>()
 
         for (page in pagesToFlush) {
             val state = cache.getStateOf(page)
-            if (state.isEmptyState()) {
+            if (state.isSuccessState()) {
                 toSave.add(state)
             } else if (state == null) {
                 toRemove.add(page)
             }
         }
 
-        if (toSave.isNotEmpty()) pc.saveAll(toSave)
-        for (page in toRemove) pc.remove(page)
+        pagingCache.transaction {
+            if (toSave.isNotEmpty()) saveAll(toSave)
+            if (toRemove.isNotEmpty()) removeAll(toRemove)
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -474,16 +514,14 @@ open class MutablePaginator<T>(
      * flush later.
      */
     override suspend fun <R> transaction(block: suspend Paginator<T>.() -> R): R {
-        val savedAffectedPages = _affectedPages.toSet()
-        _affectedPages.clear()
+        val savedAffectedPages = drainAffectedPages()
         try {
             val result = super.transaction(block)
             persistModifiedPages()
-            _affectedPages.addAll(savedAffectedPages)
+            markAffectedAll(savedAffectedPages)
             return result
         } catch (e: Throwable) {
-            _affectedPages.clear()
-            _affectedPages.addAll(savedAffectedPages)
+            _affectedPages.value = savedAffectedPages
             throw e
         }
     }
@@ -500,9 +538,14 @@ open class MutablePaginator<T>(
         removeState(pageState.page)
     }
 
+    /**
+     * **L2 note:** this operation only modifies L1. Call [persistModifiedPages] afterwards
+     * to flush the change to the persistent cache, or use [transaction] which flushes
+     * automatically on success.
+     */
     operator fun plusAssign(pageState: PageState<T>) {
         core.setState(pageState)
-        _affectedPages.add(pageState.page)
+        markAffected(pageState.page)
     }
 
     override fun toString(): String = "MutablePaginator(cache=$cache, bookmarks=$bookmarks)"

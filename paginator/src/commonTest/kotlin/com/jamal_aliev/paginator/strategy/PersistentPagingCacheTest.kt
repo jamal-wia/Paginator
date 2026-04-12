@@ -20,7 +20,7 @@ private class InMemoryPersistentCache<T> : PersistentPagingCache<T> {
 
     override suspend fun save(state: PageState<T>) {
         // Deep-copy the data list to break reference aliasing with L1,
-        // matching the behaviour of a real serializing backend (Room, SQLite).
+        // matching the behavior of a real serializing backend (Room, SQLite).
         store[state.page] = state.copy(data = state.data.toMutableList())
     }
 

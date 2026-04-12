@@ -82,7 +82,34 @@ interface PersistentPagingCache<T> {
     suspend fun remove(page: Int)
 
     /**
+     * Removes multiple pages from persistent storage in a single operation.
+     *
+     * The default implementation calls [remove] for each page sequentially.
+     * Implementations may override this for batch-optimized deletion (e.g.,
+     * `DELETE FROM pages WHERE page IN (:pages)` in SQL).
+     *
+     * @param pages The page numbers to remove.
+     */
+    suspend fun removeAll(pages: List<Int>) {
+        pages.forEach { remove(it) }
+    }
+
+    /**
      * Removes all pages from persistent storage.
      */
     suspend fun clear()
+
+    /**
+     * Executes [block] inside a storage transaction when the backend supports it.
+     *
+     * The default implementation simply runs [block] without any transactional
+     * guarantees. Implementations backed by Room, SQLite, or other transactional
+     * stores should override this to wrap [block] in a real transaction
+     * (e.g., Room's `withTransaction`).
+     *
+     * @param block The suspend lambda to execute within the transaction.
+     */
+    suspend fun <R> transaction(block: suspend PersistentPagingCache<T>.() -> R): R {
+        return block()
+    }
 }
