@@ -21,6 +21,7 @@ import com.jamal_aliev.paginator.serialization.PageEntryType
 import com.jamal_aliev.paginator.serialization.PagingCoreSnapshot
 import com.jamal_aliev.paginator.strategy.DefaultPagingCache
 import com.jamal_aliev.paginator.strategy.PagingCache
+import com.jamal_aliev.paginator.strategy.PersistentPagingCache
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,6 +57,7 @@ import kotlin.contracts.contract
  */
 open class PagingCore<T>(
     val cache: PagingCache<T> = DefaultPagingCache(),
+    val persistentCache: PersistentPagingCache<T>? = null,
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {
 
@@ -326,6 +328,23 @@ open class PagingCore<T>(
      */
     fun getStateOf(page: Int): PageState<T>? {
         return cache.getStateOf(page)
+    }
+
+    /**
+     * Attempts to load a page from the [persistentCache] (L2) and promote it
+     * into the in-memory [cache] (L1).
+     *
+     * If [persistentCache] is `null` or does not contain the requested page,
+     * returns `null` without modifying L1.
+     *
+     * @param page The page number to load from persistent storage.
+     * @return The restored [PageState], or `null` if not found.
+     */
+    suspend fun loadFromPersistentCache(page: Int): PageState<T>? {
+        val pc = persistentCache ?: return null
+        val persisted = pc.load(page) ?: return null
+        cache.setState(persisted, silently = true)
+        return persisted
     }
 
     /**

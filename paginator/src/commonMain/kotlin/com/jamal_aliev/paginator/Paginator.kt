@@ -447,7 +447,10 @@ open class Paginator<T>(
 
         navigationMutex.lock()
         try {
-            val probablySuccessBookmarkPage: PageState<T>? = cache.getStateOf(bookmark.page)
+            var probablySuccessBookmarkPage: PageState<T>? = cache.getStateOf(bookmark.page)
+            if (probablySuccessBookmarkPage == null) {
+                probablySuccessBookmarkPage = core.loadFromPersistentCache(bookmark.page)
+            }
             if (core.isFilledSuccessState(probablySuccessBookmarkPage)) {
                 core.expandStartContextPage(probablySuccessBookmarkPage)
                 core.expandEndContextPage(probablySuccessBookmarkPage)
@@ -512,6 +515,7 @@ open class Paginator<T>(
             }
 
             logger?.log(TAG, "jump: page=${bookmark.page} result=${resultState::class.simpleName}")
+            persistSuccessState(resultState)
             syncBookmarkIndex(bookmark.page)
             refreshDirtyPagesInContext()
             return@coroutineScope bookmark to resultState
@@ -615,12 +619,25 @@ open class Paginator<T>(
                 )
             }
 
-            val nextPageState: PageState<T>? =
+            var nextPageState: PageState<T>? =
                 if (nextPage == pivotContextPage) pivotContextPageState
                 else cache.getStateOf(nextPage)
 
+            if (nextPageState == null) {
+                nextPageState = core.loadFromPersistentCache(nextPage)
+            }
+
             if (nextPageState.isProgressState())
                 return@coroutineScope nextPageState
+
+            if (core.isFilledSuccessState(nextPageState)) {
+                core.endContextPage = nextPage
+                core.expandEndContextPage(cache.getStateOf(nextPage + 1))
+                if (enableCacheFlow) core.repeatCacheFlow()
+                if (!silentlyResult) core.snapshot()
+                refreshDirtyPagesInContext()
+                return@coroutineScope nextPageState
+            }
 
             if (!loadGuard.invoke(nextPage, nextPageState)) {
                 throw LoadGuardedException(attemptedPage = nextPage)
@@ -673,6 +690,7 @@ open class Paginator<T>(
                     TAG,
                     "goNextPage: page=$nextPage result=${resultState::class.simpleName}"
                 )
+                persistSuccessState(resultState)
                 refreshDirtyPagesInContext()
             }
         } catch (e: CancellationException) {
@@ -747,12 +765,25 @@ open class Paginator<T>(
                 if (pivotContextPageValid) pivotContextPage - 1
                 else pivotContextPage
             check(previousPage >= 1) { "previousPage is $previousPage. you can't go below page 1" }
-            val previousPageState: PageState<T>? =
+            var previousPageState: PageState<T>? =
                 if (previousPage == pivotContextPage) pivotContextPageState
                 else cache.getStateOf(previousPage)
 
+            if (previousPageState == null) {
+                previousPageState = core.loadFromPersistentCache(previousPage)
+            }
+
             if (previousPageState.isProgressState())
                 return@coroutineScope previousPageState
+
+            if (core.isFilledSuccessState(previousPageState)) {
+                core.startContextPage = previousPage
+                core.expandStartContextPage(cache.getStateOf(previousPage - 1))
+                if (enableCacheFlow) core.repeatCacheFlow()
+                if (!silentlyResult) core.snapshot()
+                refreshDirtyPagesInContext()
+                return@coroutineScope previousPageState!!
+            }
 
             if (!loadGuard.invoke(previousPage, previousPageState)) {
                 throw LoadGuardedException(attemptedPage = previousPage)
@@ -805,6 +836,7 @@ open class Paginator<T>(
                     TAG,
                     "goPreviousPage: page=$previousPage result=${resultState::class.simpleName}"
                 )
+                persistSuccessState(resultState)
                 refreshDirtyPagesInContext()
             }
         } catch (e: CancellationException) {
@@ -920,6 +952,7 @@ open class Paginator<T>(
                 }
                 syncBookmarkIndex(1)
                 logger?.log(TAG, "restart: result=${resultPageState::class.simpleName}")
+                persistSuccessState(resultPageState)
             }
         } catch (e: CancellationException) {
             if (shouldCleanup) {
@@ -1031,6 +1064,14 @@ open class Paginator<T>(
                 } finally {
                     navigationMutex.unlock()
                 }
+
+                // Phase 4: persist successful results to L2
+                core.persistentCache?.let { pc ->
+                    val successStates = results.filterIsInstance<SuccessPage<T>>()
+                    if (successStates.isNotEmpty()) {
+                        pc.saveAll(successStates)
+                    }
+                }
             }
 
             core.clearDirty(pages)
@@ -1120,6 +1161,23 @@ open class Paginator<T>(
         } catch (exception: Exception) {
             logger?.log(TAG, "loadOrGetPageState: page=$page exception=$exception")
             initErrorState.invoke(exception, page, cachedState?.data ?: mutableListOf())
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    //  Persistent cache write helper
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Saves [state] to the [persistent cache][PagingCore.persistentCache] if it is
+     * a [SuccessPage] (including [PageState.EmptyPage]).
+     *
+     * Error and progress pages are **not** persisted because they represent
+     * transient states that should be re-fetched from the source.
+     */
+    private suspend fun persistSuccessState(state: PageState<T>) {
+        if (state is SuccessPage) {
+            core.persistentCache?.save(state)
         }
     }
 

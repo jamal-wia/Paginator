@@ -59,6 +59,7 @@ CRUD, incomplete page handling, capacity management, and reactive state via Kotl
     - [SlidingWindowPagingCore](#slidingwindowpagingcore)
     - [Eviction Listener](#eviction-listener)
     - [Custom Strategies](#custom-strategies)
+- [Persistent Cache (L2)](#persistent-cache-l2)
 - [Logger](#logger)
 - [Extension Functions](#extension-functions)
     - [PageState Extensions](#pagestate-extensions)
@@ -1146,6 +1147,112 @@ val cache = LruPagingCache<Item>(maxSize = 50) + MyCache(myParam = 42)
 
 `cache.withLeaf(newLeaf)` recurses down the delegation chain and replaces the
 `DefaultPagingCache` leaf with `newLeaf`, so your strategy works correctly at any depth.
+
+---
+
+## Persistent Cache (L2)
+
+The paginator supports an optional **second-level persistent cache** that allows pages to survive
+process death. While the in-memory `PagingCache` (L1) provides fast synchronous access, a
+`PersistentPagingCache` (L2) stores pages in a durable backend (Room, SQLite, files, etc.).
+
+The library ships only the interface -- the implementation is entirely up to you.
+
+### How It Works
+
+**Read path:** L1 (in-memory) → L2 (persistent) → source (network).
+When a navigation method encounters a cache miss in L1, it checks L2 before calling the source
+lambda. If L2 has the page, it is promoted back into L1 and returned immediately -- no loading
+indicator, no network call.
+
+**Write path:** After every successful source load, the resulting `SuccessPage` (or `EmptyPage`)
+is automatically saved to L2.
+
+### PersistentPagingCache Interface
+
+```kotlin
+interface PersistentPagingCache<T> {
+    suspend fun save(state: PageState<T>)
+    suspend fun saveAll(states: List<PageState<T>>) { states.forEach { save(it) } }
+    suspend fun load(page: Int): PageState<T>?
+    suspend fun loadAll(): List<PageState<T>>
+    suspend fun remove(page: Int)
+    suspend fun clear()
+}
+```
+
+All methods are `suspend`, enabling native integration with Room, SQLite, or any async storage.
+
+### Usage
+
+Provide your implementation when constructing the `PagingCore`:
+
+```kotlin
+val paginator = MutablePaginator(
+    core = PagingCore(
+        cache = LruPagingCache(maxSize = 50),
+        persistentCache = RoomPagingCache(dao, json, serializer),
+    ),
+    source = { page -> api.loadPage(page) }
+)
+```
+
+### Example Room Implementation
+
+```kotlin
+class RoomPagingCache(
+    private val dao: PageDao,
+    private val json: Json,
+    private val serializer: KSerializer<MyItem>,
+) : PersistentPagingCache<MyItem> {
+
+    override suspend fun save(state: PageState<MyItem>) {
+        val jsonData = json.encodeToString(ListSerializer(serializer), state.data)
+        dao.upsert(PageEntity(page = state.page, data = jsonData, isEmpty = state.isEmptyState()))
+    }
+
+    override suspend fun load(page: Int): PageState<MyItem>? {
+        val entity = dao.getPage(page) ?: return null
+        val data = json.decodeFromString(ListSerializer(serializer), entity.data)
+        return if (entity.isEmpty) EmptyPage(page, data)
+        else SuccessPage(page, data.toMutableList())
+    }
+
+    override suspend fun loadAll(): List<PageState<MyItem>> =
+        dao.getAllPages().map { load(it.page)!! }
+
+    override suspend fun remove(page: Int) = dao.deletePage(page)
+
+    override suspend fun clear() = dao.deleteAll()
+}
+```
+
+### Lifecycle
+
+- **`restart()`** does **not** clear the persistent cache. Fresh data from the source overwrites
+  stale persistent entries via auto-persist.
+- **`release()`** does **not** clear the persistent cache. L2 is meant to outlive the paginator
+  instance.
+- **Transaction rollback** does **not** affect the persistent cache (eventual consistency).
+- **MutablePaginator CRUD** operations (e.g., `setElement`, `removeElement`) do **not** auto-persist.
+  These are synchronous and modify only L1.
+- To manually clear L2, call `persistentCache.clear()` directly.
+
+### Composing with Eviction Strategies
+
+Persistent cache works alongside eviction strategies. When a page is evicted from L1 (e.g., by
+`LruPagingCache`), it remains in L2. The next time that page is requested, it is restored from
+L2 instead of making a network call:
+
+```kotlin
+val paginator = MutablePaginator(
+    pagingCore = PagingCore(
+        cache = LruPagingCache(maxSize = 20),     // L1: keep only 20 pages in memory
+        persistentCache = MyRoomPagingCache(dao),  // L2: unlimited persistent storage
+    ),
+    source = { page -> api.loadPage(page) }
+)
+```
 
 ---
 
