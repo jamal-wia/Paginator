@@ -1227,6 +1227,36 @@ class RoomPagingCache(
 }
 ```
 
+### Persisting CRUD Changes
+
+CRUD operations (`setElement`, `removeElement`, `addAllElements`, `replaceAllElements`,
+`removeState`, `+=`) are synchronous and modify only L1. To flush those changes to L2, call
+`persistModifiedPages()`:
+
+```kotlin
+paginator.setElement("updated", page = 1, index = 0)
+paginator.removeElement(page = 2, index = 3)
+
+// Flush all CRUD changes to L2 in one batch
+paginator.persistModifiedPages()
+```
+
+Inside a `transaction`, CRUD changes are **auto-persisted** on success and **discarded** on
+failure — no manual flush needed:
+
+```kotlin
+paginator.transaction {
+    (this as MutablePaginator).setElement("a", page = 1, index = 0)
+    removeElement(page = 2, index = 3)
+    // If everything succeeds, changes are auto-persisted to L2.
+    // If anything throws, L1 is rolled back and L2 remains unchanged.
+}
+```
+
+The method tracks affected pages automatically (including cascading effects from rebalancing
+and overflow). At flush time, pages still present in L1 as `SuccessPage` are saved; pages that
+no longer exist in L1 are removed from L2.
+
 ### Lifecycle
 
 - **`restart()`** does **not** clear the persistent cache. Fresh data from the source overwrites
@@ -1234,8 +1264,8 @@ class RoomPagingCache(
 - **`release()`** does **not** clear the persistent cache. L2 is meant to outlive the paginator
   instance.
 - **Transaction rollback** does **not** affect the persistent cache (eventual consistency).
-- **MutablePaginator CRUD** operations (e.g., `setElement`, `removeElement`) do **not** auto-persist.
-  These are synchronous and modify only L1.
+- **MutablePaginator CRUD** operations track affected pages internally. Call
+  `persistModifiedPages()` to flush changes to L2 (automatic inside `transaction`).
 - To manually clear L2, call `persistentCache.clear()` directly.
 
 ### Composing with Eviction Strategies
@@ -1558,6 +1588,7 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | `removeElement(page, index, isDirty)`            | `T`             | Remove element (optionally mark dirty)  |
 | `addAllElements(elements, page, index, isDirty)` | `Unit`          | Insert elements (optionally mark dirty) |
 | `replaceAllElements(provider, predicate)`        | `Unit`          | Bulk replace                            |
+| `persistModifiedPages()`                         | `Unit`          | Flush CRUD changes to L2 (suspend)      |
 
 ### Operators
 

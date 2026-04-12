@@ -19,7 +19,9 @@ private class InMemoryPersistentCache<T> : PersistentPagingCache<T> {
     val store = mutableMapOf<Int, PageState<T>>()
 
     override suspend fun save(state: PageState<T>) {
-        store[state.page] = state
+        // Deep-copy the data list to break reference aliasing with L1,
+        // matching the behaviour of a real serializing backend (Room, SQLite).
+        store[state.page] = state.copy(data = state.data.toMutableList())
     }
 
     override suspend fun load(page: Int): PageState<T>? = store[page]
@@ -458,5 +460,294 @@ class PersistentPagingCacheTest {
 
         assertNotNull(paginator.cache.getStateOf(1))
         assertNotNull(paginator.cache.getStateOf(2))
+    }
+
+    // =========================================================================
+    // CRUD + L2: setElement
+    // =========================================================================
+
+    @Test
+    fun `setElement persists to L2 after persistModifiedPages`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        val originalData = persistent.store[1]!!.data.toList()
+
+        paginator.setElement("REPLACED", page = 1, index = 0, silently = true)
+        // Before flush, L2 should still have original data
+        assertEquals(originalData, persistent.store[1]!!.data)
+
+        paginator.persistModifiedPages()
+        // After flush, L2 should have the updated element
+        assertEquals("REPLACED", persistent.store[1]!!.data[0])
+    }
+
+    // =========================================================================
+    // CRUD + L2: removeElement
+    // =========================================================================
+
+    @Test
+    fun `removeElement persists rebalanced pages to L2`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        // Load pages 1 and 2
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+
+        val page2FirstItem = persistent.store[2]!!.data[0]
+
+        // Remove from page 1 — should rebalance from page 2
+        paginator.removeElement(page = 1, index = 0, silently = true)
+        paginator.persistModifiedPages()
+
+        // Page 1 should now contain the first item from the old page 2
+        val page1Data = persistent.store[1]!!.data
+        assertEquals(capacity, page1Data.size)
+        assertEquals(page2FirstItem, page1Data.last())
+
+        // Page 2 should have one fewer item
+        val page2Data = persistent.store[2]!!.data
+        assertEquals(capacity - 1, page2Data.size)
+    }
+
+    @Test
+    fun `removeElement that empties a page removes it from L2`() = runTest {
+        val persistent = InMemoryPersistentCache<String>()
+        val paginator = MutablePaginator(
+            core = PagingCore(
+                cache = DefaultPagingCache(),
+                persistentCache = persistent,
+                initialCapacity = 1, // capacity=1 so single removal empties the page
+            )
+        ) { page: Int ->
+            if (page in 1..3) listOf("item_$page")
+            else emptyList()
+        }
+
+        // Load page 1 only (no page 2 loaded, so no rebalancing)
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        assertNotNull(persistent.store[1])
+
+        paginator.removeElement(page = 1, index = 0, silently = true)
+        paginator.persistModifiedPages()
+
+        // Page 1 was emptied → should be removed from L2
+        assertNull(persistent.store[1], "Empty page should be removed from L2")
+    }
+
+    // =========================================================================
+    // CRUD + L2: addAllElements
+    // =========================================================================
+
+    @Test
+    fun `addAllElements with overflow persists all affected pages to L2`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        // Load pages 1 and 2
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+
+        // Add elements to page 1 that will overflow to page 2
+        paginator.addAllElements(
+            elements = listOf("NEW_A", "NEW_B", "NEW_C"),
+            targetPage = 1,
+            index = 0,
+            silently = true,
+        )
+        paginator.persistModifiedPages()
+
+        // Page 1 should have capacity items starting with the new ones
+        val page1Data = persistent.store[1]!!.data
+        assertEquals(capacity, page1Data.size)
+        assertEquals("NEW_A", page1Data[0])
+
+        // Page 2 should have received overflow
+        val page2Data = persistent.store[2]!!.data
+        assertTrue(page2Data.size > 0)
+    }
+
+    // =========================================================================
+    // CRUD + L2: removeState
+    // =========================================================================
+
+    @Test
+    fun `removeState removes page from L2 and persists renumbered pages`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        // Load pages 1, 2, 3
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+
+        val oldPage2Data = persistent.store[2]!!.data.toList()
+        val oldPage3Data = persistent.store[3]!!.data.toList()
+
+        // Remove page 1 — pages 2,3 should collapse to 1,2
+        paginator.removeState(pageToRemove = 1, silently = true)
+        paginator.persistModifiedPages()
+
+        // Old page 1 should be gone (its number no longer exists after collapse)
+        // New page 1 should have old page 2 data
+        val newPage1 = persistent.store[1]
+        assertNotNull(newPage1)
+        assertEquals(oldPage2Data, newPage1.data)
+
+        // New page 2 should have old page 3 data
+        val newPage2 = persistent.store[2]
+        assertNotNull(newPage2)
+        assertEquals(oldPage3Data, newPage2.data)
+
+        // Old page 3 should be removed from L2
+        assertNull(persistent.store[3], "Old page 3 should be removed from L2")
+    }
+
+    // =========================================================================
+    // CRUD + L2: replaceAllElements
+    // =========================================================================
+
+    @Test
+    fun `replaceAllElements persists all modified pages to L2`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        // Load pages 1 and 2
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+
+        // Replace first element on every page
+        paginator.replaceAllElements(
+            providerElement = { _, _, index -> if (index == 0) "REPLACED" else null },
+            silently = true,
+            predicate = { _, _, index -> index == 0 },
+        )
+        paginator.persistModifiedPages()
+
+        assertEquals("REPLACED", persistent.store[1]!!.data[0])
+        assertEquals("REPLACED", persistent.store[2]!!.data[0])
+    }
+
+    // =========================================================================
+    // CRUD + L2: plusAssign
+    // =========================================================================
+
+    @Test
+    fun `plusAssign persists page to L2`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+
+        val customPage = PageState.SuccessPage(
+            page = 5,
+            data = mutableListOf("custom_a", "custom_b")
+        )
+        paginator += customPage
+        paginator.persistModifiedPages()
+
+        val persisted = persistent.store[5]
+        assertNotNull(persisted)
+        assertEquals(listOf("custom_a", "custom_b"), persisted.data)
+    }
+
+    // =========================================================================
+    // CRUD + L2: transaction auto-persist
+    // =========================================================================
+
+    @Test
+    fun `transaction success auto-persists CRUD changes to L2`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+
+        paginator.transaction {
+            (this as MutablePaginator).setElement("TX_ITEM", page = 1, index = 0, silently = true)
+        }
+
+        // Auto-persisted by transaction — no manual flush needed
+        assertEquals("TX_ITEM", persistent.store[1]!!.data[0])
+    }
+
+    @Test
+    fun `transaction failure does not persist CRUD changes to L2`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        val originalData = persistent.store[1]!!.data.toList()
+
+        assertFailsWith<IllegalStateException> {
+            paginator.transaction {
+                (this as MutablePaginator).setElement(
+                    "SHOULD_NOT_PERSIST",
+                    page = 1,
+                    index = 0,
+                    silently = true,
+                )
+                error("rollback!")
+            }
+        }
+
+        // L2 should still have original data (unchanged by failed transaction)
+        assertEquals(originalData, persistent.store[1]!!.data)
+    }
+
+    @Test
+    fun `pre-transaction pending pages are preserved after transaction`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        // Load pages 1 and 2
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+
+        // Modify page 1 outside transaction (pending flush)
+        paginator.setElement("OUTSIDE_TX", page = 1, index = 0, silently = true)
+
+        // Transaction modifies page 2
+        paginator.transaction {
+            (this as MutablePaginator).setElement("INSIDE_TX", page = 2, index = 0, silently = true)
+        }
+
+        // Page 2 should be auto-persisted by transaction
+        assertEquals("INSIDE_TX", persistent.store[2]!!.data[0])
+
+        // Page 1 should NOT be persisted yet (pre-transaction pending)
+        assertEquals("p1_item0", persistent.store[1]!!.data[0])
+
+        // Now flush the pre-transaction pending
+        paginator.persistModifiedPages()
+        assertEquals("OUTSIDE_TX", persistent.store[1]!!.data[0])
+    }
+
+    // =========================================================================
+    // CRUD + L2: edge cases
+    // =========================================================================
+
+    @Test
+    fun `persistModifiedPages is no-op without persistent cache`() = runTest {
+        val paginator = MutablePaginator(
+            core = PagingCore(initialCapacity = capacity)
+        ) { page: Int ->
+            if (page in 1..totalPages) {
+                List(this.core.capacity) { "p${page}_item$it" }
+            } else {
+                emptyList()
+            }
+        }
+
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.setElement("MODIFIED", page = 1, index = 0, silently = true)
+
+        // Should not throw
+        paginator.persistModifiedPages()
+    }
+
+    @Test
+    fun `persistModifiedPages is no-op with empty affected set`() = runTest {
+        val (paginator, persistent) = createPaginatorWithPersistentCache()
+
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        val dataBefore = persistent.store[1]!!.data.toList()
+
+        // No CRUD operations — flush should be no-op
+        paginator.persistModifiedPages()
+
+        assertEquals(dataBefore, persistent.store[1]!!.data)
     }
 }
