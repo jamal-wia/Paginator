@@ -6,6 +6,7 @@ import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -109,7 +110,7 @@ class SmartForEachTest {
 }
 
 private fun createPaginatorWith(n: Int): MutablePaginator<String> {
-    val paginator = MutablePaginator<String> { emptyList() }
+    val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
     repeat(n) { index ->
         paginator.cache.setState(
             createRandomPageState(page = index, data = listOf("data $index")),

@@ -2,6 +2,7 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -35,7 +36,7 @@ class SnapshotAndFlowTest {
 
     @Test
     fun `scan skips gaps in range`() = runTest {
-        val paginator = MutablePaginator<String> { emptyList() }
+        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
         paginator.core.resize(capacity = 1, resize = false, silently = true)
         paginator.cache.setState(SuccessPage(page = 1, data = mutableListOf("a")), silently = true)
         paginator.cache.setState(SuccessPage(page = 3, data = mutableListOf("c")), silently = true)
@@ -59,7 +60,7 @@ class SnapshotAndFlowTest {
 
     @Test
     fun `asFlow emits cache updates`() = runTest {
-        val paginator = MutablePaginator<String> { emptyList() }
+        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
         paginator.core.resize(capacity = 1, resize = false, silently = true)
         val flow = paginator.core.asFlow()
 

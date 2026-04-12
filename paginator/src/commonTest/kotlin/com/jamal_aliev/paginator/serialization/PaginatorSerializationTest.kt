@@ -2,6 +2,7 @@ package com.jamal_aliev.paginator.serialization
 
 import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlin.test.Test
@@ -20,9 +21,9 @@ class PaginatorSerializationTest {
     ): MutablePaginator<TestItem> {
         return MutablePaginator<TestItem> { page: Int ->
             if (page in 1..pageCount) {
-                MutableList(capacity) { TestItem("p${page}_item$it", page * 100 + it) }
+                SourceResult(MutableList(capacity) { TestItem("p${page}_item$it", page * 100 + it) })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }.apply {
             core.resize(capacity = capacity, resize = false, silently = true)

@@ -19,6 +19,7 @@ import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.PageEntry
 import com.jamal_aliev.paginator.serialization.PageEntryType
 import com.jamal_aliev.paginator.serialization.PagingCoreSnapshot
+import com.jamal_aliev.paginator.source.SourceResult
 import com.jamal_aliev.paginator.strategy.DefaultPagingCache
 import com.jamal_aliev.paginator.strategy.PagingCache
 import com.jamal_aliev.paginator.strategy.PersistentPagingCache
@@ -694,8 +695,8 @@ open class PagingCore<T>(
      * Override to provide custom success page subclasses.
      */
     var initializerSuccessPage: InitializerSuccessPage<T> =
-        fun(page: Int, data: List<T>): SuccessPage<T> {
-            return if (data.isEmpty()) initializerEmptyPage.invoke(page, data)
+        fun(page: Int, data: List<T>, _sourceResult: SourceResult<T>): SuccessPage<T> {
+            return if (data.isEmpty()) initializerEmptyPage.invoke(page, data, _sourceResult)
             else SuccessPage(page = page, data = data)
         }
 
@@ -704,7 +705,7 @@ open class PagingCore<T>(
      * Override to provide custom empty page subclasses.
      */
     var initializerEmptyPage: InitializerEmptyPage<T> =
-        fun(page: Int, data: List<T>): EmptyPage<T> {
+        fun(page: Int, data: List<T>, _sourceResult: SourceResult<T>): EmptyPage<T> {
             return EmptyPage(page = page, data = data)
         }
 
@@ -778,7 +779,7 @@ open class PagingCore<T>(
                 offset = end
 
                 setState(
-                    state = initSuccessState.invoke(pageIndex++, successData),
+                    state = initSuccessState.invoke(pageIndex++, successData, SourceResult(successData)),
                     silently = true
                 )
             }
@@ -887,14 +888,17 @@ open class PagingCore<T>(
                 PageEntryType.EMPTY -> {
                     initializerEmptyPage(
                         entry.page,
-                        entry.data
+                        entry.data,
+                        SourceResult(entry.data)
                     )
                 }
 
                 PageEntryType.SUCCESS -> {
+                    val data = entry.data.toMutableList()
                     initializerSuccessPage(
                         entry.page,
-                        entry.data.toMutableList()
+                        data,
+                        SourceResult(data)
                     )
                 }
             }

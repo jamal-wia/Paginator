@@ -2,6 +2,7 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.extension.prefetchController
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -27,9 +28,9 @@ class PrefetchControllerTest {
     ): MutablePaginator<String> {
         val paginator = MutablePaginator<String> { page: Int ->
             if (page in 1..totalPages) {
-                List(capacity) { "p${page}_item_$it" }
+                SourceResult(List(capacity) { "p${page}_item_$it" })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }
         paginator.core.resize(capacity = capacity, resize = false, silently = true)
@@ -326,7 +327,7 @@ class PrefetchControllerTest {
         var loadCount = 0
         val paginator = MutablePaginator<String> { page: Int ->
             loadCount++
-            List(10) { "p${page}_item_$it" }
+            SourceResult(List(10) { "p${page}_item_$it" })
         }
         paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
@@ -791,7 +792,7 @@ class PrefetchControllerTest {
         var loadCount = 0
         val paginator = MutablePaginator<String> { page: Int ->
             loadCount++
-            List(10) { "p${page}_item_$it" }
+            SourceResult(List(10) { "p${page}_item_$it" })
         }
         paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
@@ -822,7 +823,7 @@ class PrefetchControllerTest {
     @Test
     fun `forward prefetch on unstarted paginator - endContextPage is 0`() = runTest {
         val paginator = MutablePaginator<String> { page: Int ->
-            List(10) { "p${page}_item_$it" }
+            SourceResult(List(10) { "p${page}_item_$it" })
         }
         paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
@@ -1079,7 +1080,7 @@ class PrefetchControllerTest {
         var page2LoadCount = 0
         val paginator = MutablePaginator<String> { page: Int ->
             if (page == 2) page2LoadCount++
-            List(10) { "p${page}_item_$it" }
+            SourceResult(List(10) { "p${page}_item_$it" })
         }
         paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10
@@ -1445,7 +1446,7 @@ class PrefetchControllerTest {
         var page1LoadCount = 0
         val paginator = MutablePaginator<String> { page: Int ->
             if (page == 1) page1LoadCount++
-            List(10) { "p${page}_item_$it" }
+            SourceResult(List(10) { "p${page}_item_$it" })
         }
         paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.finalPage = 10

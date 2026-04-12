@@ -4,6 +4,7 @@ import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -148,7 +149,7 @@ class SlidingWindowPagingCacheTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         // Load pages 1-3
@@ -174,7 +175,7 @@ class SlidingWindowPagingCacheTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -193,7 +194,7 @@ class SlidingWindowPagingCacheTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         paginator.jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
@@ -219,7 +220,7 @@ class SlidingWindowPagingCacheTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -237,7 +238,7 @@ class SlidingWindowPagingCacheTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -259,7 +260,7 @@ class SlidingWindowPagingCacheTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)

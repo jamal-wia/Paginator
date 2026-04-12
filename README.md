@@ -37,6 +37,7 @@ Paginator can be seamlessly used across all layers of an application
     - [Paginator vs MutablePaginator](#paginator-vs-mutablepaginator)
     - [Context Window](#context-window)
     - [Bookmarks](#bookmarks)
+    - [SourceResult & Metadata](#sourceresult--metadata)
     - [Capacity & Incomplete Pages](#capacity--incomplete-pages)
     - [Final Page Limit](#final-page-limit)
 - [Navigation](#navigation)
@@ -95,6 +96,9 @@ Paginator can be seamlessly used across all layers of an application
 - **Element-level CRUD** -- get, set, add, remove, and replace individual elements within pages,
   with automatic page rebalancing
 - **Capacity management** -- resize pages on the fly with automatic data redistribution
+- **Source metadata** -- `source` returns `SourceResult<T>`, an open wrapper that carries both
+  page data and arbitrary metadata from the API response (total count, cursors, etc.). Metadata
+  flows through initializer lambdas into custom `PageState` subclasses
 - **Custom PageState subclasses** -- extend `SuccessPage`, `ErrorPage`, `ProgressPage`, or
   `EmptyPage` with your own types via initializer lambdas
 - **Dirty pages** -- mark pages as "dirty" so they are automatically refreshed (fire-and-forget) on
@@ -130,7 +134,7 @@ Add the dependency to `commonMain` in your module's `build.gradle.kts`:
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("io.github.jamal-wia:paginator:7.7.0")
+            implementation("io.github.jamal-wia:paginator:8.0.0")
         }
     }
 }
@@ -143,7 +147,7 @@ from the KMP metadata.
 
 ```kotlin
 dependencies {
-    implementation("io.github.jamal-wia:paginator:7.7.0")
+    implementation("io.github.jamal-wia:paginator:8.0.0")
 }
 ```
 
@@ -151,7 +155,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation("io.github.jamal-wia:paginator-jvm:7.7.0")
+    implementation("io.github.jamal-wia:paginator-jvm:8.0.0")
 }
 ```
 
@@ -164,15 +168,19 @@ dependencies {
 Create a `MutablePaginator` in your ViewModel or Presenter, providing a data source lambda:
 
 ```kotlin
+import com.jamal_aliev.paginator.source.SourceResult
+
 class MyViewModel : ViewModel() {
 
     private val paginator = MutablePaginator<Item>(source = { page ->
-        repository.loadPage(page)
+        SourceResult(repository.loadPage(page))
     })
 }
 ```
 
-The `source` lambda receives an `Int` page number and should return a `List<T>`.
+The `source` lambda receives an `Int` page number and should return a `SourceResult<T>` wrapping
+your data list. For the simplest case, just wrap with `SourceResult(list)` or use the
+`.toSourceResult()` extension.
 
 ### Step 2: Observe and Start
 
@@ -269,17 +277,18 @@ direct state manipulation. Most use cases will use this class.
 ```kotlin
 // Most common: full-featured paginator
 val paginator = MutablePaginator<String>(source = { page ->
-    api.fetchItems(page)
+    SourceResult(api.fetchItems(page))
 })
 
 // Read-only: only navigation, no element mutations
 val readOnlyPaginator = Paginator<String>(source = { page ->
-    api.fetchItems(page)
+    SourceResult(api.fetchItems(page))
 })
 ```
 
 The constructor takes a single `source` lambda -- a suspending function that loads data for a given
-page. The receiver is the paginator itself, giving you access to its properties during loading.
+page. It returns a `SourceResult<T>` wrapping the data list (and optionally metadata).
+The receiver is the paginator itself, giving you access to its properties during loading.
 
 ### Context Window
 
@@ -311,6 +320,52 @@ Navigate through bookmarks with:
 - `jumpBack()` -- moves to the previous bookmark
 
 You can also implement the `Bookmark` interface for custom bookmark types.
+
+### SourceResult & Metadata
+
+The `source` lambda returns `SourceResult<T>` -- an open class wrapping the page data. For simple
+sources, wrap your list directly:
+
+```kotlin
+val paginator = MutablePaginator<Item>(source = { page ->
+    SourceResult(api.getItems(page))
+})
+```
+
+Or use the `toSourceResult()` extension:
+
+```kotlin
+val paginator = MutablePaginator<Item>(source = { page ->
+    api.getItems(page).toSourceResult()
+})
+```
+
+When your API returns metadata alongside the list (total count, cursors, pagination info),
+subclass `SourceResult` to carry it:
+
+```kotlin
+class PagedResponse<T>(
+    override val data: List<T>,
+    val totalPages: Int,
+    val nextCursor: String?,
+) : SourceResult<T>(data)
+```
+
+Then return it from your source:
+
+```kotlin
+val paginator = MutablePaginator<Item>(source = { page ->
+    val response = api.getItems(page)
+    PagedResponse(
+        data = response.items,
+        totalPages = response.totalPages,
+        nextCursor = response.nextCursor,
+    )
+})
+```
+
+To use metadata in your UI, combine `SourceResult` subclasses with
+[custom PageState subclasses](#custom-pagestate-subclasses) via initializer lambdas.
 
 ### Capacity & Incomplete Pages
 
@@ -572,12 +627,59 @@ paginator.core.initializerProgressPage = { page, data ->
 }
 ```
 
-Available initializer properties on `paginator.core`:
+### Propagating Source Metadata into PageState
+
+The `initializerSuccessPage` and `initializerEmptyPage` lambdas receive the `SourceResult` from
+the source call. Combined with custom `PageState` subclasses, this lets you embed API metadata
+directly into your page states:
+
+```kotlin
+// 1. Define a SourceResult subclass with your metadata
+class PagedResponse<T>(
+    override val data: List<T>,
+    val totalPages: Int,
+    val nextCursor: String?,
+) : SourceResult<T>(data)
+
+// 2. Define a PageState subclass that carries the metadata
+class RichSuccessPage<T>(
+    page: Int,
+    data: List<T>,
+    val totalPages: Int,
+    val nextCursor: String?,
+) : PageState.SuccessPage<T>(page, data)
+
+// 3. Wire them together via the initializer
+paginator.core.initializerSuccessPage = { page, data, sourceResult ->
+    val response = sourceResult as PagedResponse
+    RichSuccessPage(page, data, response.totalPages, response.nextCursor)
+}
+
+// 4. Use the metadata when processing snapshot pages
+paginator.core.snapshot.collect { pages ->
+    pages.forEach { pageState ->
+        if (pageState is RichSuccessPage) {
+            println("Total pages: ${pageState.totalPages}")
+        }
+    }
+}
+```
+
+The metadata travels through the entire pipeline -- cache, snapshot Flow, eviction -- because it
+lives inside the `PageState` object itself.
+
+### Available Initializer Properties
+
+Properties on `paginator.core`:
 
 - `initializerProgressPage: (page: Int, data: List<T>) -> ProgressPage<T>`
-- `initializerSuccessPage: (page: Int, data: List<T>) -> SuccessPage<T>`
-- `initializerEmptyPage: (page: Int, data: List<T>) -> EmptyPage<T>`
+- `initializerSuccessPage: (page: Int, data: List<T>, sourceResult: SourceResult<T>) -> SuccessPage<T>`
+- `initializerEmptyPage: (page: Int, data: List<T>, sourceResult: SourceResult<T>) -> EmptyPage<T>`
 - `initializerErrorPage: (exception: Exception, page: Int, data: List<T>) -> ErrorPage<T>`
+
+`initializerSuccessPage` and `initializerEmptyPage` receive `sourceResult` because they are
+created from a successful source call. `initializerProgressPage` and `initializerErrorPage` do not
+-- progress is emitted before the source call, and errors are created when the source fails.
 
 Use `isRealProgressState(MyCustomProgress::class)` and similar extension functions to check for
 specific subclasses with smart-casting.
@@ -977,7 +1079,7 @@ forever. For long-lived paginators or memory-constrained environments, pass a
 ```kotlin
 val paginator = MutablePaginator<Item>(
     core = PagingCore(cache = LruPagingCache(maxSize = 50)),
-    source = { page -> api.loadPage(page) }
+    source = { page -> SourceResult(api.loadPage(page)) }
 )
 ```
 
@@ -1004,7 +1106,7 @@ val paginator = MutablePaginator<Item>(
             protectContextWindow = true,    // never evict visible pages (default)
         )
     ),
-    source = { page -> api.loadPage(page) }
+    source = { page -> SourceResult(api.loadPage(page)) }
 )
 ```
 
@@ -1022,7 +1124,7 @@ a page does **not** change its eviction priority -- only the original insertion 
 ```kotlin
 val paginator = MutablePaginator<Item>(
     core = PagingCore(cache = FifoPagingCache(maxSize = 30)),
-    source = { page -> api.loadPage(page) }
+    source = { page -> SourceResult(api.loadPage(page)) }
 )
 ```
 
@@ -1044,7 +1146,7 @@ val paginator = MutablePaginator<Item>(
             protectContextWindow = true,
         )
     ),
-    source = { page -> api.loadPage(page) }
+    source = { page -> SourceResult(api.loadPage(page)) }
 )
 ```
 
@@ -1069,7 +1171,7 @@ val paginator = MutablePaginator<Item>(
             margin = 2,   // keep 2 extra pages beyond each edge of the context window
         )
     ),
-    source = { page -> api.loadPage(page) }
+    source = { page -> SourceResult(api.loadPage(page)) }
 )
 ```
 
@@ -1092,7 +1194,7 @@ val cache = LruPagingCache<Item>(maxSize = 50) + TtlPagingCache(ttl = 5.minutes)
 
 val paginator = MutablePaginator<Item>(
     core = PagingCore(cache = cache),
-    source = { page -> api.loadPage(page) }
+    source = { page -> SourceResult(api.loadPage(page)) }
 )
 ```
 
@@ -1201,7 +1303,7 @@ val paginator = MutablePaginator(
         cache = LruPagingCache(maxSize = 50),
         persistentCache = RoomPagingCache(dao, json, serializer),
     ),
-    source = { page -> api.loadPage(page) }
+    source = { page -> SourceResult(api.loadPage(page)) }
 )
 ```
 
@@ -1288,7 +1390,7 @@ val paginator = MutablePaginator(
         cache = LruPagingCache(maxSize = 20),     // L1: keep only 20 pages in memory
         persistentCache = MyRoomPagingCache(dao),  // L2: unlimited persistent storage
     ),
-    source = { page -> api.loadPage(page) }
+    source = { page -> SourceResult(api.loadPage(page)) }
 )
 ```
 
@@ -1328,7 +1430,7 @@ object AndroidLogger : PaginatorLogger {
 }
 
 val paginator = MutablePaginator<String>(source = { page ->
-    api.fetchItems(page)
+    SourceResult(api.fetchItems(page))
 }).apply {
     logger = ConsoleLogger // or AndroidLogger on Android
 }
@@ -1421,7 +1523,7 @@ class PaginatorViewModel : ViewModel() {
     val uiState = _uiState.asStateFlow()
 
     private val paginator = MutablePaginator<String>(source = { page ->
-        repository.loadPage(page)
+        SourceResult(repository.loadPage(page))
     }).apply {
         core.resize(capacity = 5, resize = false, silently = true)
         finalPage = 20
@@ -1535,7 +1637,7 @@ fun PaginatedList(pages: List<PageState<String>>) {
 
 | Property              | Type                                    | Description                                     |
 |-----------------------|-----------------------------------------|-------------------------------------------------|
-| `source`              | `suspend Paginator<T>.(Int) -> List<T>` | Data source lambda                              |
+| `source`              | `suspend Paginator<T>.(Int) -> SourceResult<T>` | Data source lambda                       |
 | `logger`              | `PaginatorLogger?`                      | Logging interface (`null` by default)           |
 | `finalPage`           | `Int`                                   | Maximum allowed page (default `Int.MAX_VALUE`)  |
 | `bookmarks`           | `MutableList<Bookmark>`                 | Bookmark list (default: page 1)                 |
@@ -1653,7 +1755,7 @@ Make sure the following **GitHub Secrets** are configured in the repository
 In `paginator/build.gradle.kts`, change the `version` property:
 
 ```kotlin
-version = "7.7.0" // ← new version
+version = "8.0.0" // ← new version
 ```
 
 ### Step 2 — Update README Installation Examples
@@ -1665,15 +1767,15 @@ Update the version in all `implementation(...)` snippets in this README
 
 ```bash
 git add -A
-git commit -m "Bump version to 7.7.0"
+git commit -m "Bump version to 8.0.0"
 git push origin master
 ```
 
 ### Step 4 — Create a GitHub Release
 
 1. Go to **[Releases → New release](https://github.com/jamal-wia/Paginator/releases/new)**
-2. Click **"Choose a tag"** and type the new version (e.g. `7.7.0`), then select **"Create new tag on publish"**
-3. Set **Release title** (e.g. `7.7.0`)
+2. Click **"Choose a tag"** and type the new version (e.g. `8.0.0`), then select **"Create new tag on publish"**
+3. Set **Release title** (e.g. `8.0.0`)
 4. Describe the changes in the description
 5. Click **"Publish release"**
 

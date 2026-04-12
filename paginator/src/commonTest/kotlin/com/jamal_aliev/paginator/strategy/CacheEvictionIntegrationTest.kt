@@ -3,6 +3,7 @@ package com.jamal_aliev.paginator.strategy
 import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,9 +29,9 @@ class CacheEvictionIntegrationTest {
             core = PagingCore(cache = eviction, initialCapacity = capacity)
         ) { page: Int ->
             if (page in 1..totalPages) {
-                List(this.core.capacity) { "p${page}_item$it" }
+                SourceResult(List(this.core.capacity) { "p${page}_item$it" })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }
     }
@@ -49,9 +50,9 @@ class CacheEvictionIntegrationTest {
             core = PagingCore(cache = eviction, initialCapacity = capacity)
         ) { page: Int ->
             if (page in 1..totalPages) {
-                List(this.core.capacity) { "p${page}_item$it" }
+                SourceResult(List(this.core.capacity) { "p${page}_item$it" })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }
     }
@@ -70,9 +71,9 @@ class CacheEvictionIntegrationTest {
             core = PagingCore(cache = eviction, initialCapacity = capacity)
         ) { page: Int ->
             if (page in 1..totalPages) {
-                List(this.core.capacity) { "p${page}_item$it" }
+                SourceResult(List(this.core.capacity) { "p${page}_item$it" })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }
         return Pair(paginator, timeSource)
@@ -189,7 +190,7 @@ class CacheEvictionIntegrationTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = eviction, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -213,7 +214,7 @@ class CacheEvictionIntegrationTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = eviction, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -251,7 +252,7 @@ class CacheEvictionIntegrationTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = eviction, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         // Load pages 1-3 in context
@@ -311,7 +312,7 @@ class CacheEvictionIntegrationTest {
         val paginator = MutablePaginator(
             core = PagingCore(cache = eviction, initialCapacity = 3)
         ) { page: Int ->
-            List(3) { "p${page}_item$it" }
+            SourceResult(List(3) { "p${page}_item$it" })
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)

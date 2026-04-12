@@ -20,6 +20,7 @@ import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.PaginatorSnapshot
+import com.jamal_aliev.paginator.source.SourceResult
 import com.jamal_aliev.paginator.strategy.PagingCache
 
 import kotlinx.coroutines.CancellationException
@@ -69,7 +70,7 @@ import kotlinx.coroutines.withContext
  */
 open class Paginator<T>(
     val core: PagingCore<T> = PagingCore(),
-    var source: suspend Paginator<T>.(page: Int) -> List<T>
+    var source: suspend Paginator<T>.(page: Int) -> SourceResult<T>
 ) : Comparable<Paginator<*>> {
 
     val cache: PagingCache<T> get() = core.cache
@@ -1130,7 +1131,7 @@ open class Paginator<T>(
         page: Int,
         forceLoading: Boolean = false,
         loading: ((page: Int, pageState: PageState<T>?) -> Unit) = { _, _ -> },
-        noinline source: suspend Paginator<T>.(page: Int) -> List<T> = this.source,
+        noinline source: suspend Paginator<T>.(page: Int) -> SourceResult<T> = this.source,
         noinline initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         noinline initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         noinline initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
@@ -1146,15 +1147,14 @@ open class Paginator<T>(
         }
         loading.invoke(page, cachedState)
         return try {
-            val data: MutableList<T> =
-                source.invoke(this, page)
-                    .toMutableList()
+            val sourceResult: SourceResult<T> = source.invoke(this, page)
+            val data: MutableList<T> = sourceResult.data.toMutableList()
             if (data.isEmpty()) {
                 logger?.log(TAG, "loadOrGetPageState: page=$page data.isEmpty()")
-                initEmptyState.invoke(page, data)
+                initEmptyState.invoke(page, data, sourceResult)
             } else {
                 logger?.log(TAG, "loadOrGetPageState: page=$page data.isNotEmpty()")
-                initSuccessState.invoke(page, data)
+                initSuccessState.invoke(page, data, sourceResult)
             }
         } catch (exception: CancellationException) {
             throw exception

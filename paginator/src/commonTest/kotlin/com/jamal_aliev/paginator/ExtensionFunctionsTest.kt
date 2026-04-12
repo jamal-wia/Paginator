@@ -10,6 +10,7 @@ import com.jamal_aliev.paginator.extension.setElement
 import com.jamal_aliev.paginator.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.extension.walkForwardWhile
 import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -155,7 +156,7 @@ class ExtensionFunctionsTest {
 
     @Test
     fun `addElement returns false when no pages exist`() {
-        val paginator = MutablePaginator<String> { emptyList() }
+        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
         val result = paginator.addElement(element = "x", silently = true)
         assertFalse(result)
     }

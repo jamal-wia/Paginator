@@ -4,6 +4,7 @@ import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -55,9 +56,9 @@ class PersistentPagingCacheTest {
         ) { page: Int ->
             sourceCallTracker?.add(page)
             if (page in 1..totalPages) {
-                List(this.core.capacity) { "p${page}_item$it" }
+                SourceResult(List(this.core.capacity) { "p${page}_item$it" })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }
         return paginator to persistentCache
@@ -258,7 +259,7 @@ class PersistentPagingCacheTest {
                 initialCapacity = capacity,
             )
         ) { page: Int ->
-            if (page == 1) listOf("a", "b", "c")
+            if (page == 1) SourceResult(listOf("a", "b", "c"))
             else throw RuntimeException("network error")
         }
 
@@ -409,9 +410,9 @@ class PersistentPagingCacheTest {
         ) { page: Int ->
             sourceCalls.add(page)
             if (page in 1..totalPages) {
-                List(this.core.capacity) { "p${page}_item$it" }
+                SourceResult(List(this.core.capacity) { "p${page}_item$it" })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }
 
@@ -449,9 +450,9 @@ class PersistentPagingCacheTest {
             core = PagingCore(initialCapacity = capacity)
         ) { page: Int ->
             if (page in 1..totalPages) {
-                List(this.core.capacity) { "p${page}_item$it" }
+                SourceResult(List(this.core.capacity) { "p${page}_item$it" })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }
 
@@ -520,8 +521,8 @@ class PersistentPagingCacheTest {
                 initialCapacity = 1, // capacity=1 so single removal empties the page
             )
         ) { page: Int ->
-            if (page in 1..3) listOf("item_$page")
-            else emptyList()
+            if (page in 1..3) SourceResult(listOf("item_$page"))
+            else SourceResult(emptyList())
         }
 
         // Load page 1 only (no page 2 loaded, so no rebalancing)
@@ -725,9 +726,9 @@ class PersistentPagingCacheTest {
             core = PagingCore(initialCapacity = capacity)
         ) { page: Int ->
             if (page in 1..totalPages) {
-                List(this.core.capacity) { "p${page}_item$it" }
+                SourceResult(List(this.core.capacity) { "p${page}_item$it" })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }
 

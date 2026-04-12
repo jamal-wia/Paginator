@@ -7,6 +7,7 @@ import com.jamal_aliev.paginator.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.extension.walkForwardWhile
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.source.SourceResult
 import com.jamal_aliev.paginator.strategy.PersistentPagingCache
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
@@ -41,7 +42,7 @@ import kotlinx.atomicfu.atomic
  */
 open class MutablePaginator<T>(
     core: PagingCore<T> = PagingCore(),
-    source: suspend Paginator<T>.(page: Int) -> List<T>
+    source: suspend Paginator<T>.(page: Int) -> SourceResult<T>
 ) : Paginator<T>(core, source) {
 
     /**

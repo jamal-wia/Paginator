@@ -9,6 +9,7 @@ import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -22,7 +23,7 @@ class MutablePaginatorTest {
 
     @Test
     fun `test set get remove page state`() {
-        val paginator = MutablePaginator<String> { emptyList() }
+        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
         val pageStates: MutableList<PageState<String>> =
             MutableList((1..10_000).random()) { index: Int ->
                 createRandomPageState(page = index, listOf("$index page"))
@@ -50,7 +51,7 @@ class MutablePaginatorTest {
     @Test
     fun `test jump and next`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
-            Source.getByPage(page, this.core.capacity)
+            SourceResult(Source.getByPage(page, this.core.capacity))
         }
         do {
             paginator.jump(BookmarkInt(page = 1))
@@ -70,7 +71,7 @@ class MutablePaginatorTest {
     @Test
     fun `test jump and previous`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
-            Source.getByPage(page, this.core.capacity)
+            SourceResult(Source.getByPage(page, this.core.capacity))
         }
         do {
             paginator.jump(BookmarkInt(page = 10))
@@ -90,7 +91,7 @@ class MutablePaginatorTest {
     @Test
     fun `test jump next previous`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
-            Source.getByPage(page, this.core.capacity)
+            SourceResult(Source.getByPage(page, this.core.capacity))
         }
         do {
             paginator.jump(BookmarkInt(page = 20))
@@ -108,7 +109,7 @@ class MutablePaginatorTest {
 
     @Test
     fun `test jump jump and remove`(): Unit = runTest {
-        val paginator = MutablePaginator { emptyList<String>() }.apply {
+        val paginator = MutablePaginator { SourceResult(emptyList<String>()) }.apply {
             core.resize(capacity = 1, resize = false, silently = true)
         }
         val data = listOf(
@@ -211,7 +212,7 @@ class MutablePaginatorTest {
 
     @Test
     fun `test context findNearContextPage`(): Unit = runTest {
-        val paginator = MutablePaginator { emptyList<String>() }.apply {
+        val paginator = MutablePaginator { SourceResult(emptyList<String>()) }.apply {
             core.resize(capacity = 1, resize = false, silently = true)
         }
         val data = listOf(
@@ -263,7 +264,7 @@ class MutablePaginatorTest {
     fun `test finalPage with goNextPage`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Deterministic source - no random exceptions
-            List(this.core.capacity) { "item $it of page $page" }
+            SourceResult(List(this.core.capacity) { "item $it of page $page" })
         }
         paginator.finalPage = 3
 
@@ -295,7 +296,7 @@ class MutablePaginatorTest {
     fun `test finalPage with jump`(): Unit = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Deterministic source - no random exceptions
-            List(this.core.capacity) { "item $it of page $page" }
+            SourceResult(List(this.core.capacity) { "item $it of page $page" })
         }
         paginator.finalPage = 5
 
@@ -324,9 +325,9 @@ class MutablePaginatorTest {
         val paginator = MutablePaginator { page: Int ->
             // Use a simple source that doesn't throw random exceptions
             if (page <= 10) {
-                List(this.core.capacity) { "item $it of page $page" }
+                SourceResult(List(this.core.capacity) { "item $it of page $page" })
             } else {
-                emptyList()
+                SourceResult(emptyList())
             }
         }
         // finalPage is Int.MAX_VALUE by default (effectively unlimited)

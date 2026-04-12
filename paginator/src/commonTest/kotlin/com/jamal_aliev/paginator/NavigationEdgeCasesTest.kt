@@ -4,6 +4,7 @@ import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isSuccessState
+import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -122,7 +123,7 @@ class NavigationEdgeCasesTest {
     fun `source error produces ErrorPage`() = runTest {
         val paginator = MutablePaginator<String> { page ->
             if (page == 2) throw RuntimeException("network error")
-            MutableList(this.core.capacity) { "item_$it" }
+            SourceResult(MutableList(this.core.capacity) { "item_$it" })
         }
         paginator.core.resize(capacity = 5, resize = false, silently = true)
 
@@ -146,7 +147,7 @@ class NavigationEdgeCasesTest {
     fun `isFilledSuccessState with unlimited capacity`() = runTest {
         // Use a custom source that returns data regardless of capacity
         val paginator = MutablePaginator<String> { page ->
-            MutableList(10) { "item_$it" }
+            SourceResult(MutableList(10) { "item_$it" })
         }
         paginator.core.resize(capacity = PagingCore.UNLIMITED_CAPACITY, resize = false, silently = true)
         assertTrue(paginator.core.isCapacityUnlimited)
