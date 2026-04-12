@@ -48,7 +48,7 @@ open class MutablePaginator<T>(
      * Pages modified by CRUD operations that have not yet been flushed to L2.
      *
      * Populated automatically by [setElement], [removeElement], [addAllElements],
-     * [removeState], and [plusAssign]. Flushed by [persistModifiedPages] or
+     * [removeState], and [plusAssign]. Flushed by [flush] or
      * automatically when [transaction] completes successfully.
      *
      * Thread-safe via [AtomicRef] with copy-on-write semantics.
@@ -201,7 +201,7 @@ open class MutablePaginator<T>(
     /**
      * Replaces an element at a specific position within a cached page.
      *
-     * **L2 note:** this operation only modifies L1. Call [persistModifiedPages] afterwards
+     * **L2 note:** this operation only modifies L1. Call [flush] afterwards
      * to flush the change to the persistent cache, or use [transaction] which flushes
      * automatically on success.
      *
@@ -245,7 +245,7 @@ open class MutablePaginator<T>(
      * When removing an element causes the page to have fewer items than capacity, elements
      * are pulled from the **next** page (if it exists and is the same type) to fill the gap.
      *
-     * **L2 note:** this operation only modifies L1. Call [persistModifiedPages] afterwards
+     * **L2 note:** this operation only modifies L1. Call [flush] afterwards
      * to flush the change to the persistent cache, or use [transaction] which flushes
      * automatically on success.
      *
@@ -320,7 +320,7 @@ open class MutablePaginator<T>(
      * If inserting the elements causes the page to exceed capacity, the excess elements
      * are cascaded to the **next** page (recursively).
      *
-     * **L2 note:** this operation only modifies L1. Call [persistModifiedPages] afterwards
+     * **L2 note:** this operation only modifies L1. Call [flush] afterwards
      * to flush the change to the persistent cache, or use [transaction] which flushes
      * automatically on success.
      *
@@ -478,7 +478,7 @@ open class MutablePaginator<T>(
      * No-op when [PagingCore.persistentCache] is `null` or when no CRUD
      * operations have been performed since the last flush.
      */
-    suspend fun persistModifiedPages() {
+    suspend fun flush() {
         val pagingCache: PersistentPagingCache<T> = core.persistentCache ?: return
         val pagesToFlush: Set<Int> = drainAffectedPages()
         if (pagesToFlush.isEmpty()) return
@@ -517,7 +517,7 @@ open class MutablePaginator<T>(
         val savedAffectedPages = drainAffectedPages()
         try {
             val result = super.transaction(block)
-            persistModifiedPages()
+            flush()
             markAffectedAll(savedAffectedPages)
             return result
         } catch (e: Throwable) {
@@ -539,7 +539,7 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * **L2 note:** this operation only modifies L1. Call [persistModifiedPages] afterwards
+     * **L2 note:** this operation only modifies L1. Call [flush] afterwards
      * to flush the change to the persistent cache, or use [transaction] which flushes
      * automatically on success.
      */

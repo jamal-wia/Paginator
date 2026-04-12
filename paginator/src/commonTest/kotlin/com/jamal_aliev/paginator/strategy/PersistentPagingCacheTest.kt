@@ -477,7 +477,7 @@ class PersistentPagingCacheTest {
         // Before flush, L2 should still have original data
         assertEquals(originalData, persistent.store[1]!!.data)
 
-        paginator.persistModifiedPages()
+        paginator.flush()
         // After flush, L2 should have the updated element
         assertEquals("REPLACED", persistent.store[1]!!.data[0])
     }
@@ -498,7 +498,7 @@ class PersistentPagingCacheTest {
 
         // Remove from page 1 — should rebalance from page 2
         paginator.removeElement(page = 1, index = 0, silently = true)
-        paginator.persistModifiedPages()
+        paginator.flush()
 
         // Page 1 should now contain the first item from the old page 2
         val page1Data = persistent.store[1]!!.data
@@ -529,7 +529,7 @@ class PersistentPagingCacheTest {
         assertNotNull(persistent.store[1])
 
         paginator.removeElement(page = 1, index = 0, silently = true)
-        paginator.persistModifiedPages()
+        paginator.flush()
 
         // Page 1 was emptied → should be removed from L2
         assertNull(persistent.store[1], "Empty page should be removed from L2")
@@ -554,7 +554,7 @@ class PersistentPagingCacheTest {
             index = 0,
             silently = true,
         )
-        paginator.persistModifiedPages()
+        paginator.flush()
 
         // Page 1 should have capacity items starting with the new ones
         val page1Data = persistent.store[1]!!.data
@@ -584,7 +584,7 @@ class PersistentPagingCacheTest {
 
         // Remove page 1 — pages 2,3 should collapse to 1,2
         paginator.removeState(pageToRemove = 1, silently = true)
-        paginator.persistModifiedPages()
+        paginator.flush()
 
         // Old page 1 should be gone (its number no longer exists after collapse)
         // New page 1 should have old page 2 data
@@ -619,7 +619,7 @@ class PersistentPagingCacheTest {
             silently = true,
             predicate = { _, _, index -> index == 0 },
         )
-        paginator.persistModifiedPages()
+        paginator.flush()
 
         assertEquals("REPLACED", persistent.store[1]!!.data[0])
         assertEquals("REPLACED", persistent.store[2]!!.data[0])
@@ -640,7 +640,7 @@ class PersistentPagingCacheTest {
             data = mutableListOf("custom_a", "custom_b")
         )
         paginator += customPage
-        paginator.persistModifiedPages()
+        paginator.flush()
 
         val persisted = persistent.store[5]
         assertNotNull(persisted)
@@ -711,7 +711,7 @@ class PersistentPagingCacheTest {
         assertEquals("p1_item0", persistent.store[1]!!.data[0])
 
         // Now flush the pre-transaction pending
-        paginator.persistModifiedPages()
+        paginator.flush()
         assertEquals("OUTSIDE_TX", persistent.store[1]!!.data[0])
     }
 
@@ -735,7 +735,7 @@ class PersistentPagingCacheTest {
         paginator.setElement("MODIFIED", page = 1, index = 0, silently = true)
 
         // Should not throw
-        paginator.persistModifiedPages()
+        paginator.flush()
     }
 
     @Test
@@ -746,7 +746,7 @@ class PersistentPagingCacheTest {
         val dataBefore = persistent.store[1]!!.data.toList()
 
         // No CRUD operations — flush should be no-op
-        paginator.persistModifiedPages()
+        paginator.flush()
 
         assertEquals(dataBefore, persistent.store[1]!!.data)
     }
