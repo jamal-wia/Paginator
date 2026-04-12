@@ -181,7 +181,7 @@ first page:
 
 ```kotlin
 init {
-    paginator.snapshot
+    paginator.core.snapshot
         .filter { it.isNotEmpty() }
         .onEach { pages -> updateUI(pages) }
         .flowOn(Dispatchers.Main)
@@ -492,14 +492,14 @@ in the background.
 The primary way to observe the paginator's visible state:
 
 ```kotlin
-val snapshot: Flow<List<PageState<T>>>
+val snapshot: Flow<List<PageState<T>>> = paginator.core.snapshot
 ```
 
 Emits a list of `PageState` objects within the context window whenever a navigation action
 completes. This is what your UI should collect.
 
 ```kotlin
-paginator.snapshot
+paginator.core.snapshot
     .onEach { pages -> adapter.submitList(pages) }
     .launchIn(scope)
 ```
@@ -567,12 +567,12 @@ class DetailedProgress<T>(
 ) : PageState.ProgressPage<T>(page, data)
 
 // Register the custom initializer
-paginator.initializerProgressPage = { page, data ->
+paginator.core.initializerProgressPage = { page, data ->
     DetailedProgress(page = page, data = data, source = "api")
 }
 ```
 
-Available initializer properties:
+Available initializer properties on `paginator.core`:
 
 - `initializerProgressPage: (page: Int, data: List<T>) -> ProgressPage<T>`
 - `initializerSuccessPage: (page: Int, data: List<T>) -> SuccessPage<T>`
@@ -1181,11 +1181,15 @@ interface PersistentPagingCache<T> {
     suspend fun load(page: Int): PageState<T>?
     suspend fun loadAll(): List<PageState<T>>
     suspend fun remove(page: Int)
+    suspend fun removeAll(pages: List<Int>) { pages.forEach { remove(it) } }
     suspend fun clear()
+    suspend fun <R> transaction(block: suspend PersistentPagingCache<T>.() -> R): R = block()
 }
 ```
 
 All methods are `suspend`, enabling native integration with Room, SQLite, or any async storage.
+Override `transaction` to wrap the block in a real DB transaction (e.g., Room's `withTransaction`).
+Override `saveAll` / `removeAll` for batch-optimized storage.
 
 ### Usage
 
@@ -1235,14 +1239,14 @@ class RoomPagingCache(
 
 CRUD operations (`setElement`, `removeElement`, `addAllElements`, `replaceAllElements`,
 `removeState`, `+=`) are synchronous and modify only L1. To flush those changes to L2, call
-`persistModifiedPages()`:
+`flush()`:
 
 ```kotlin
 paginator.setElement("updated", page = 1, index = 0)
 paginator.removeElement(page = 2, index = 3)
 
 // Flush all CRUD changes to L2 in one batch
-paginator.persistModifiedPages()
+paginator.flush()
 ```
 
 Inside a `transaction`, CRUD changes are **auto-persisted** on success and **discarded** on
@@ -1269,7 +1273,7 @@ no longer exist in L1 are removed from L2.
   instance.
 - **Transaction rollback** does **not** affect the persistent cache (eventual consistency).
 - **MutablePaginator CRUD** operations track affected pages internally. Call
-  `persistModifiedPages()` to flush changes to L2 (automatic inside `transaction`).
+  `flush()` to flush changes to L2 (automatic inside `transaction`).
 - To manually clear L2, call `persistentCache.clear()` directly.
 
 ### Composing with Eviction Strategies
@@ -1280,7 +1284,7 @@ L2 instead of making a network call:
 
 ```kotlin
 val paginator = MutablePaginator(
-    pagingCore = PagingCore(
+    core = PagingCore(
         cache = LruPagingCache(maxSize = 20),     // L1: keep only 20 pages in memory
         persistentCache = MyRoomPagingCache(dao),  // L2: unlimited persistent storage
     ),
@@ -1431,7 +1435,7 @@ class PaginatorViewModel : ViewModel() {
     }
 
     init {
-        paginator.snapshot
+        paginator.core.snapshot
             .filter { it.isNotEmpty() }
             .onEach { _uiState.value = it }
             .flowOn(Dispatchers.Main)
@@ -1527,30 +1531,39 @@ fun PaginatedList(pages: List<PageState<String>>) {
 
 ### Paginator Properties
 
+**Direct `Paginator` properties:**
+
 | Property              | Type                                    | Description                                     |
 |-----------------------|-----------------------------------------|-------------------------------------------------|
 | `source`              | `suspend Paginator<T>.(Int) -> List<T>` | Data source lambda                              |
 | `logger`              | `PaginatorLogger?`                      | Logging interface (`null` by default)           |
-| `capacity`            | `Int` (read-only)                       | Expected items per page                         |
-| `isCapacityUnlimited` | `Boolean`                               | `true` if `capacity == 0`                       |
-| `pages`               | `List<Int>`                             | All cached page numbers (sorted)                |
-| `pageStates`          | `List<PageState<T>>`                    | All cached page states (sorted)                 |
-| `size`                | `Int`                                   | Number of cached pages                          |
-| `dirtyPages`          | `Set<Int>`                              | Snapshot of all dirty page numbers              |
-| `startContextPage`    | `Int`                                   | Left boundary of visible context                |
-| `endContextPage`      | `Int`                                   | Right boundary of visible context               |
-| `isStarted`           | `Boolean`                               | `true` if context pages are set                 |
 | `finalPage`           | `Int`                                   | Maximum allowed page (default `Int.MAX_VALUE`)  |
 | `bookmarks`           | `MutableList<Bookmark>`                 | Bookmark list (default: page 1)                 |
 | `recyclingBookmark`   | `Boolean`                               | Wrap-around bookmark iteration                  |
-| `snapshot`            | `Flow<List<PageState<T>>>`              | Visible page states flow                        |
 | `lockJump`            | `Boolean`                               | Lock jump operations                            |
 | `lockGoNextPage`      | `Boolean`                               | Lock forward navigation                         |
 | `lockGoPreviousPage`  | `Boolean`                               | Lock backward navigation                        |
 | `lockRestart`         | `Boolean`                               | Lock restart                                    |
 | `lockRefresh`         | `Boolean`                               | Lock refresh                                    |
 
+**Via `paginator.core` (`PagingCore`):**
+
+| Property                  | Type                       | Description                                     |
+|---------------------------|----------------------------|-------------------------------------------------|
+| `core.snapshot`           | `Flow<List<PageState<T>>>` | Visible page states flow                        |
+| `core.capacity`           | `Int`                      | Expected items per page                         |
+| `core.isCapacityUnlimited`| `Boolean`                  | `true` if `capacity == 0`                       |
+| `core.pages`              | `List<Int>`                | All cached page numbers (sorted)                |
+| `core.states`             | `List<PageState<T>>`       | All cached page states (sorted)                 |
+| `core.size`               | `Int`                      | Number of cached pages                          |
+| `core.dirtyPages`         | `Set<Int>`                 | Snapshot of all dirty page numbers              |
+| `core.startContextPage`   | `Int`                      | Left boundary of visible context                |
+| `core.endContextPage`     | `Int`                      | Right boundary of visible context               |
+| `core.isStarted`          | `Boolean`                  | `true` if context pages are set                 |
+
 ### Paginator Methods
+
+**Direct `Paginator` methods:**
 
 | Method                                   | Returns                         | Description                            |
 |------------------------------------------|---------------------------------|----------------------------------------|
@@ -1561,26 +1574,41 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | `goPreviousPage()`                       | `PageState<T>`                  | Load previous page                     |
 | `restart()`                              | `Unit`                          | Reset and reload page 1                |
 | `refresh(pages)`                         | `Unit`                          | Reload specific pages                  |
-| `loadOrGetPageState(page, forceLoading)` | `PageState<T>`                  | Load or get cached page                |
-| `getStateOf(page)`                       | `PageState<T>?`                 | Get cached page state                  |
-| `getElement(page, index)`                | `T?`                            | Get element by position                |
-| `markDirty(page)` / `markDirty(pages)`   | `Unit`                          | Mark page(s) as dirty                  |
-| `clearDirty(page)` / `clearDirty(pages)` | `Unit`                          | Remove dirty flag from page(s)         |
-| `clearAllDirty()`                        | `Unit`                          | Remove all dirty flags                 |
-| `isDirty(page)`                          | `Boolean`                       | Check if page is dirty                 |
-| `isFilledSuccessState(state)`            | `Boolean`                       | Check if page is complete              |
-| `snapshot(pageRange?)`                   | `Unit`                          | Emit snapshot                          |
-| `scan(pagesRange)`                       | `List<PageState<T>>`            | Get pages in range                     |
-| `walkWhile(pivot, next, predicate)`      | `PageState<T>?`                 | Traverse pages                         |
-| `findNearContextPage(start, end)`        | `Unit`                          | Find nearest context                   |
-| `asFlow()`                               | `Flow<List<PageState<T>>>`      | Full cache flow                        |
-| `resize(capacity, resize, silently)`     | `Unit`                          | Change capacity (via `core`)           |
+| `loadOrGetPageState(page, forceLoading)` | `PageState<T>`                  | Load or get cached page (inline)       |
 | `release(capacity, silently)`            | `Unit`                          | Full reset                             |
 | `transaction(block)`                     | `R`                             | Atomic block with rollback on failure  |
 | `saveState(contextOnly)`                 | `PaginatorSnapshot<T>`          | Full state snapshot (suspend)          |
 | `restoreState(snapshot, silently)`       | `Unit`                          | Restore full state (suspend)           |
-| `saveStateToJson(serializer, json)`      | `String`                        | Save full state as JSON (suspend)      |
-| `restoreStateFromJson(str, serializer)`  | `Unit`                          | Restore full state from JSON (suspend) |
+| `saveStateToJson(serializer, json)`      | `String`                        | Save full state as JSON (suspend, ext) |
+| `restoreStateFromJson(str, serializer)`  | `Unit`                          | Restore full state from JSON (suspend, ext) |
+
+**Via `paginator.core` (`PagingCore`) methods:**
+
+| Method                                        | Returns                    | Description                           |
+|-----------------------------------------------|----------------------------|---------------------------------------|
+| `core.getStateOf(page)`                       | `PageState<T>?`            | Get cached page state                 |
+| `core.getElement(page, index)`                | `T?`                       | Get element by position               |
+| `core.markDirty(page)` / `markDirty(pages)`  | `Unit`                     | Mark page(s) as dirty                 |
+| `core.clearDirty(page)` / `clearDirty(pages)`| `Unit`                     | Remove dirty flag from page(s)        |
+| `core.clearAllDirty()`                        | `Unit`                     | Remove all dirty flags                |
+| `core.isDirty(page)`                          | `Boolean`                  | Check if page is dirty                |
+| `core.isFilledSuccessState(state)`            | `Boolean`                  | Check if page is complete             |
+| `core.snapshot(pageRange?)`                   | `Unit`                     | Emit snapshot manually                |
+| `core.scan(pagesRange)`                       | `List<PageState<T>>`       | Get pages in range                    |
+| `core.walkWhile(pivot, next, predicate)`      | `PageState<T>?`            | Traverse pages                        |
+| `core.findNearContextPage(start, end)`        | `Unit`                     | Find nearest context                  |
+| `core.asFlow()`                               | `Flow<List<PageState<T>>>` | Full cache flow                       |
+| `core.resize(capacity, resize, silently)`     | `Unit`                     | Change capacity                       |
+| `core.saveStateToJson(serializer)`            | `String`                   | Save core state as JSON (ext)         |
+| `core.restoreStateFromJson(str, serializer)`  | `Unit`                     | Restore core state from JSON (ext)    |
+
+**Operators (on `Paginator`):**
+
+| Expression               | Description               |
+|--------------------------|---------------------------|
+| `paginator[page]`        | Get page state            |
+| `paginator[page, index]` | Get element               |
+| `page in paginator`      | Check if page is cached   |
 
 ### MutablePaginator Methods (additional)
 
@@ -1591,18 +1619,15 @@ fun PaginatedList(pages: List<PageState<String>>) {
 | `setElement(element, page, index, isDirty)`      | `Unit`          | Replace element (optionally mark dirty) |
 | `removeElement(page, index, isDirty)`            | `T`             | Remove element (optionally mark dirty)  |
 | `addAllElements(elements, page, index, isDirty)` | `Unit`          | Insert elements (optionally mark dirty) |
-| `replaceAllElements(provider, predicate)`        | `Unit`          | Bulk replace                            |
-| `persistModifiedPages()`                         | `Unit`          | Flush CRUD changes to L2 (suspend)      |
+| `replaceAllElements(provider, predicate)`        | `Unit`          | Bulk replace/remove across all pages    |
+| `flush()`                                        | `Unit`          | Flush CRUD changes to L2 (suspend)      |
 
-### Operators
+### MutablePaginator Operators
 
-| Operator                 | Class               | Description          |
-|--------------------------|---------------------|----------------------|
-| `paginator[page]`        | `Paginator`         | Get page state       |
-| `paginator[page, index]` | `Paginator`         | Get element          |
-| `paginator += pageState` | `MutablePaginator`  | Set page state       |
-| `paginator -= page`      | `MutablePaginator`  | Remove page          |
-| `page in paginator`      | `Paginator`         | Check if page exists |
+| Operator                 | Description          |
+|--------------------------|----------------------|
+| `paginator += pageState` | Set page state in L1 |
+| `paginator -= page`      | Remove page          |
 
 ---
 
