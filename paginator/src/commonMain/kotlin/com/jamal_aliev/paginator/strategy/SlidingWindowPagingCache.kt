@@ -1,5 +1,7 @@
 package com.jamal_aliev.paginator.strategy
 
+import com.jamal_aliev.paginator.logger.LogComponent
+import com.jamal_aliev.paginator.logger.debug
 import com.jamal_aliev.paginator.page.PageState
 
 /**
@@ -69,7 +71,7 @@ class SlidingWindowPagingCache<T>(
         for (page in pagesToEvict) {
             val evicted = cache.removeFromCache(page)
             if (evicted != null) {
-                cache.logger?.log("SlidingWindowPagingCore", "evict: page=${evicted.page}")
+                cache.logger.debug(LogComponent.CACHE) { "SlidingWindowPagingCache evict: page=${evicted.page}" }
                 evictionListener?.onEvicted(evicted)
             }
         }

@@ -14,6 +14,8 @@ import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isRealProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
+import com.jamal_aliev.paginator.logger.LogComponent
+import com.jamal_aliev.paginator.logger.LogLevel
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.serialization.restoreStateFromJson
@@ -273,7 +275,13 @@ class PreviousProgressState(
 )
 
 object AndroidLogger : PaginatorLogger {
-    override fun log(tag: String, message: String) {
-        Log.d(tag, message)
+    override fun log(level: LogLevel, component: LogComponent, message: String) {
+        val priority = when (level) {
+            LogLevel.DEBUG -> Log.DEBUG
+            LogLevel.INFO -> Log.INFO
+            LogLevel.WARN -> Log.WARN
+            LogLevel.ERROR -> Log.ERROR
+        }
+        Log.println(priority, "Paginator/${component.name}", message)
     }
 }

@@ -1,5 +1,7 @@
 package com.jamal_aliev.paginator.strategy
 
+import com.jamal_aliev.paginator.logger.LogComponent
+import com.jamal_aliev.paginator.logger.debug
 import com.jamal_aliev.paginator.page.PageState
 
 /**
@@ -92,7 +94,7 @@ class FifoPagingCache<T>(
             val evicted = cache.removeFromCache(victim)
             insertionOrder.remove(victim)
             if (evicted != null) {
-                cache.logger?.log("FifoPagingCore", "evict: page=${evicted.page}")
+                cache.logger.debug(LogComponent.CACHE) { "FifoPagingCache evict: page=${evicted.page}" }
                 evictionListener?.onEvicted(evicted)
             }
         }

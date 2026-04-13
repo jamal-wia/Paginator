@@ -1,5 +1,7 @@
 package com.jamal_aliev.paginator.strategy
 
+import com.jamal_aliev.paginator.logger.LogComponent
+import com.jamal_aliev.paginator.logger.debug
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.time.Duration
 import kotlin.time.TimeMark
@@ -115,7 +117,7 @@ class TtlPagingCache<T>(
             val evicted = cache.removeFromCache(page)
             timestamps.remove(page)
             if (evicted != null) {
-                cache.logger?.log("TtlPagingCore", "evict: page=${evicted.page} (ttl expired)")
+                cache.logger.debug(LogComponent.CACHE) { "TtlPagingCache evict: page=${evicted.page} (ttl expired)" }
                 evictionListener?.onEvicted(evicted)
             }
         }
