@@ -330,6 +330,23 @@ This is useful when a backend occasionally returns partial results.
 
 Set `capacity` to `UNLIMITED_CAPACITY` (0) to disable capacity checks entirely.
 
+#### coerceToCapacity
+
+The paginator provides two overloaded `coerceToCapacity` functions that enforce the capacity limit
+on data and page states. They are called automatically during all loading paths (`jump`,
+`goNextPage`, `goPreviousPage`, `restart`, `refresh`) to guarantee that no page ever holds more
+items than `capacity`.
+
+```kotlin
+// Trims a list to capacity. Always returns a MutableList.
+paginator.coerceToCapacity(data: List<T>): List<T>
+
+// Trims a PageState's data to capacity via copy(). Returns the same instance if no trim needed.
+paginator.coerceToCapacity(state: PageState<T>): PageState<T>
+```
+
+When `capacity` is set to `UNLIMITED_CAPACITY`, both functions return their input unchanged.
+
 ### Final Page Limit
 
 Set `finalPage` to enforce an upper boundary on pagination:
@@ -581,6 +598,81 @@ Available initializer properties on `paginator.core`:
 
 Use `isRealProgressState(MyCustomProgress::class)` and similar extension functions to check for
 specific subclasses with smart-casting.
+
+### PlaceholderProgressPage
+
+The library includes a built-in `PlaceholderProgressPage<T>` -- a `ProgressPage` subclass that
+appends placeholder objects to the data list during loading. This is useful for showing skeleton
+UI items (shimmers) alongside any previously cached data while a page is being loaded.
+
+```kotlin
+class PlaceholderProgressPage<T>(
+    override val page: Int,
+    override val data: List<T>,   // must be a MutableList
+    placeholderCapacity: Int,
+) : PageState.ProgressPage<T>(page, data)
+```
+
+During construction, `placeholderCapacity` instances of `PlaceholderProgressPage.Placeholder` are
+appended to `data`. The `data` parameter **must** be a `MutableList`; passing an immutable list
+throws `IllegalArgumentException`.
+
+#### Setup via core initializer (applies to all navigation)
+
+```kotlin
+paginator.core.initializerProgressPage = { page, data ->
+    PlaceholderProgressPage(
+        page = page,
+        data = data.toMutableList(),
+        placeholderCapacity = paginator.core.capacity,
+    )
+}
+```
+
+#### Per-call override (applies to a single navigation)
+
+```kotlin
+paginator.jump(
+    bookmark = BookmarkInt(1),
+    initProgressState = { page, data ->
+        PlaceholderProgressPage(
+            page = page,
+            data = data.toMutableList(),
+            placeholderCapacity = 10,
+        )
+    },
+)
+```
+
+#### Rendering in UI
+
+In your adapter or Compose list, check each item for the `Placeholder` type to render a skeleton:
+
+```kotlin
+// Jetpack Compose
+items(pageState.data) { item ->
+    if (item is PlaceholderProgressPage.Placeholder) {
+        ShimmerPlaceholder()
+    } else {
+        ItemCard(item as Article)
+    }
+}
+```
+
+```kotlin
+// RecyclerView — getItemViewType
+override fun getItemViewType(position: Int): Int {
+    return if (items[position] is PlaceholderProgressPage.Placeholder) {
+        VIEW_TYPE_PLACEHOLDER
+    } else {
+        VIEW_TYPE_ITEM
+    }
+}
+```
+
+> **Note:** If `placeholderCapacity` exceeds `paginator.core.capacity`, the
+> `coerceToCapacity` function automatically trims the data to fit within the capacity limit.
+> With `UNLIMITED_CAPACITY`, placeholders are never trimmed.
 
 ---
 
