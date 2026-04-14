@@ -1,35 +1,70 @@
 package com.jamal_aliev.paginator.logger
 
+import com.jamal_aliev.paginator.logger.PaginatorLogger.Companion.global
+
+
 /**
  * Logging interface for [com.jamal_aliev.paginator.Paginator] and
  * [com.jamal_aliev.paginator.MutablePaginator] operations.
  *
- * Implement this interface to receive detailed logs about navigation,
- * state changes, and element-level CRUD operations performed by the paginator.
+ * Supports two levels of configuration:
  *
- * Set your implementation via [com.jamal_aliev.paginator.Paginator.logger].
+ * 1. **Global logger** — set once (e.g. in `Application.onCreate()`) to apply
+ *    to every paginator in the app:
+ *    ```kotlin
+ *    PaginatorLogger.global = object : PaginatorLogger {
+ *        override fun log(level: LogLevel, component: LogComponent, message: String) {
+ *            Log.println(level.toAndroidPriority(), component.name, message)
+ *        }
+ *    }
+ *    ```
  *
- * **Example:**
- * ```kotlin
- * val paginator = MutablePaginator<String>(source = { page ->
- *     api.fetchItems(page.toInt())
- * }).apply {
- *     logger = object : Logger {
- *         override fun log(tag: String, message: String) {
- *             Log.d(tag, message)
- *         }
- *     }
- * }
- * ```
+ * 2. **Per-instance logger** — set on a specific paginator to override the
+ *    global logger for that instance only:
+ *    ```kotlin
+ *    paginator.logger = PrintPaginatorLogger(minLevel = LogLevel.WARN)
+ *    ```
+ *
+ * Priority: instance logger > [global] logger > no logging.
+ *
+ * @see LogLevel
+ * @see LogComponent
+ * @see PrintPaginatorLogger
+ * @see CompositePaginatorLogger
  */
 interface PaginatorLogger {
+
+    companion object {
+        /**
+         * Global logger applied to all paginator instances that don't have
+         * their own [com.jamal_aliev.paginator.Paginator.logger] set.
+         *
+         * Typically configured once during application initialization.
+         */
+        var global: PaginatorLogger? = null
+    }
+
+    /**
+     * Minimum log level this logger will accept.
+     * Messages below this level are discarded by the default [isEnabled] check.
+     */
+    val minLevel: LogLevel get() = LogLevel.DEBUG
 
     /**
      * Called by the paginator to log an event.
      *
-     * @param tag A short identifier for the operation category
-     *   (e.g. `"Paginator"`, `"MutablePaginator"`).
-     * @param message A human-readable description of the event.
+     * @param level    Severity of the event.
+     * @param component Which paginator subsystem produced the event.
+     * @param message  A human-readable description of the event.
      */
-    fun log(tag: String, message: String)
+    fun log(level: LogLevel, component: LogComponent, message: String)
+
+    /**
+     * Returns `true` if this logger accepts events at the given [level]
+     * and [component]. Override to add component-based filtering.
+     *
+     * The default implementation checks `level >= minLevel`.
+     */
+    fun isEnabled(level: LogLevel, component: LogComponent): Boolean =
+        level >= minLevel
 }
