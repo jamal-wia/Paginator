@@ -5,6 +5,8 @@ import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.extension.smartForEach
 import com.jamal_aliev.paginator.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.extension.walkForwardWhile
+import com.jamal_aliev.paginator.logger.LogComponent
+import com.jamal_aliev.paginator.logger.debug
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.source.SourceResult
@@ -98,7 +100,7 @@ open class MutablePaginator<T>(
         pageToRemove: Int,
         silently: Boolean = false,
     ): PageState<T>? {
-        logger?.log(TAG, "removeState: page=$pageToRemove")
+        logger.debug(LogComponent.MUTATION) { "removeState: page=$pageToRemove" }
 
         fun collapse(startPage: Int, compression: Int) {
             var currentState: PageState<T> = checkNotNull(
@@ -221,7 +223,7 @@ open class MutablePaginator<T>(
         silently: Boolean = false,
         isDirty: Boolean = false
     ) {
-        logger?.log(TAG, "setElement: page=$page index=$index isDirty=$isDirty")
+        logger.debug(LogComponent.MUTATION) { "setElement: page=$page index=$index isDirty=$isDirty" }
         val pageState = cache.getStateOf(page)
             ?: throw NoSuchElementException("page-$page was not found in cache")
         cache.setState(
@@ -264,7 +266,7 @@ open class MutablePaginator<T>(
         silently: Boolean = false,
         isDirty: Boolean = false,
     ): T {
-        logger?.log(TAG, "removeElement: page=$page index=$index isDirty=$isDirty")
+        logger.debug(LogComponent.MUTATION) { "removeElement: page=$page index=$index isDirty=$isDirty" }
         val pageState: PageState<T> = requireNotNull(
             value = cache.getStateOf(page)
         ) { "page-$page was not created" }
@@ -341,10 +343,9 @@ open class MutablePaginator<T>(
         isDirty: Boolean = false,
         initPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
     ) {
-        logger?.log(
-            TAG,
+        logger.debug(LogComponent.MUTATION) {
             "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty"
-        )
+        }
         markAffected(targetPage)
         val targetState: PageState<T> =
             (cache.getStateOf(targetPage) ?: initPageState?.invoke(targetPage, mutableListOf()))

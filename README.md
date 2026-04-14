@@ -385,6 +385,23 @@ This is useful when a backend occasionally returns partial results.
 
 Set `capacity` to `UNLIMITED_CAPACITY` (0) to disable capacity checks entirely.
 
+#### coerceToCapacity
+
+The paginator provides two overloaded `coerceToCapacity` functions that enforce the capacity limit
+on data and page states. They are called automatically during all loading paths (`jump`,
+`goNextPage`, `goPreviousPage`, `restart`, `refresh`) to guarantee that no page ever holds more
+items than `capacity`.
+
+```kotlin
+// Trims a list to capacity. Always returns a MutableList.
+paginator.coerceToCapacity(data: List<T>): List<T>
+
+// Trims a PageState's data to capacity via copy(). Returns the same instance if no trim needed.
+paginator.coerceToCapacity(state: PageState<T>): PageState<T>
+```
+
+When `capacity` is set to `UNLIMITED_CAPACITY`, both functions return their input unchanged.
+
 ### Final Page Limit
 
 Set `finalPage` to enforce an upper boundary on pagination:
@@ -683,6 +700,160 @@ created from a successful source call. `initializerProgressPage` and `initialize
 
 Use `isRealProgressState(MyCustomProgress::class)` and similar extension functions to check for
 specific subclasses with smart-casting.
+
+### PlaceholderPageState
+
+The library includes a built-in `PlaceholderPageState<R>` sealed interface. It extends each
+`PageState` subtype with a dedicated `placeholders: List<R>` property, which holds skeleton/shimmer
+items separately from the real page `data`. This allows the UI to render shimmer items alongside
+(or instead of) real cached data during any loading, error, or success transition.
+
+```kotlin
+sealed interface PlaceholderPageState<R> {
+    val placeholders: List<R>
+
+    class PlaceholderProgressPage<T, R>(page, data, placeholders) : ProgressPage<T>, PlaceholderPageState<R>
+    class PlaceholderSuccessPage<T, R>(page, data, placeholders)  : SuccessPage<T>,  PlaceholderPageState<R>
+    class PlaceholderEmptyPage<T, R>(page, data, placeholders)    : EmptyPage<T>,    PlaceholderPageState<R>
+    class PlaceholderErrorPage<T, R>(exception, page, data, placeholders) : ErrorPage<T>, PlaceholderPageState<R>
+}
+```
+
+The `placeholders` list is fully independent from `data` — real items and skeleton items are never
+mixed in the same list.
+
+#### Setup via core initializer (applies to all navigation)
+
+Define your own placeholder type (any class or object will do) and assign the initializers once:
+
+```kotlin
+data object Skeleton  // your placeholder marker
+
+// Shown while a page is loading
+paginator.core.initializerProgressPage = { page, data ->
+    PlaceholderPageState.PlaceholderProgressPage(
+        page = page,
+        data = data,
+        placeholders = List(paginator.core.capacity) { Skeleton },
+    )
+}
+
+// Shown when a page loaded successfully
+paginator.core.initializerSuccessPage = { page, data ->
+    PlaceholderPageState.PlaceholderSuccessPage(
+        page = page,
+        data = data,
+        placeholders = emptyList(),
+    )
+}
+
+// Shown when a page returned no items
+paginator.core.initializerEmptyPage = { page, data ->
+    PlaceholderPageState.PlaceholderEmptyPage(
+        page = page,
+        data = data,
+        placeholders = emptyList(),
+    )
+}
+
+// Shown when a page failed to load — placeholders allow showing skeletons alongside stale data
+paginator.core.initializerErrorPage = { exception, page, data ->
+    PlaceholderPageState.PlaceholderErrorPage(
+        exception = exception,
+        page = page,
+        data = data,
+        placeholders = List(paginator.core.capacity - data.size) { Skeleton },
+    )
+}
+```
+
+#### Per-call override (applies to a single navigation)
+
+```kotlin
+paginator.jump(
+    bookmark = BookmarkInt(1),
+    initProgressState = { page, data ->
+        PlaceholderPageState.PlaceholderProgressPage(
+            page = page,
+            data = data,
+            placeholders = List(10) { Skeleton },
+        )
+    },
+    initSuccessState = { page, data ->
+        PlaceholderPageState.PlaceholderSuccessPage(
+            page = page,
+            data = data,
+            placeholders = emptyList(),
+        )
+    },
+    initEmptyState = { page, data ->
+        PlaceholderPageState.PlaceholderEmptyPage(
+            page = page,
+            data = data,
+            placeholders = emptyList(),
+        )
+    },
+    initErrorState = { exception, page, data ->
+        PlaceholderPageState.PlaceholderErrorPage(
+            exception = exception,
+            page = page,
+            data = data,
+            placeholders = List(10 - data.size) { Skeleton },
+        )
+    },
+)
+```
+
+#### Rendering in UI
+
+Check the state type with extension functions, then render `data` for real items and `placeholders`
+for skeletons:
+
+```kotlin
+// Jetpack Compose
+when {
+    pageState.isRealProgressState(PlaceholderPageState.PlaceholderProgressPage::class) -> {
+        val state = pageState as PlaceholderPageState<*>
+        items(state.data) { item -> ItemCard(item as Article) }
+        items(state.placeholders) { ShimmerPlaceholder() }
+    }
+    pageState.isRealSuccessState(PlaceholderPageState.PlaceholderSuccessPage::class) -> {
+        items(pageState.data) { item -> ItemCard(item as Article) }
+    }
+    pageState.isRealEmptyState(PlaceholderPageState.PlaceholderEmptyPage::class) -> {
+        EmptyView()
+    }
+    pageState.isRealErrorState(PlaceholderPageState.PlaceholderErrorPage::class) -> {
+        val state = pageState as PlaceholderPageState<*>
+        items(state.data) { item -> ItemCard(item as Article) }   // stale cached data
+        items(state.placeholders) { ErrorPlaceholder() }
+    }
+    pageState.isSuccessState() -> {
+        items(pageState.data) { item -> ItemCard(item as Article) }
+    }
+    pageState.isEmptyState() -> { EmptyView() }
+    pageState.isErrorState() -> { ErrorView((pageState as ErrorPage).exception) }
+}
+```
+
+```kotlin
+// RecyclerView — mix real items and skeletons in one flat list
+val displayItems: List<Any> = when {
+    pageState.isRealProgressState(PlaceholderPageState.PlaceholderProgressPage::class) ||
+    pageState.isRealErrorState(PlaceholderPageState.PlaceholderErrorPage::class) -> {
+        val state = pageState as PlaceholderPageState<*>
+        state.data + state.placeholders
+    }
+    else -> pageState.data
+}
+
+override fun getItemViewType(position: Int): Int =
+    if (displayItems[position] is Skeleton) VIEW_TYPE_SKELETON else VIEW_TYPE_ITEM
+```
+
+> **Note:** `coerceToCapacity` trims the `data` of any `PlaceholderPageState` to
+> `paginator.core.capacity` automatically. The `placeholders` list is **not** trimmed — it is
+> your responsibility to size it appropriately. With `UNLIMITED_CAPACITY`, `data` is never trimmed.
 
 ---
 

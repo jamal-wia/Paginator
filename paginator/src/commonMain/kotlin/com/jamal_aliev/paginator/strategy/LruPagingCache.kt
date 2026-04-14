@@ -1,5 +1,7 @@
 package com.jamal_aliev.paginator.strategy
 
+import com.jamal_aliev.paginator.logger.LogComponent
+import com.jamal_aliev.paginator.logger.debug
 import com.jamal_aliev.paginator.page.PageState
 
 /**
@@ -120,7 +122,7 @@ class LruPagingCache<T>(
             val evicted = cache.removeFromCache(victim)
             accessOrder.remove(victim)
             if (evicted != null) {
-                cache.logger?.log("LruPagingCache", "evict: page=${evicted.page}")
+                cache.logger.debug(LogComponent.CACHE) { "LruPagingCache evict: page=${evicted.page}" }
                 evictionListener?.onEvicted(evicted)
             }
         }
