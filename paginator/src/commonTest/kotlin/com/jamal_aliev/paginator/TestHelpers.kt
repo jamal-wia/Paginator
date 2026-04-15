@@ -1,6 +1,6 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.source.SourceResult
+import com.jamal_aliev.paginator.load.LoadResult
 
 /**
  * Creates a [MutablePaginator] with a deterministic source (no random failures).
@@ -12,8 +12,8 @@ fun createDeterministicPaginator(
     return MutablePaginator<String> { page: Int ->
         val startIndex = (page - 1) * this.core.capacity
         val endIndex = minOf(startIndex + this.core.capacity, totalItems)
-        if (startIndex >= totalItems) SourceResult(emptyList())
-        else SourceResult(List(endIndex - startIndex) { "item_${startIndex + it}" })
+        if (startIndex >= totalItems) LoadResult(emptyList())
+        else LoadResult(List(endIndex - startIndex) { "item_${startIndex + it}" })
     }.apply {
         core.resize(capacity = capacity, resize = false, silently = true)
     }
@@ -30,9 +30,9 @@ suspend fun createPopulatedPaginator(
 ): MutablePaginator<String> {
     val paginator = MutablePaginator<String> { page: Int ->
         if (page in 1..pageCount) {
-            SourceResult(MutableList(capacity) { "p${page}_item$it" })
+            LoadResult(MutableList(capacity) { "p${page}_item$it" })
         } else {
-            SourceResult(emptyList())
+            LoadResult(emptyList())
         }
     }
     paginator.core.resize(capacity = capacity, resize = false, silently = true)

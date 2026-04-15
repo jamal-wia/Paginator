@@ -3,6 +3,7 @@ package com.jamal_aliev.paginator
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.bookmark.Bookmark
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
+import com.jamal_aliev.paginator.cache.PagingCache
 import com.jamal_aliev.paginator.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.exception.LoadGuardedException
 import com.jamal_aliev.paginator.exception.LockedException.GoNextPageWasLockedException
@@ -15,6 +16,7 @@ import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.logger.debug
@@ -24,9 +26,6 @@ import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.PaginatorSnapshot
-import com.jamal_aliev.paginator.source.SourceResult
-import com.jamal_aliev.paginator.strategy.PagingCache
-
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
@@ -64,7 +63,7 @@ import kotlinx.coroutines.withContext
  * raw Java threads without external synchronization.
  *
  * @param T The type of elements contained in each page.
- * @param source A suspending lambda that loads data for a given page number.
+ * @param load A suspending lambda that loads data for a given page number.
  *   The receiver is the paginator itself, giving access to its properties during loading.
  *
  * @see PageState
@@ -74,7 +73,7 @@ import kotlinx.coroutines.withContext
  */
 open class Paginator<T>(
     val core: PagingCore<T> = PagingCore(),
-    var source: suspend Paginator<T>.(page: Int) -> SourceResult<T>
+    var load: suspend Paginator<T>.(page: Int) -> LoadResult<T>
 ) : Comparable<Paginator<*>> {
 
     val cache: PagingCache<T> get() = core.cache
@@ -95,10 +94,6 @@ open class Paginator<T>(
             core.logger = value
         }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Final page
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
      * The Maximum page number allowed for pagination.
      *
@@ -117,10 +112,6 @@ open class Paginator<T>(
     ): Boolean {
         return page > finalPage
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Bookmarks
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Predefined page targets for quick navigation via [jumpForward] and [jumpBack].
@@ -148,10 +139,6 @@ open class Paginator<T>(
         val index = bookmarks.indexOfFirst { it.page > page }
         bookmarkIndex = if (index == -1) bookmarks.size else index
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Jump forward / back
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Moves forward to the next bookmark in the [bookmarks] list whose page is
@@ -354,10 +341,6 @@ open class Paginator<T>(
         return null
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Lock flags
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
      * If `true`, all jump operations ([jump], [jumpForward], [jumpBack]) are blocked
      * and will throw [JumpWasLockedException]. Reset to `false` on [release].
@@ -388,16 +371,12 @@ open class Paginator<T>(
      */
     var lockRefresh: Boolean = false
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Jump
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
      * Jumps directly to a specific page identified by [bookmark].
      *
      * If the target page is already cached as a filled success page, it is returned
      * immediately without reloading. Otherwise, the context window is reset to the
-     * target page and the page is loaded from the [source].
+     * target page and the page is loaded from the [load].
      *
      * @param bookmark The target page bookmark. Must have `page >= 1`.
      * @param silentlyLoading If `true`, the snapshot will **not** be emitted when the
@@ -542,10 +521,6 @@ open class Paginator<T>(
             navigationMutex.unlock()
         }
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Go next / previous
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Loads the next page after the current [cache].endContextPage.
@@ -863,15 +838,11 @@ open class Paginator<T>(
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Restart
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
      * Resets the paginator to its initial state and reloads the first page.
      *
      * Clears all cached pages except page 1's structure, resets the context window
-     * to page 1, and reloads it from the [source]. Ideal for swipe-to-refresh scenarios.
+     * to page 1, and reloads it from the [load]. Ideal for swipe-to-refresh scenarios.
      *
      * @param silentlyLoading If `true`, the snapshot will **not** be emitted during loading.
      * @param silentlyResult If `true`, the snapshot will **not** be emitted after loading.
@@ -982,12 +953,8 @@ open class Paginator<T>(
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Refresh
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
-     * Refreshes the specified pages by reloading them from the [source] in parallel.
+     * Refreshes the specified pages by reloading them from the [load] in parallel.
      *
      * Each page is first set to [ProgressPage] (preserving any previously cached data),
      * then all pages are reloaded concurrently. After all loads complete, the cache is
@@ -1119,21 +1086,17 @@ open class Paginator<T>(
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Load or get page state
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
-     * Loads a page from the [source] or returns the cached state if it is already a filled success page.
+     * Loads a page from the [load] or returns the cached state if it is already a filled success page.
      *
      * This is the low-level loading primitive used internally by [goNextPage], [goPreviousPage],
      * [jump], [restart], and [refresh]. It does **not** update context pages or emit snapshots —
      * callers are responsible for that.
      *
      * @param page The page number to load.
-     * @param forceLoading If `true`, always reloads from [source] even if a valid cached state exists.
+     * @param forceLoading If `true`, always reloads from [load] even if a valid cached state exists.
      * @param loading A callback invoked just before loading starts.
-     * @param source The data source suspend function. Defaults to [Paginator.source].
+     * @param load The data source suspend function. Defaults to [Paginator.load].
      * @param initEmptyState Factory for empty page instances.
      * @param initSuccessState Factory for success page instances.
      * @param initErrorState Factory for error page instances.
@@ -1143,12 +1106,14 @@ open class Paginator<T>(
         page: Int,
         forceLoading: Boolean = false,
         loading: ((page: Int, pageState: PageState<T>?) -> Unit) = { _, _ -> },
-        noinline source: suspend Paginator<T>.(page: Int) -> SourceResult<T> = this.source,
+        noinline load: suspend Paginator<T>.(page: Int) -> LoadResult<T> = this.load,
         noinline initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         noinline initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         noinline initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): PageState<T> {
-        logger.debug(LogComponent.NAVIGATION) { "loadOrGetPageState: page=$page forceLoading=$forceLoading" }
+        logger.debug(LogComponent.NAVIGATION) {
+            "loadOrGetPageState: page=$page forceLoading=$forceLoading"
+        }
         val cachedState: PageState<T>? = cache.getStateOf(page)
         if (!forceLoading && core.isFilledSuccessState(cachedState)) {
             logger.debug(LogComponent.NAVIGATION) {
@@ -1158,28 +1123,35 @@ open class Paginator<T>(
         }
         loading.invoke(page, cachedState)
         return try {
-            val sourceResult: SourceResult<T> = source.invoke(this, page)
-            val data: MutableList<T> = sourceResult.data.let {
-                        if (core.isCapacityUnlimited) it
-                        else it.take(core.capacity)
-                    }
-                    .toMutableList()
+            val loadResult: LoadResult<T> = load.invoke(this, page)
+            val data: MutableList<T> = loadResult.data.let {
+                if (core.isCapacityUnlimited) it
+                else it.take(core.capacity)
+            }.toMutableList()
             if (data.isEmpty()) {
-                logger.debug(LogComponent.NAVIGATION) { "loadOrGetPageState: page=$page data.isEmpty()" }
+                logger.debug(LogComponent.NAVIGATION) {
+                    "loadOrGetPageState: page=$page data.isEmpty()"
+                }
                 coerceToCapacity(
-                    state = initEmptyState.invoke(page, data, sourceResult)
+                    state = initEmptyState.invoke(page, data, loadResult.metadata)
                 )
             } else {
-                logger.debug(LogComponent.NAVIGATION) { "loadOrGetPageState: page=$page data.isNotEmpty()" }
+                logger.debug(LogComponent.NAVIGATION) {
+                    "loadOrGetPageState: page=$page data.isNotEmpty()"
+                }
                 coerceToCapacity(
-                    state = initSuccessState.invoke(page, data, sourceResult)
+                    state = initSuccessState.invoke(page, data, loadResult.metadata)
                 )
             }
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: Exception) {
-            logger.warn(LogComponent.NAVIGATION) { "loadOrGetPageState: page=$page exception=$exception" }
-            val data = coerceToCapacity(cachedState?.data ?: mutableListOf())
+            logger.warn(LogComponent.NAVIGATION) {
+                "loadOrGetPageState: page=$page exception=$exception"
+            }
+            val data: List<T> = coerceToCapacity(
+                data = cachedState?.data ?: mutableListOf()
+            )
             coerceToCapacity(
                 state = initErrorState.invoke(exception, page, data)
             )
@@ -1187,34 +1159,31 @@ open class Paginator<T>(
     }
 
     fun coerceToCapacity(data: List<T>): List<T> {
-        return if (!core.isCapacityUnlimited
-            && data.size > core.capacity
-        ) {
-            data.take(core.capacity)
-                .toMutableList()
+        val capacity = core.capacity
+        if (core.isCapacityUnlimited || data.size <= capacity) {
+            return data
+        }
+        return if (data.size / 2 >= capacity) {
+            ArrayList<T>(capacity).apply {
+                for (i in 0 until capacity) {
+                    add(data[i])
+                }
+            }
         } else {
-            data as? MutableList
-                ?: data.toMutableList()
+            ArrayList(data).apply {
+                subList(capacity, size).clear()
+            }
         }
     }
 
     fun coerceToCapacity(state: PageState<T>): PageState<T> {
-        return if (!core.isCapacityUnlimited
-            && state.data.size > core.capacity
-        ) {
-            state.copy(
-                data = state.data
-                    .take(core.capacity)
-                    .toMutableList()
-            )
-        } else {
+        val newData = coerceToCapacity(state.data)
+        return if (newData === state.data) {
             state
+        } else {
+            state.copy(data = newData)
         }
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Persistent cache write helper
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Saves [state] to the [persistent cache][PagingCore.persistentCache] if it is
@@ -1228,10 +1197,6 @@ open class Paginator<T>(
             core.persistentCache?.save(state)
         }
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Dirty pages refresh helper
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Launches a fire-and-forget refresh for all dirty pages within the current context window.
@@ -1249,10 +1214,6 @@ open class Paginator<T>(
             refresh(pages = dirtyInContext, loadingSilently = true)
         }
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Release
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Releases all resources and resets the paginator to its initial (unconfigured) state.
@@ -1282,10 +1243,6 @@ open class Paginator<T>(
         lockRestart = false
         lockRefresh = false
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  State serialization
-    // ──────────────────────────────────────────────────────────────────────────
 
     /**
      * Creates a serializable snapshot of this Paginator's full state,
@@ -1362,34 +1319,6 @@ open class Paginator<T>(
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Transactional operations
-    // ──────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Executes [block] as an atomic operation: if [block] throws any exception
-     * (including [CancellationException]), the paginator's entire state is rolled back
-     * to the point before the block was entered.
-     *
-     * On success, the block's return value is returned and all state changes are kept.
-     *
-     * **Snapshot fidelity:** unlike [saveState]/[restoreState] (which are designed for
-     * serialization and convert [PageState.ErrorPage]/[PageState.ProgressPage] to success entries),
-     * this method preserves exact [PageState] types through an in-memory deep copy.
-     *
-     * **Concurrency:** the [navigationMutex] is **not** held during [block] execution,
-     * so navigation operations inside the block work without deadlock. This matches the
-     * concurrency model of CRUD operations.
-     *
-     * **Nesting:** nested `transaction` calls work naturally — each creates its own
-     * save point. An inner failure rolls back to the inner save point; an outer failure
-     * rolls back to the outer save point.
-     *
-     * @param R The return type of the block.
-     * @param block The transactional block to execute with this paginator as receiver.
-     * @return The result of [block] if it completes successfully.
-     * @throws Throwable Re-throws whatever [block] threw, after rolling back state.
-     */
     private class TransactionSavepoint<T>(
         val states: List<PageState<T>>,
         val startContextPage: Int,
@@ -1424,6 +1353,43 @@ open class Paginator<T>(
         lockRefresh = lockRefresh,
     )
 
+    /**
+     * Executes [block] as an atomic operation: if [block] throws any exception
+     * (including [CancellationException]), the paginator's entire state is rolled back
+     * to the point before the block was entered.
+     *
+     * On success, the block's return value is returned and all state changes are kept.
+     *
+     * **Snapshot fidelity:** unlike [saveState]/[restoreState] (which are designed for
+     * serialization and convert [PageState.ErrorPage]/[PageState.ProgressPage] to success entries),
+     * this method preserves exact [PageState] types through an in-memory deep copy.
+     *
+     * **Concurrency:** the [navigationMutex] is **not** held during [block] execution,
+     * so navigation operations inside the block work without deadlock. This matches the
+     * concurrency model of CRUD operations.
+     *
+     * **Nesting:** nested `transaction` calls work naturally — each creates its own
+     * save point. An inner failure rolls back to the inner save point; an outer failure
+     * rolls back to the outer save point.
+     *
+     * @param R The return type of the block.
+     * @param block The transactional block to execute with this paginator as receiver.
+     * @return The result of [block] if it completes successfully.
+     * @throws Throwable Re-throws whatever [block] threw, after rolling back state.
+     */
+    open suspend fun <R> transaction(block: suspend Paginator<T>.() -> R): R {
+        val savepoint = createSavepoint()
+        try {
+            return block()
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) { rollback(savepoint) }
+            throw e
+        } catch (e: Throwable) {
+            rollback(savepoint)
+            throw e
+        }
+    }
+
     private fun rollback(savepoint: TransactionSavepoint<T>) {
         cache.clear()
         core.clearAllDirty()
@@ -1452,23 +1418,6 @@ open class Paginator<T>(
         }
     }
 
-    open suspend fun <R> transaction(block: suspend Paginator<T>.() -> R): R {
-        val savepoint = createSavepoint()
-        try {
-            return block()
-        } catch (e: CancellationException) {
-            withContext(NonCancellable) { rollback(savepoint) }
-            throw e
-        } catch (e: Throwable) {
-            rollback(savepoint)
-            throw e
-        }
-    }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Operators (delegating to cache)
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
      * Compares paginators by the number of pages currently held in their cache.
      */
@@ -1480,7 +1429,8 @@ open class Paginator<T>(
 
     operator fun contains(page: Int): Boolean = cache.getStateOf(page) != null
 
-    operator fun contains(pageState: PageState<T>): Boolean = cache.getStateOf(pageState.page) != null
+    operator fun contains(pageState: PageState<T>): Boolean =
+        cache.getStateOf(pageState.page) != null
 
     operator fun get(page: Int): PageState<T>? = cache.getStateOf(page)
 

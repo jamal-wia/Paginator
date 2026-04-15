@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
+import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
-import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,27 +13,27 @@ class CapacityTest {
 
     @Test
     fun `default capacity is 20`() {
-        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
+        val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         assertEquals(PagingCore.DEFAULT_CAPACITY, paginator.core.capacity)
         assertEquals(20, paginator.core.capacity)
     }
 
     @Test
     fun `isCapacityUnlimited when capacity is 0`() {
-        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
+        val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = PagingCore.UNLIMITED_CAPACITY, resize = false, silently = true)
         assertTrue(paginator.core.isCapacityUnlimited)
     }
 
     @Test
     fun `isCapacityUnlimited is false for non-zero capacity`() {
-        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
+        val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         assertFalse(paginator.core.isCapacityUnlimited)
     }
 
     @Test
     fun `isFilledSuccessState with matching capacity`() {
-        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
+        val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         val filledState = SuccessPage(page = 1, data = listOf("a", "b", "c"))
@@ -45,7 +45,7 @@ class CapacityTest {
 
     @Test
     fun `isFilledSuccessState always true for unlimited capacity`() {
-        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
+        val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = PagingCore.UNLIMITED_CAPACITY, resize = false, silently = true)
 
         val state = SuccessPage(page = 1, data = listOf("a"))
@@ -54,7 +54,7 @@ class CapacityTest {
 
     @Test
     fun `isFilledSuccessState false for non-SuccessPage`() {
-        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
+        val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         assertFalse(paginator.core.isFilledSuccessState(null))
@@ -66,8 +66,8 @@ class CapacityTest {
         val paginator = MutablePaginator<String> { page ->
             loadCount++
             // Return fewer items than capacity for page 2
-            if (page == 2) SourceResult(MutableList(2) { "item_$it" }) // capacity is 5
-            else SourceResult(MutableList(this.core.capacity) { "item_$it" })
+            if (page == 2) LoadResult(MutableList(2) { "item_$it" }) // capacity is 5
+            else LoadResult(MutableList(this.core.capacity) { "item_$it" })
         }
         paginator.core.resize(capacity = 5, resize = false, silently = true)
 

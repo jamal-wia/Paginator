@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator
 
+import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
-import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -73,7 +73,7 @@ class OperatorsTest {
 
     @Test
     fun `plusAssign adds state`() {
-        val paginator = MutablePaginator<String> { SourceResult(emptyList()) }
+        val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         val state = SuccessPage(page = 1, data = mutableListOf("a"))
         paginator += state
         assertEquals(state, paginator[1])

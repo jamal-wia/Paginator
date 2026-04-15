@@ -1,6 +1,7 @@
 package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
+import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
@@ -28,11 +29,11 @@ class PlaceholderPageStateIntegrationTest {
     private fun createPaginator(
         capacity: Int = 3,
         skeletonCount: Int = capacity,
-        source: suspend Paginator<String>.(Int) -> List<String> = { page ->
-            List(core.capacity) { "p${page}_item$it" }
+        load: suspend Paginator<String>.(Int) -> LoadResult<String> = { page ->
+            LoadResult(List(core.capacity) { "p${page}_item$it" })
         },
     ): MutablePaginator<String> {
-        val paginator = MutablePaginator(source = source)
+        val paginator = MutablePaginator(load = load)
         paginator.core.resize(capacity = capacity, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data ->
             PlaceholderProgressPage(
@@ -51,7 +52,8 @@ class PlaceholderPageStateIntegrationTest {
     @Test
     fun `jump - progress state is PlaceholderProgressPage`() = runTest {
         var capturedProgress: ProgressPage<String>? = null
-        val paginator = MutablePaginator<String> { page -> List(core.capacity) { "p${page}_item$it" } }
+        val paginator =
+            MutablePaginator { page -> LoadResult(List(core.capacity) { "p${page}_item$it" }) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data ->
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
@@ -105,7 +107,11 @@ class PlaceholderPageStateIntegrationTest {
     @Test
     fun `jump - result is SuccessPage after loading`() = runTest {
         val paginator = createPaginator(capacity = 3)
-        val (_, result) = paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        val (_, result) = paginator.jump(
+            BookmarkInt(1),
+            silentlyLoading = true,
+            silentlyResult = true
+        )
         assertIs<SuccessPage<String>>(result)
         assertEquals(3, result.data.size)
     }
@@ -195,12 +201,17 @@ class PlaceholderPageStateIntegrationTest {
 
         // Source returns partial results (< capacity) for page 2 so it needs a reload on next nav
         val paginator = MutablePaginator<String> { page ->
-            if (page == 2) listOf("p2_item0") // incomplete — triggers reload
-            else List(core.capacity) { "p${page}_item$it" }
+            LoadResult(
+                if (page == 2) listOf("p2_item0") // incomplete — triggers reload
+                else List(core.capacity) { "p${page}_item$it" }
+            )
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.jump(BookmarkInt(2), silentlyLoading = true, silentlyResult = true)
-        paginator.goNextPage(silentlyLoading = true, silentlyResult = true) // reloads page 2 (incomplete)
+        paginator.goNextPage(
+            silentlyLoading = true,
+            silentlyResult = true
+        ) // reloads page 2 (incomplete)
 
         // After reload context is at page 2-3. goPreviousPage goes to page 1 (no cache → empty data)
         paginator.core.initializerProgressPage = { page, data ->
@@ -274,7 +285,8 @@ class PlaceholderPageStateIntegrationTest {
         var defaultUsed = false
         var overrideUsed = false
 
-        val paginator = MutablePaginator<String> { page -> List(core.capacity) { "p${page}_item$it" } }
+        val paginator =
+            MutablePaginator { page -> LoadResult(List(core.capacity) { "p${page}_item$it" }) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data ->
             defaultUsed = true
@@ -299,7 +311,8 @@ class PlaceholderPageStateIntegrationTest {
     fun `core default initializer is used when not overridden per-call`() = runTest {
         var defaultUsed = false
 
-        val paginator = MutablePaginator<String> { page -> List(core.capacity) { "p${page}_item$it" } }
+        val paginator =
+            MutablePaginator { page -> LoadResult(List(core.capacity) { "p${page}_item$it" }) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data ->
             defaultUsed = true
@@ -316,7 +329,8 @@ class PlaceholderPageStateIntegrationTest {
 
     @Test
     fun `coerceToCapacity trims PlaceholderProgressPage data when it exceeds capacity`() = runTest {
-        val paginator = MutablePaginator<String> { page -> List(core.capacity) { "p${page}_item$it" } }
+        val paginator =
+            MutablePaginator { page -> LoadResult(List(core.capacity) { "p${page}_item$it" }) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         val bigData = List(10) { "item_$it" }
@@ -330,7 +344,11 @@ class PlaceholderPageStateIntegrationTest {
     fun `coerceToCapacity does not trim PlaceholderProgressPage when within capacity`() = runTest {
         val paginator = createPaginator(capacity = 5)
 
-        val state = PlaceholderProgressPage(page = 1, data = List(3) { "item_$it" }, placeholders = skeletons(3))
+        val state = PlaceholderProgressPage(
+            page = 1,
+            data = List(3) { "item_$it" },
+            placeholders = skeletons(3)
+        )
         val coerced = paginator.coerceToCapacity(state)
 
         assertSame(state, coerced)
@@ -338,10 +356,18 @@ class PlaceholderPageStateIntegrationTest {
 
     @Test
     fun `coerceToCapacity never trims with UNLIMITED_CAPACITY`() = runTest {
-        val paginator = MutablePaginator<String> { emptyList() }
-        paginator.core.resize(capacity = PagingCore.UNLIMITED_CAPACITY, resize = false, silently = true)
+        val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
+        paginator.core.resize(
+            capacity = PagingCore.UNLIMITED_CAPACITY,
+            resize = false,
+            silently = true
+        )
 
-        val state = PlaceholderProgressPage(page = 1, data = List(100) { "item_$it" }, placeholders = skeletons(50))
+        val state = PlaceholderProgressPage(
+            page = 1,
+            data = List(100) { "item_$it" },
+            placeholders = skeletons(50)
+        )
         val coerced = paginator.coerceToCapacity(state)
 
         assertSame(state, coerced)
@@ -362,7 +388,11 @@ class PlaceholderPageStateIntegrationTest {
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
-        val (_, result) = paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        val (_, result) = paginator.jump(
+            BookmarkInt(1),
+            silentlyLoading = true,
+            silentlyResult = true
+        )
         assertTrue(progressCreated)
         assertIs<ErrorPage<String>>(result)
     }
@@ -370,14 +400,18 @@ class PlaceholderPageStateIntegrationTest {
     @Test
     fun `empty source after PlaceholderProgressPage results in EmptyPage`() = runTest {
         var progressCreated = false
-        val paginator = MutablePaginator<String> { _ -> emptyList() }
+        val paginator = MutablePaginator<String> { _ -> LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data ->
             progressCreated = true
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
-        val (_, result) = paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        val (_, result) = paginator.jump(
+            BookmarkInt(1),
+            silentlyLoading = true,
+            silentlyResult = true
+        )
         assertTrue(progressCreated)
         assertIs<EmptyPage<String>>(result)
     }

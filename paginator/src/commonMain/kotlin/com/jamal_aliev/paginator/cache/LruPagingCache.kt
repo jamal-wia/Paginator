@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.strategy
+package com.jamal_aliev.paginator.cache
 
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.debug
@@ -20,7 +20,7 @@ import com.jamal_aliev.paginator.page.PageState
  *         cache = LruPagingCache(maxSize = 50),
  *         initialCapacity = 20
  *     ),
- *     source = { page -> api.loadPage(page) }
+ *     load = { page -> api.loadPage(page) }
  * )
  * ```
  *
@@ -33,7 +33,7 @@ import com.jamal_aliev.paginator.page.PageState
  *             maxSize = 50
  *         )
  *     ),
- *     source = { page -> api.loadPage(page) }
+ *     load = { page -> api.loadPage(page) }
  * )
  * ```
  *

@@ -2,7 +2,7 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.extension.isSuccessState
-import com.jamal_aliev.paginator.source.SourceResult
+import com.jamal_aliev.paginator.load.LoadResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -110,7 +110,8 @@ class BookmarkNavigationTest {
 
     @Test
     fun `jumpForward returns null when bookmarks empty`() = runTest {
-        val paginator = MutablePaginator<String> { SourceResult(MutableList(this.core.capacity) { "item$it" }) }
+        val paginator =
+            MutablePaginator<String> { LoadResult(MutableList(this.core.capacity) { "item$it" }) }
         paginator.core.resize(capacity = 5, resize = false, silently = true)
         // Properly release to reset the iterator, then clear
         paginator.release()
@@ -132,7 +133,7 @@ class BookmarkNavigationTest {
         var loadCount = 0
         val paginator = MutablePaginator<String> { page ->
             loadCount++
-            SourceResult(MutableList(this.core.capacity) { "item_$it" })
+            LoadResult(MutableList(this.core.capacity) { "item_$it" })
         }
         paginator.core.resize(capacity = 5, resize = false, silently = true)
 

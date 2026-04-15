@@ -5,8 +5,8 @@ import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.extension.isSuccessState
+import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.source.SourceResult
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlin.test.Test
@@ -28,9 +28,9 @@ class PagingCoreSerializationTest {
     ): MutablePaginator<TestItem> {
         return MutablePaginator<TestItem> { page: Int ->
             if (page in 1..pageCount) {
-                SourceResult(MutableList(capacity) { TestItem("p${page}_item$it", page * 100 + it) })
+                LoadResult(MutableList(capacity) { TestItem("p${page}_item$it", page * 100 + it) })
             } else {
-                SourceResult(emptyList())
+                LoadResult(emptyList())
             }
         }.apply {
             core.resize(capacity = capacity, resize = false, silently = true)

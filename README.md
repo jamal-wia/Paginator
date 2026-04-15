@@ -1,5 +1,6 @@
 # Paginator
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jamal-wia/Paginator)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.jamal-wia/paginator)](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin)
 ![Android](https://img.shields.io/badge/target-Android-green)
@@ -37,7 +38,7 @@ Paginator can be seamlessly used across all layers of an application
     - [Paginator vs MutablePaginator](#paginator-vs-mutablepaginator)
     - [Context Window](#context-window)
     - [Bookmarks](#bookmarks)
-    - [SourceResult & Metadata](#sourceresult--metadata)
+  - [LoadResult & Metadata](#loadresult--metadata)
     - [Capacity & Incomplete Pages](#capacity--incomplete-pages)
     - [Final Page Limit](#final-page-limit)
 - [Navigation](#navigation)
@@ -96,7 +97,7 @@ Paginator can be seamlessly used across all layers of an application
 - **Element-level CRUD** -- get, set, add, remove, and replace individual elements within pages,
   with automatic page rebalancing
 - **Capacity management** -- resize pages on the fly with automatic data redistribution
-- **Source metadata** -- `source` returns `SourceResult<T>`, an open wrapper that carries both
+- **Source metadata** -- `source` returns `LoadResult<T>`, an open wrapper that carries both
   page data and arbitrary metadata from the API response (total count, cursors, etc.). Metadata
   flows through initializer lambdas into custom `PageState` subclasses
 - **Custom PageState subclasses** -- extend `SuccessPage`, `ErrorPage`, `ProgressPage`, or
@@ -168,19 +169,19 @@ dependencies {
 Create a `MutablePaginator` in your ViewModel or Presenter, providing a data source lambda:
 
 ```kotlin
-import com.jamal_aliev.paginator.source.SourceResult
+import com.jamal_aliev.paginator.source.LoadResult
 
 class MyViewModel : ViewModel() {
 
-    private val paginator = MutablePaginator<Item>(source = { page ->
-        SourceResult(repository.loadPage(page))
+    private val paginator = MutablePaginator<Item>(load = { page ->
+        LoadResult(repository.loadPage(page))
     })
 }
 ```
 
-The `source` lambda receives an `Int` page number and should return a `SourceResult<T>` wrapping
-your data list. For the simplest case, just wrap with `SourceResult(list)` or use the
-`.toSourceResult()` extension.
+The `source` lambda receives an `Int` page number and should return a `LoadResult<T>` wrapping
+your data list. For the simplest case, just wrap with `LoadResult(list)` or use the
+`.toLoadResult()` extension.
 
 ### Step 2: Observe and Start
 
@@ -225,6 +226,27 @@ override fun onCleared() {
     super.onCleared()
 }
 ```
+
+---
+
+## Infinite Scroll / Infinite Feed
+
+Paginator works perfectly for a simple infinite scroll — and this is a first-class use case, not an
+afterthought.
+
+Every feature in the library is **strictly opt-in**. If all you need is "load the next page when the
+user scrolls down", the entire setup is what you already saw in Quick Start: one `source` lambda,
+one `snapshot` observer, and `goNextPage()` on scroll. Nothing else is required.
+
+What you still get for free, with zero extra code:
+
+- `ProgressPage` while the next page loads — no manual loading flag needed
+- `ErrorPage` with the previously cached data intact — a failed request won't clear the screen
+- Incomplete page detection — if the server returns fewer items than expected, the paginator quietly
+  re-requests on the next scroll instead of silently stopping
+
+Start with the simplest setup. Adopt advanced features only if and when your product actually needs
+them.
 
 ---
 
@@ -276,18 +298,18 @@ direct state manipulation. Most use cases will use this class.
 
 ```kotlin
 // Most common: full-featured paginator
-val paginator = MutablePaginator<String>(source = { page ->
-    SourceResult(api.fetchItems(page))
+val paginator = MutablePaginator<String>(load = { page ->
+    LoadResult(api.fetchItems(page))
 })
 
 // Read-only: only navigation, no element mutations
-val readOnlyPaginator = Paginator<String>(source = { page ->
-    SourceResult(api.fetchItems(page))
+val readOnlyPaginator = Paginator<String>(load = { page ->
+    LoadResult(api.fetchItems(page))
 })
 ```
 
 The constructor takes a single `source` lambda -- a suspending function that loads data for a given
-page. It returns a `SourceResult<T>` wrapping the data list (and optionally metadata).
+page. It returns a `LoadResult<T>` wrapping the data list (and optionally metadata).
 The receiver is the paginator itself, giving you access to its properties during loading.
 
 ### Context Window
@@ -321,40 +343,40 @@ Navigate through bookmarks with:
 
 You can also implement the `Bookmark` interface for custom bookmark types.
 
-### SourceResult & Metadata
+### LoadResult & Metadata
 
-The `source` lambda returns `SourceResult<T>` -- an open class wrapping the page data. For simple
+The `source` lambda returns `LoadResult<T>` -- an open class wrapping the page data. For simple
 sources, wrap your list directly:
 
 ```kotlin
-val paginator = MutablePaginator<Item>(source = { page ->
-    SourceResult(api.getItems(page))
+val paginator = MutablePaginator<Item>(load = { page ->
+    LoadResult(api.getItems(page))
 })
 ```
 
-Or use the `toSourceResult()` extension:
+Or use the `toLoadResult()` extension:
 
 ```kotlin
-val paginator = MutablePaginator<Item>(source = { page ->
-    api.getItems(page).toSourceResult()
+val paginator = MutablePaginator<Item>(load = { page ->
+    api.getItems(page).toLoadResult()
 })
 ```
 
 When your API returns metadata alongside the list (total count, cursors, pagination info),
-subclass `SourceResult` to carry it:
+subclass `LoadResult` to carry it:
 
 ```kotlin
 class PagedResponse<T>(
     override val data: List<T>,
     val totalPages: Int,
     val nextCursor: String?,
-) : SourceResult<T>(data)
+) : LoadResult<T>(data)
 ```
 
 Then return it from your source:
 
 ```kotlin
-val paginator = MutablePaginator<Item>(source = { page ->
+val paginator = MutablePaginator<Item>(load = { page ->
     val response = api.getItems(page)
     PagedResponse(
         data = response.items,
@@ -364,7 +386,7 @@ val paginator = MutablePaginator<Item>(source = { page ->
 })
 ```
 
-To use metadata in your UI, combine `SourceResult` subclasses with
+To use metadata in your UI, combine `LoadResult` subclasses with
 [custom PageState subclasses](#custom-pagestate-subclasses) via initializer lambdas.
 
 ### Capacity & Incomplete Pages
@@ -646,17 +668,17 @@ paginator.core.initializerProgressPage = { page, data ->
 
 ### Propagating Source Metadata into PageState
 
-The `initializerSuccessPage` and `initializerEmptyPage` lambdas receive the `SourceResult` from
+The `initializerSuccessPage` and `initializerEmptyPage` lambdas receive the `LoadResult` from
 the source call. Combined with custom `PageState` subclasses, this lets you embed API metadata
 directly into your page states:
 
 ```kotlin
-// 1. Define a SourceResult subclass with your metadata
+// 1. Define a LoadResult subclass with your metadata
 class PagedResponse<T>(
     override val data: List<T>,
     val totalPages: Int,
     val nextCursor: String?,
-) : SourceResult<T>(data)
+) : LoadResult<T>(data)
 
 // 2. Define a PageState subclass that carries the metadata
 class RichSuccessPage<T>(
@@ -690,8 +712,9 @@ lives inside the `PageState` object itself.
 Properties on `paginator.core`:
 
 - `initializerProgressPage: (page: Int, data: List<T>) -> ProgressPage<T>`
-- `initializerSuccessPage: (page: Int, data: List<T>, sourceResult: SourceResult<T>) -> SuccessPage<T>`
-- `initializerEmptyPage: (page: Int, data: List<T>, sourceResult: SourceResult<T>) -> EmptyPage<T>`
+-
+`initializerSuccessPage: (page: Int, data: List<T>, sourceResult: LoadResult<T>) -> SuccessPage<T>`
+- `initializerEmptyPage: (page: Int, data: List<T>, sourceResult: LoadResult<T>) -> EmptyPage<T>`
 - `initializerErrorPage: (exception: Exception, page: Int, data: List<T>) -> ErrorPage<T>`
 
 `initializerSuccessPage` and `initializerEmptyPage` receive `sourceResult` because they are
@@ -1250,7 +1273,7 @@ forever. For long-lived paginators or memory-constrained environments, pass a
 ```kotlin
 val paginator = MutablePaginator<Item>(
     core = PagingCore(cache = LruPagingCache(maxSize = 50)),
-    source = { page -> SourceResult(api.loadPage(page)) }
+    load = { page -> LoadResult(api.loadPage(page)) }
 )
 ```
 
@@ -1277,7 +1300,7 @@ val paginator = MutablePaginator<Item>(
             protectContextWindow = true,    // never evict visible pages (default)
         )
     ),
-    source = { page -> SourceResult(api.loadPage(page)) }
+    load = { page -> LoadResult(api.loadPage(page)) }
 )
 ```
 
@@ -1295,7 +1318,7 @@ a page does **not** change its eviction priority -- only the original insertion 
 ```kotlin
 val paginator = MutablePaginator<Item>(
     core = PagingCore(cache = FifoPagingCache(maxSize = 30)),
-    source = { page -> SourceResult(api.loadPage(page)) }
+    load = { page -> LoadResult(api.loadPage(page)) }
 )
 ```
 
@@ -1317,7 +1340,7 @@ val paginator = MutablePaginator<Item>(
             protectContextWindow = true,
         )
     ),
-    source = { page -> SourceResult(api.loadPage(page)) }
+    load = { page -> LoadResult(api.loadPage(page)) }
 )
 ```
 
@@ -1342,7 +1365,7 @@ val paginator = MutablePaginator<Item>(
             margin = 2,   // keep 2 extra pages beyond each edge of the context window
         )
     ),
-    source = { page -> SourceResult(api.loadPage(page)) }
+    load = { page -> LoadResult(api.loadPage(page)) }
 )
 ```
 
@@ -1365,7 +1388,7 @@ val cache = LruPagingCache<Item>(maxSize = 50) + TtlPagingCache(ttl = 5.minutes)
 
 val paginator = MutablePaginator<Item>(
     core = PagingCore(cache = cache),
-    source = { page -> SourceResult(api.loadPage(page)) }
+    load = { page -> LoadResult(api.loadPage(page)) }
 )
 ```
 
@@ -1474,7 +1497,7 @@ val paginator = MutablePaginator(
         cache = LruPagingCache(maxSize = 50),
         persistentCache = RoomPagingCache(dao, json, serializer),
     ),
-    source = { page -> SourceResult(api.loadPage(page)) }
+    load = { page -> LoadResult(api.loadPage(page)) }
 )
 ```
 
@@ -1561,7 +1584,7 @@ val paginator = MutablePaginator(
         cache = LruPagingCache(maxSize = 20),     // L1: keep only 20 pages in memory
         persistentCache = MyRoomPagingCache(dao),  // L2: unlimited persistent storage
     ),
-    source = { page -> SourceResult(api.loadPage(page)) }
+    load = { page -> LoadResult(api.loadPage(page)) }
 )
 ```
 
@@ -1600,8 +1623,8 @@ object AndroidLogger : PaginatorLogger {
     }
 }
 
-val paginator = MutablePaginator<String>(source = { page ->
-    SourceResult(api.fetchItems(page))
+val paginator = MutablePaginator<String>(load = { page ->
+    LoadResult(api.fetchItems(page))
 }).apply {
     logger = ConsoleLogger // or AndroidLogger on Android
 }
@@ -1693,8 +1716,8 @@ class PaginatorViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<List<PageState<String>>>(emptyList())
     val uiState = _uiState.asStateFlow()
 
-    private val paginator = MutablePaginator<String>(source = { page ->
-        SourceResult(repository.loadPage(page))
+    private val paginator = MutablePaginator<String>(load = { page ->
+        LoadResult(repository.loadPage(page))
     }).apply {
         core.resize(capacity = 5, resize = false, silently = true)
         finalPage = 20
@@ -1806,18 +1829,18 @@ fun PaginatedList(pages: List<PageState<String>>) {
 
 **Direct `Paginator` properties:**
 
-| Property              | Type                                    | Description                                     |
-|-----------------------|-----------------------------------------|-------------------------------------------------|
-| `source`              | `suspend Paginator<T>.(Int) -> SourceResult<T>` | Data source lambda                       |
-| `logger`              | `PaginatorLogger?`                      | Logging interface (`null` by default)           |
-| `finalPage`           | `Int`                                   | Maximum allowed page (default `Int.MAX_VALUE`)  |
-| `bookmarks`           | `MutableList<Bookmark>`                 | Bookmark list (default: page 1)                 |
-| `recyclingBookmark`   | `Boolean`                               | Wrap-around bookmark iteration                  |
-| `lockJump`            | `Boolean`                               | Lock jump operations                            |
-| `lockGoNextPage`      | `Boolean`                               | Lock forward navigation                         |
-| `lockGoPreviousPage`  | `Boolean`                               | Lock backward navigation                        |
-| `lockRestart`         | `Boolean`                               | Lock restart                                    |
-| `lockRefresh`         | `Boolean`                               | Lock refresh                                    |
+| Property             | Type                                          | Description                                    |
+|----------------------|-----------------------------------------------|------------------------------------------------|
+| `source`             | `suspend Paginator<T>.(Int) -> LoadResult<T>` | Data source lambda                             |
+| `logger`             | `PaginatorLogger?`                            | Logging interface (`null` by default)          |
+| `finalPage`          | `Int`                                         | Maximum allowed page (default `Int.MAX_VALUE`) |
+| `bookmarks`          | `MutableList<Bookmark>`                       | Bookmark list (default: page 1)                |
+| `recyclingBookmark`  | `Boolean`                                     | Wrap-around bookmark iteration                 |
+| `lockJump`           | `Boolean`                                     | Lock jump operations                           |
+| `lockGoNextPage`     | `Boolean`                                     | Lock forward navigation                        |
+| `lockGoPreviousPage` | `Boolean`                                     | Lock backward navigation                       |
+| `lockRestart`        | `Boolean`                                     | Lock restart                                   |
+| `lockRefresh`        | `Boolean`                                     | Lock refresh                                   |
 
 **Via `paginator.core` (`PagingCore`):**
 

@@ -1,66 +1,66 @@
 package com.jamal_aliev.paginator.page
 
+import com.jamal_aliev.paginator.load.Metadata
 import kotlinx.atomicfu.atomic
 
 sealed class PageState<E>(
     open val page: Int,
     open val data: List<E>,
+    open val metadata: Metadata? = null,
     open val id: Long = ids.incrementAndGet(),
 ) : Comparable<PageState<*>> {
 
     abstract fun copy(
         page: Int = this.page,
         data: List<E> = this.data,
+        result: Metadata? = this.metadata,
         id: Long = this.id
     ): PageState<E>
 
     override fun toString() = "${this::class.simpleName}(page=$page id=$id data=$data)"
-
     override fun hashCode(): Int = this.page.hashCode()
-
     override fun equals(other: Any?): Boolean = (other as? PageState<*>)?.id == id
-
     override operator fun compareTo(other: PageState<*>): Int = page.compareTo(other.page)
 
     open class ErrorPage<T>(
         val exception: Exception,
         override val page: Int,
         override val data: List<T>,
+        override val metadata: Metadata? = null,
         override val id: Long = ids.incrementAndGet(),
-    ) : PageState<T>(page, data, id) {
+    ) : PageState<T>(page, data, metadata, id) {
 
         open fun copy(
-            exception: Exception,
-            page: Int,
-            data: List<T>,
+            exception: Exception = this.exception,
+            page: Int = this.page,
+            data: List<T> = this.data,
+            result: Metadata? = this.metadata,
             id: Long = this.id
-        ): ErrorPage<T> {
-            return ErrorPage(exception, page, data, id)
-        }
+        ): ErrorPage<T> = ErrorPage(exception, page, data, result, id)
 
-        override fun copy(page: Int, data: List<T>, id: Long): ErrorPage<T> {
-            return copy(this.exception, page, data, id)
-        }
+        override fun copy(page: Int, data: List<T>, result: Metadata?, id: Long): ErrorPage<T> =
+            copy(this.exception, page, data, result, id)
 
-        override fun toString(): String {
-            return "${this::class.simpleName}(exception=${exception}, data=${this.data})"
-        }
+        override fun toString(): String =
+            "${this::class.simpleName}(exception=${exception}, data=${this.data})"
     }
 
     open class ProgressPage<T>(
         override val page: Int,
         override val data: List<T>,
+        override val metadata: Metadata? = null,
         override val id: Long = ids.incrementAndGet()
-    ) : PageState<T>(page, data, id) {
-
-        override fun copy(page: Int, data: List<T>, id: Long) = ProgressPage(page, data, id)
+    ) : PageState<T>(page, data, metadata, id) {
+        override fun copy(page: Int, data: List<T>, result: Metadata?, id: Long) =
+            ProgressPage(page, data, result, id)
     }
 
     open class SuccessPage<T>(
         override val page: Int,
         override val data: List<T>,
+        override val metadata: Metadata? = null,
         override val id: Long = ids.incrementAndGet()
-    ) : PageState<T>(page, data, id) {
+    ) : PageState<T>(page, data, metadata, id) {
 
         init {
             checkData()
@@ -68,30 +68,26 @@ sealed class PageState<E>(
 
         @Suppress("NOTHING_TO_INLINE")
         private inline fun checkData() {
-            if (this !is EmptyPage) {
-                require(data.isNotEmpty()) { "data must not be empty" }
-            }
+            if (this !is EmptyPage) require(data.isNotEmpty()) { "data must not be empty" }
         }
 
-        /**
-         * If you want to override this function, you should check the data because it can't be empty
-         * */
-        override fun copy(page: Int, data: List<T>, id: Long): SuccessPage<T> {
-            return if (data.isEmpty()) EmptyPage(page, data, id)
-            else SuccessPage(page, data, id)
-        }
+        override fun copy(page: Int, data: List<T>, result: Metadata?, id: Long): SuccessPage<T> =
+            if (data.isEmpty()) EmptyPage(page, data, result, id)
+            else SuccessPage(page, data, result, id)
     }
 
     open class EmptyPage<T>(
         override val page: Int,
         override val data: List<T>,
+        override val metadata: Metadata? = null,
         override val id: Long = ids.incrementAndGet()
-    ) : SuccessPage<T>(page, data, id) {
-
-        override fun copy(page: Int, data: List<T>, id: Long) = EmptyPage(page, data, id)
+    ) : SuccessPage<T>(page, data, metadata, id) {
+        override fun copy(page: Int, data: List<T>, result: Metadata?, id: Long) =
+            EmptyPage(page, data, result, id)
     }
 
-    private companion object {
+    companion object {
         private val ids = atomic(0L)
+        fun nextId(): Long = ids.incrementAndGet()
     }
 }

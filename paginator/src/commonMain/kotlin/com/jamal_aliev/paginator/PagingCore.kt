@@ -2,6 +2,9 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.PagingCore.Companion.UNLIMITED_CAPACITY
+import com.jamal_aliev.paginator.cache.DefaultPagingCache
+import com.jamal_aliev.paginator.cache.PagingCache
+import com.jamal_aliev.paginator.cache.PersistentPagingCache
 import com.jamal_aliev.paginator.extension.gap
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
@@ -10,6 +13,7 @@ import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.load.Metadata
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.EmptyPage
@@ -19,10 +23,6 @@ import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.PageEntry
 import com.jamal_aliev.paginator.serialization.PageEntryType
 import com.jamal_aliev.paginator.serialization.PagingCoreSnapshot
-import com.jamal_aliev.paginator.source.SourceResult
-import com.jamal_aliev.paginator.strategy.DefaultPagingCache
-import com.jamal_aliev.paginator.strategy.PagingCache
-import com.jamal_aliev.paginator.strategy.PersistentPagingCache
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -695,8 +695,8 @@ open class PagingCore<T>(
      * Override to provide custom success page subclasses.
      */
     var initializerSuccessPage: InitializerSuccessPage<T> =
-        fun(page: Int, data: List<T>, _sourceResult: SourceResult<T>): SuccessPage<T> {
-            return if (data.isEmpty()) initializerEmptyPage.invoke(page, data, _sourceResult)
+        fun(page: Int, data: List<T>, _Metadata: Metadata?): SuccessPage<T> {
+            return if (data.isEmpty()) initializerEmptyPage.invoke(page, data, _Metadata)
             else SuccessPage(page = page, data = data)
         }
 
@@ -705,7 +705,7 @@ open class PagingCore<T>(
      * Override to provide custom empty page subclasses.
      */
     var initializerEmptyPage: InitializerEmptyPage<T> =
-        fun(page: Int, data: List<T>, _sourceResult: SourceResult<T>): EmptyPage<T> {
+        fun(page: Int, data: List<T>, _Metadata: Metadata?): EmptyPage<T> {
             return EmptyPage(page = page, data = data)
         }
 
@@ -779,7 +779,7 @@ open class PagingCore<T>(
                 offset = end
 
                 setState(
-                    state = initSuccessState.invoke(pageIndex++, successData, SourceResult(successData)),
+                    state = initSuccessState.invoke(pageIndex++, successData, null),
                     silently = true
                 )
             }
@@ -889,7 +889,7 @@ open class PagingCore<T>(
                     initializerEmptyPage(
                         entry.page,
                         entry.data,
-                        SourceResult(entry.data)
+                        null
                     )
                 }
 
@@ -898,7 +898,7 @@ open class PagingCore<T>(
                     initializerSuccessPage(
                         entry.page,
                         data,
-                        SourceResult(data)
+                        null
                     )
                 }
             }

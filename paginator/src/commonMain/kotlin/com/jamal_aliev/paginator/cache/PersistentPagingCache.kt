@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.strategy
+package com.jamal_aliev.paginator.cache
 
 import com.jamal_aliev.paginator.page.PageState
 
@@ -28,7 +28,7 @@ import com.jamal_aliev.paginator.page.PageState
  *         cache = LruPagingCache(maxSize = 50),
  *         persistentCache = MyRoomPagingCache(dao)
  *     ),
- *     source = { page -> api.loadPage(page) }
+ *     load = { page -> api.loadPage(page) }
  * )
  * ```
  *

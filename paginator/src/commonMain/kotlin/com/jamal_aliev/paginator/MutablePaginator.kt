@@ -1,16 +1,16 @@
 package com.jamal_aliev.paginator
 
+import com.jamal_aliev.paginator.cache.PersistentPagingCache
 import com.jamal_aliev.paginator.extension.far
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.extension.smartForEach
 import com.jamal_aliev.paginator.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.extension.walkForwardWhile
+import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.debug
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
-import com.jamal_aliev.paginator.source.SourceResult
-import com.jamal_aliev.paginator.strategy.PersistentPagingCache
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
 
@@ -35,7 +35,7 @@ import kotlinx.atomicfu.atomic
  * constructing [PageState] instances passed to [MutablePaginator].
  *
  * @param T The type of elements contained in each page.
- * @param source A suspending lambda that loads data for a given page number.
+ * @param load A suspending lambda that loads data for a given page number.
  *   The receiver is the paginator itself, giving access to its properties during loading.
  *
  * @see Paginator
@@ -44,8 +44,8 @@ import kotlinx.atomicfu.atomic
  */
 open class MutablePaginator<T>(
     core: PagingCore<T> = PagingCore(),
-    source: suspend Paginator<T>.(page: Int) -> SourceResult<T>
-) : Paginator<T>(core, source) {
+    load: suspend Paginator<T>.(page: Int) -> LoadResult<T>
+) : Paginator<T>(core, load) {
 
     /**
      * Pages modified by CRUD operations that have not yet been flushed to L2.

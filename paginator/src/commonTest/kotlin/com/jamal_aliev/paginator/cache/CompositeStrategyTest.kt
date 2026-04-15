@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.strategy
+package com.jamal_aliev.paginator.cache
 
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.test.Test

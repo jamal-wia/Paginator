@@ -1,9 +1,13 @@
 package com.jamal_aliev.paginator
 
+import com.jamal_aliev.paginator.extension.prefetchController
+import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -12,12 +16,33 @@ import kotlin.test.assertTrue
 
 class CoerceToCapacityTest {
 
+
+    fun main() {
+        // Data
+        fun dataAPICall() = emptyList<String>()
+
+        // ViewModel
+        val paginator = Paginator<String>(
+            core = PagingCore(initialCapacity = 10),
+            load = { LoadResult(dataAPICall()) }
+        )
+
+        // UI
+        paginator.prefetchController(
+            scope = CoroutineScope(CoroutineName("")), // UIScope or ViewModelScope,
+            prefetchDistance = 5,
+        )
+
+
+    }
+
+
     // ──────────────────────────────────────────────────────────────────────
     //  Helper
     // ──────────────────────────────────────────────────────────────────────
 
     private fun paginator(capacity: Int): MutablePaginator<String> {
-        return MutablePaginator<String> { emptyList() }.apply {
+        return MutablePaginator<String> { LoadResult(emptyList()) }.apply {
             core.resize(capacity = capacity, resize = false, silently = true)
         }
     }

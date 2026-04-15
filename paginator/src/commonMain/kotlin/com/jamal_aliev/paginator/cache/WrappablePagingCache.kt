@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.strategy
+package com.jamal_aliev.paginator.cache
 
 /**
  * A [PagingCache] that can participate in strategy composition via the [plus] operator.

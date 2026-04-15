@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.strategy
+package com.jamal_aliev.paginator.cache
 
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
@@ -16,7 +16,7 @@ import com.jamal_aliev.paginator.page.PageState
  * // Standalone (no eviction)
  * val paginator = MutablePaginator(
  *     pagingCore = PagingCore(cache = DefaultPagingCache()),
- *     source = { page -> api.loadPage(page) }
+ *     load = { page -> api.loadPage(page) }
  * )
  *
  * // With eviction strategy
@@ -24,7 +24,7 @@ import com.jamal_aliev.paginator.page.PageState
  *     pagingCore = PagingCore(
  *         cache = LruPagingCache(delegate = DefaultPagingCache(), maxSize = 50)
  *     ),
- *     source = { page -> api.loadPage(page) }
+ *     load = { page -> api.loadPage(page) }
  * )
  * ```
  *

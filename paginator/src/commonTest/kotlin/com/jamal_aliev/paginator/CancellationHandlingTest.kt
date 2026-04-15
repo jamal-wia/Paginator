@@ -2,7 +2,7 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.extension.isSuccessState
-import com.jamal_aliev.paginator.source.SourceResult
+import com.jamal_aliev.paginator.load.LoadResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -27,7 +27,7 @@ class CancellationHandlingTest {
                 gate.await() // suspend forever until canceled
                 error("unreachable")
             }
-            SourceResult(MutableList(this.core.capacity) { "p${page}_item$it" })
+            LoadResult(MutableList(this.core.capacity) { "p${page}_item$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
@@ -85,7 +85,7 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            SourceResult(MutableList(this.core.capacity) { "p${page}_item$it" })
+            LoadResult(MutableList(this.core.capacity) { "p${page}_item$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
@@ -129,7 +129,7 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            SourceResult(MutableList(this.core.capacity) { "p${page}_item$it" })
+            LoadResult(MutableList(this.core.capacity) { "p${page}_item$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
@@ -169,7 +169,7 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            SourceResult(MutableList(this.core.capacity) { "p${page}_item$it" })
+            LoadResult(MutableList(this.core.capacity) { "p${page}_item$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
@@ -215,7 +215,7 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            SourceResult(MutableList(this.core.capacity) { "p${page}_item$it" })
+            LoadResult(MutableList(this.core.capacity) { "p${page}_item$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
@@ -264,7 +264,7 @@ class CancellationHandlingTest {
                 gate.await()
                 error("unreachable")
             }
-            SourceResult(MutableList(this.core.capacity) { "p${page}_item$it" })
+            LoadResult(MutableList(this.core.capacity) { "p${page}_item$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)

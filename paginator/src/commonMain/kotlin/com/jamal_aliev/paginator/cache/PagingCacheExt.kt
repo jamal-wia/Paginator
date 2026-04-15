@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.strategy
+package com.jamal_aliev.paginator.cache
 
 /**
  * Composes two cache strategies so that [this] wraps [inner].

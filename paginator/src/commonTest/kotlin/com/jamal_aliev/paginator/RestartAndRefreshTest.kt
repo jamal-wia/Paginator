@@ -4,7 +4,7 @@ import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.extension.refreshAll
-import com.jamal_aliev.paginator.source.SourceResult
+import com.jamal_aliev.paginator.load.LoadResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,7 +37,7 @@ class RestartAndRefreshTest {
         var callCount = 0
         val paginator = MutablePaginator<String> { page ->
             callCount++
-            SourceResult(MutableList(this.core.capacity) { "call${callCount}_item$it" })
+            LoadResult(MutableList(this.core.capacity) { "call${callCount}_item$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
@@ -60,7 +60,7 @@ class RestartAndRefreshTest {
         var callCount = 0
         val paginator = MutablePaginator<String> { page ->
             callCount++
-            SourceResult(MutableList(this.core.capacity) { "call${callCount}_p${page}_item$it" })
+            LoadResult(MutableList(this.core.capacity) { "call${callCount}_p${page}_item$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
@@ -102,7 +102,7 @@ class RestartAndRefreshTest {
         var shouldFail = false
         val paginator = MutablePaginator<String> { page ->
             if (shouldFail && page == 1) throw RuntimeException("refresh error")
-            SourceResult(MutableList(this.core.capacity) { "p${page}_item$it" })
+            LoadResult(MutableList(this.core.capacity) { "p${page}_item$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
@@ -127,7 +127,7 @@ class RestartAndRefreshTest {
         var generation = 0
         val paginator = MutablePaginator<String> { page ->
             generation++
-            SourceResult(MutableList(this.core.capacity) { "gen${generation}_p${page}_$it" })
+            LoadResult(MutableList(this.core.capacity) { "gen${generation}_p${page}_$it" })
         }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 

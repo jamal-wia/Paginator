@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.strategy
+package com.jamal_aliev.paginator.cache
 
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.logger.PaginatorLogger
@@ -19,7 +19,7 @@ import com.jamal_aliev.paginator.page.PageState
  *             maxSize = 50
  *         )
  *     ),
- *     source = { ... }
+ *     load = { ... }
  * )
  * ```
  *
