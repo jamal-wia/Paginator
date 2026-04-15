@@ -13,7 +13,7 @@ sealed class PageState<E>(
     abstract fun copy(
         page: Int = this.page,
         data: List<E> = this.data,
-        result: Metadata? = this.metadata,
+        metadata: Metadata? = this.metadata,
         id: Long = this.id
     ): PageState<E>
 
@@ -34,12 +34,12 @@ sealed class PageState<E>(
             exception: Exception = this.exception,
             page: Int = this.page,
             data: List<T> = this.data,
-            result: Metadata? = this.metadata,
+            metadata: Metadata? = this.metadata,
             id: Long = this.id
-        ): ErrorPage<T> = ErrorPage(exception, page, data, result, id)
+        ): ErrorPage<T> = ErrorPage(exception, page, data, metadata, id)
 
-        override fun copy(page: Int, data: List<T>, result: Metadata?, id: Long): ErrorPage<T> =
-            copy(this.exception, page, data, result, id)
+        override fun copy(page: Int, data: List<T>, metadata: Metadata?, id: Long): ErrorPage<T> =
+            copy(this.exception, page, data, metadata, id)
 
         override fun toString(): String =
             "${this::class.simpleName}(exception=${exception}, data=${this.data})"
@@ -51,8 +51,8 @@ sealed class PageState<E>(
         override val metadata: Metadata? = null,
         override val id: Long = ids.incrementAndGet()
     ) : PageState<T>(page, data, metadata, id) {
-        override fun copy(page: Int, data: List<T>, result: Metadata?, id: Long) =
-            ProgressPage(page, data, result, id)
+        override fun copy(page: Int, data: List<T>, metadata: Metadata?, id: Long) =
+            ProgressPage(page, data, metadata, id)
     }
 
     open class SuccessPage<T>(
@@ -71,9 +71,9 @@ sealed class PageState<E>(
             if (this !is EmptyPage) require(data.isNotEmpty()) { "data must not be empty" }
         }
 
-        override fun copy(page: Int, data: List<T>, result: Metadata?, id: Long): SuccessPage<T> =
-            if (data.isEmpty()) EmptyPage(page, data, result, id)
-            else SuccessPage(page, data, result, id)
+        override fun copy(page: Int, data: List<T>, metadata: Metadata?, id: Long): SuccessPage<T> =
+            if (data.isEmpty()) EmptyPage(page, data, metadata, id)
+            else SuccessPage(page, data, metadata, id)
     }
 
     open class EmptyPage<T>(
@@ -82,8 +82,8 @@ sealed class PageState<E>(
         override val metadata: Metadata? = null,
         override val id: Long = ids.incrementAndGet()
     ) : SuccessPage<T>(page, data, metadata, id) {
-        override fun copy(page: Int, data: List<T>, result: Metadata?, id: Long) =
-            EmptyPage(page, data, result, id)
+        override fun copy(page: Int, data: List<T>, metadata: Metadata?, id: Long) =
+            EmptyPage(page, data, metadata, id)
     }
 
     companion object {

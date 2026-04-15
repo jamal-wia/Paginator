@@ -695,8 +695,8 @@ open class PagingCore<T>(
      * Override to provide custom success page subclasses.
      */
     var initializerSuccessPage: InitializerSuccessPage<T> =
-        fun(page: Int, data: List<T>, _Metadata: Metadata?): SuccessPage<T> {
-            return if (data.isEmpty()) initializerEmptyPage.invoke(page, data, _Metadata)
+        fun(page: Int, data: List<T>, metadata: Metadata?): SuccessPage<T> {
+            return if (data.isEmpty()) initializerEmptyPage.invoke(page, data, metadata)
             else SuccessPage(page = page, data = data)
         }
 
@@ -705,7 +705,7 @@ open class PagingCore<T>(
      * Override to provide custom empty page subclasses.
      */
     var initializerEmptyPage: InitializerEmptyPage<T> =
-        fun(page: Int, data: List<T>, _Metadata: Metadata?): EmptyPage<T> {
+        fun(page: Int, data: List<T>, metadata: Metadata?): EmptyPage<T> {
             return EmptyPage(page = page, data = data)
         }
 
