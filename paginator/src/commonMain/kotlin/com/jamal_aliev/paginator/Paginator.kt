@@ -463,8 +463,8 @@ open class Paginator<T>(
                 page = bookmark.page,
                 forceLoading = true,
                 loading = { page: Int, pageState: PageState<T>? ->
-                    val data: List<T> = coerceToCapacity(pageState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = coerceToCapacity(
+                    val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
+                    val progressState: ProgressPage<T> = core.coerceToCapacity(
                         state = initProgressState.invoke(page, data)
                     ) as ProgressPage
                     cache.setState(
@@ -500,7 +500,9 @@ open class Paginator<T>(
                 core.snapshot()
             }
 
-            logger.debug(LogComponent.NAVIGATION) { "jump: page=${bookmark.page} result=${resultState::class.simpleName}" }
+            logger.debug(LogComponent.NAVIGATION) {
+                "jump: page=${bookmark.page} result=${resultState::class.simpleName}"
+            }
             persistSuccessState(resultState)
             syncBookmarkIndex(bookmark.page)
             refreshDirtyPagesInContext()
@@ -633,8 +635,8 @@ open class Paginator<T>(
                 page = nextPage,
                 forceLoading = true,
                 loading = { page: Int, pageState: PageState<T>? ->
-                    val data: List<T> = coerceToCapacity(pageState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = coerceToCapacity(
+                    val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
+                    val progressState: ProgressPage<T> = core.coerceToCapacity(
                         state = initProgressState.invoke(page, data)
                     ) as ProgressPage
                     cache.setState(
@@ -780,8 +782,8 @@ open class Paginator<T>(
                 page = previousPage,
                 forceLoading = true,
                 loading = { page: Int, pageState: PageState<T>? ->
-                    val data: List<T> = coerceToCapacity(pageState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = coerceToCapacity(
+                    val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
+                    val progressState: ProgressPage<T> = core.coerceToCapacity(
                         state = initProgressState.invoke(page, data)
                     ) as ProgressPage
                     cache.setState(
@@ -902,8 +904,9 @@ open class Paginator<T>(
                 page = 1,
                 forceLoading = true,
                 loading = { page, pageState ->
-                    val dataOfState: List<T> = coerceToCapacity(pageState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = coerceToCapacity(
+                    val dataOfState: List<T> =
+                        core.coerceToCapacity(pageState?.data ?: mutableListOf())
+                    val progressState: ProgressPage<T> = core.coerceToCapacity(
                         state = initProgressState.invoke(page, dataOfState)
                     ) as ProgressPage
                     cache.setState(
@@ -1001,8 +1004,9 @@ open class Paginator<T>(
                     }
                 }
                 pages.forEach { page: Int ->
-                    val dataOfPage = coerceToCapacity(savedStates[page]?.data ?: mutableListOf())
-                    val progressState = coerceToCapacity(
+                    val dataOfPage =
+                        core.coerceToCapacity(savedStates[page]?.data ?: mutableListOf())
+                    val progressState = core.coerceToCapacity(
                         state = initProgressState.invoke(page, dataOfPage)
                     ) as ProgressPage
                     cache.setState(
@@ -1132,14 +1136,14 @@ open class Paginator<T>(
                 logger.debug(LogComponent.NAVIGATION) {
                     "loadOrGetPageState: page=$page data.isEmpty()"
                 }
-                coerceToCapacity(
+                core.coerceToCapacity(
                     state = initEmptyState.invoke(page, data, loadResult.metadata)
                 )
             } else {
                 logger.debug(LogComponent.NAVIGATION) {
                     "loadOrGetPageState: page=$page data.isNotEmpty()"
                 }
-                coerceToCapacity(
+                core.coerceToCapacity(
                     state = initSuccessState.invoke(page, data, loadResult.metadata)
                 )
             }
@@ -1149,39 +1153,12 @@ open class Paginator<T>(
             logger.warn(LogComponent.NAVIGATION) {
                 "loadOrGetPageState: page=$page exception=$exception"
             }
-            val data: List<T> = coerceToCapacity(
+            val data: List<T> = core.coerceToCapacity(
                 data = cachedState?.data ?: mutableListOf()
             )
-            coerceToCapacity(
+            core.coerceToCapacity(
                 state = initErrorState.invoke(exception, page, data)
             )
-        }
-    }
-
-    fun coerceToCapacity(data: List<T>): List<T> {
-        val capacity = core.capacity
-        if (core.isCapacityUnlimited || data.size <= capacity) {
-            return data
-        }
-        return if (data.size / 2 >= capacity) {
-            ArrayList<T>(capacity).apply {
-                for (i in 0 until capacity) {
-                    add(data[i])
-                }
-            }
-        } else {
-            ArrayList(data).apply {
-                subList(capacity, size).clear()
-            }
-        }
-    }
-
-    fun coerceToCapacity(state: PageState<T>): PageState<T> {
-        val newData = coerceToCapacity(state.data)
-        return if (newData === state.data) {
-            state
-        } else {
-            state.copy(data = newData)
         }
     }
 

@@ -409,17 +409,17 @@ Set `capacity` to `UNLIMITED_CAPACITY` (0) to disable capacity checks entirely.
 
 #### coerceToCapacity
 
-The paginator provides two overloaded `coerceToCapacity` functions that enforce the capacity limit
+`PagingCore` provides two overloaded `coerceToCapacity` functions that enforce the capacity limit
 on data and page states. They are called automatically during all loading paths (`jump`,
 `goNextPage`, `goPreviousPage`, `restart`, `refresh`) to guarantee that no page ever holds more
 items than `capacity`.
 
 ```kotlin
-// Trims a list to capacity. Always returns a MutableList.
-paginator.coerceToCapacity(data: List<T>): List<T>
+// Trims a list to capacity. Returns a MutableList when trimmed; input as-is otherwise.
+paginator.core.coerceToCapacity(data: List<T>): List<T>
 
 // Trims a PageState's data to capacity via copy(). Returns the same instance if no trim needed.
-paginator.coerceToCapacity(state: PageState<T>): PageState<T>
+paginator.core.coerceToCapacity(state: PageState<T>): PageState<T>
 ```
 
 When `capacity` is set to `UNLIMITED_CAPACITY`, both functions return their input unchanged.

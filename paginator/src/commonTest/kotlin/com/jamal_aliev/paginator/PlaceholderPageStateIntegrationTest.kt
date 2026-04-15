@@ -333,7 +333,7 @@ class PlaceholderPageStateIntegrationTest {
 
         val bigData = List(10) { "item_$it" }
         val state = PlaceholderProgressPage(page = 1, data = bigData, placeholders = skeletons(3))
-        val coerced = paginator.coerceToCapacity(state)
+        val coerced = paginator.core.coerceToCapacity(state)
 
         assertEquals(3, coerced.data.size)
     }
@@ -347,7 +347,7 @@ class PlaceholderPageStateIntegrationTest {
             data = List(3) { "item_$it" },
             placeholders = skeletons(3)
         )
-        val coerced = paginator.coerceToCapacity(state)
+        val coerced = paginator.core.coerceToCapacity(state)
 
         assertSame(state, coerced)
     }
@@ -366,7 +366,7 @@ class PlaceholderPageStateIntegrationTest {
             data = List(100) { "item_$it" },
             placeholders = skeletons(50)
         )
-        val coerced = paginator.coerceToCapacity(state)
+        val coerced = paginator.core.coerceToCapacity(state)
 
         assertSame(state, coerced)
         assertEquals(100, coerced.data.size)

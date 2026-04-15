@@ -424,6 +424,51 @@ open class PagingCore<T>(
     }
 
     /**
+     * Trims [data] to at most [capacity] elements.
+     *
+     * If [isCapacityUnlimited] is `true` or `data.size <= capacity`, the input list
+     * is returned as-is. Otherwise, a new mutable list containing the first [capacity]
+     * elements is returned.
+     *
+     * The implementation picks between two allocation strategies based on how far
+     * the input exceeds the capacity, favoring the cheaper of a fresh
+     * pre-sized `ArrayList` fill versus copying the full list and clearing the tail.
+     */
+    fun coerceToCapacity(data: List<T>): List<T> {
+        val capacity = capacity
+        if (isCapacityUnlimited || data.size <= capacity) {
+            return data
+        }
+        return if (data.size / 2 >= capacity) {
+            ArrayList<T>(capacity).apply {
+                for (i in 0 until capacity) {
+                    add(data[i])
+                }
+            }
+        } else {
+            ArrayList(data).apply {
+                subList(capacity, size).clear()
+            }
+        }
+    }
+
+    /**
+     * Returns a [PageState] whose `data` is trimmed to at most [capacity].
+     *
+     * When trimming is not required (unlimited capacity or `data.size <= capacity`),
+     * the original [state] is returned unchanged. Otherwise, a copy is produced via
+     * [PageState.copy] with the trimmed data.
+     */
+    fun coerceToCapacity(state: PageState<T>): PageState<T> {
+        val newData = coerceToCapacity(state.data)
+        return if (newData === state.data) {
+            state
+        } else {
+            state.copy(data = newData)
+        }
+    }
+
+    /**
      * Traverses pages starting from [pivotState], repeatedly applying [next]
      * to compute the next page number, as long as:
      *  - the computed page exists in the cache, and

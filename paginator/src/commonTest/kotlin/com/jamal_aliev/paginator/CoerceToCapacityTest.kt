@@ -60,14 +60,14 @@ class CoerceToCapacityTest {
     @Test
     fun `list - trims data exceeding capacity`() {
         val p = paginator(3)
-        val result = p.coerceToCapacity(listOf("a", "b", "c", "d", "e"))
+        val result = p.core.coerceToCapacity(listOf("a", "b", "c", "d", "e"))
         assertEquals(listOf("a", "b", "c"), result)
     }
 
     @Test
     fun `list - keeps first N elements when trimming`() {
         val p = paginator(2)
-        val result = p.coerceToCapacity(listOf("first", "second", "third"))
+        val result = p.core.coerceToCapacity(listOf("first", "second", "third"))
         assertEquals(listOf("first", "second"), result)
     }
 
@@ -76,14 +76,14 @@ class CoerceToCapacityTest {
     @Test
     fun `list - returns same data when size equals capacity`() {
         val p = paginator(3)
-        val result = p.coerceToCapacity(listOf("a", "b", "c"))
+        val result = p.core.coerceToCapacity(listOf("a", "b", "c"))
         assertEquals(listOf("a", "b", "c"), result)
     }
 
     @Test
     fun `list - returns same data when size is less than capacity`() {
         val p = paginator(5)
-        val result = p.coerceToCapacity(listOf("a", "b"))
+        val result = p.core.coerceToCapacity(listOf("a", "b"))
         assertEquals(listOf("a", "b"), result)
     }
 
@@ -92,7 +92,7 @@ class CoerceToCapacityTest {
     @Test
     fun `list - empty list stays empty`() {
         val p = paginator(3)
-        val result = p.coerceToCapacity(emptyList())
+        val result = p.core.coerceToCapacity(emptyList())
         assertTrue(result.isEmpty())
     }
 
@@ -102,14 +102,14 @@ class CoerceToCapacityTest {
     fun `list - unlimited capacity never trims`() {
         val p = unlimitedPaginator()
         val big = List(1000) { "item_$it" }
-        val result = p.coerceToCapacity(big)
+        val result = p.core.coerceToCapacity(big)
         assertEquals(1000, result.size)
     }
 
     @Test
     fun `list - unlimited capacity with empty list`() {
         val p = unlimitedPaginator()
-        val result = p.coerceToCapacity(emptyList())
+        val result = p.core.coerceToCapacity(emptyList())
         assertTrue(result.isEmpty())
     }
 
@@ -118,7 +118,7 @@ class CoerceToCapacityTest {
     @Test
     fun `list - result is always MutableList when trimmed`() {
         val p = paginator(2)
-        val result = p.coerceToCapacity(listOf("a", "b", "c"))
+        val result = p.core.coerceToCapacity(listOf("a", "b", "c"))
         assertIs<MutableList<String>>(result)
     }
 
@@ -126,7 +126,7 @@ class CoerceToCapacityTest {
     fun `list - result is MutableList when not trimmed and input is immutable`() {
         val p = paginator(5)
         val immutable = listOf("a", "b")
-        val result = p.coerceToCapacity(immutable)
+        val result = p.core.coerceToCapacity(immutable)
         assertIs<MutableList<String>>(result)
     }
 
@@ -134,7 +134,7 @@ class CoerceToCapacityTest {
     fun `list - MutableList input is preserved as-is when not trimmed`() {
         val p = paginator(5)
         val mutable = mutableListOf("a", "b")
-        val result = p.coerceToCapacity(mutable)
+        val result = p.core.coerceToCapacity(mutable)
         assertSame(result, mutable)
     }
 
@@ -143,14 +143,14 @@ class CoerceToCapacityTest {
     @Test
     fun `list - capacity 1 trims to single element`() {
         val p = paginator(1)
-        val result = p.coerceToCapacity(listOf("a", "b", "c"))
+        val result = p.core.coerceToCapacity(listOf("a", "b", "c"))
         assertEquals(listOf("a"), result)
     }
 
     @Test
     fun `list - capacity 1 keeps single element`() {
         val p = paginator(1)
-        val result = p.coerceToCapacity(listOf("only"))
+        val result = p.core.coerceToCapacity(listOf("only"))
         assertEquals(listOf("only"), result)
     }
 
@@ -164,7 +164,7 @@ class CoerceToCapacityTest {
     fun `state - SuccessPage trimmed when data exceeds capacity`() {
         val p = paginator(2)
         val state = SuccessPage(page = 1, data = listOf("a", "b", "c", "d"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertEquals(listOf("a", "b"), result.data)
         assertEquals(1, result.page)
     }
@@ -173,7 +173,7 @@ class CoerceToCapacityTest {
     fun `state - SuccessPage returned as-is when within capacity`() {
         val p = paginator(5)
         val state = SuccessPage(page = 1, data = listOf("a", "b"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
@@ -181,7 +181,7 @@ class CoerceToCapacityTest {
     fun `state - SuccessPage returned as-is when size equals capacity`() {
         val p = paginator(3)
         val state = SuccessPage(page = 1, data = listOf("a", "b", "c"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
@@ -193,7 +193,7 @@ class CoerceToCapacityTest {
         // capacity=1 with 1 item stays SuccessPage
         val p1 = paginator(1)
         val state = SuccessPage(page = 1, data = listOf("a"))
-        val result = p1.coerceToCapacity(state)
+        val result = p1.core.coerceToCapacity(state)
         assertIs<SuccessPage<String>>(result)
         assertEquals(listOf("a"), result.data)
     }
@@ -204,7 +204,7 @@ class CoerceToCapacityTest {
     fun `state - EmptyPage returned as-is`() {
         val p = paginator(3)
         val state = EmptyPage<String>(page = 1, data = emptyList())
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
@@ -212,7 +212,7 @@ class CoerceToCapacityTest {
     fun `state - EmptyPage with data exceeding capacity is trimmed`() {
         val p = paginator(2)
         val state = EmptyPage(page = 1, data = listOf("a", "b", "c"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertEquals(2, result.data.size)
     }
 
@@ -222,7 +222,7 @@ class CoerceToCapacityTest {
     fun `state - ProgressPage trimmed when data exceeds capacity`() {
         val p = paginator(2)
         val state = ProgressPage(page = 1, data = listOf("a", "b", "c"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertEquals(listOf("a", "b"), result.data)
         assertEquals(1, result.page)
     }
@@ -231,7 +231,7 @@ class CoerceToCapacityTest {
     fun `state - ProgressPage returned as-is when within capacity`() {
         val p = paginator(5)
         val state = ProgressPage(page = 1, data = listOf("a"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
@@ -239,7 +239,7 @@ class CoerceToCapacityTest {
     fun `state - ProgressPage with empty data returned as-is`() {
         val p = paginator(3)
         val state = ProgressPage<String>(page = 1, data = emptyList())
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
@@ -250,7 +250,7 @@ class CoerceToCapacityTest {
         val p = paginator(2)
         val ex = RuntimeException("fail")
         val state = ErrorPage(exception = ex, page = 1, data = listOf("a", "b", "c"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertEquals(listOf("a", "b"), result.data)
         assertEquals(1, result.page)
     }
@@ -260,7 +260,7 @@ class CoerceToCapacityTest {
         val p = paginator(5)
         val ex = RuntimeException("fail")
         val state = ErrorPage(exception = ex, page = 1, data = listOf("a"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
@@ -269,7 +269,7 @@ class CoerceToCapacityTest {
         val p = paginator(3)
         val ex = RuntimeException("fail")
         val state = ErrorPage<String>(exception = ex, page = 1, data = emptyList())
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
@@ -279,7 +279,7 @@ class CoerceToCapacityTest {
     fun `state - unlimited capacity never trims SuccessPage`() {
         val p = unlimitedPaginator()
         val state = SuccessPage(page = 1, data = List(500) { "item_$it" })
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
         assertEquals(500, result.data.size)
     }
@@ -288,7 +288,7 @@ class CoerceToCapacityTest {
     fun `state - unlimited capacity never trims ProgressPage`() {
         val p = unlimitedPaginator()
         val state = ProgressPage(page = 1, data = List(500) { "item_$it" })
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
@@ -297,7 +297,7 @@ class CoerceToCapacityTest {
         val p = unlimitedPaginator()
         val ex = RuntimeException("fail")
         val state = ErrorPage(exception = ex, page = 1, data = List(500) { "item_$it" })
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
@@ -307,7 +307,7 @@ class CoerceToCapacityTest {
     fun `state - page number is preserved after trimming`() {
         val p = paginator(1)
         val state = SuccessPage(page = 42, data = listOf("a", "b", "c"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertEquals(42, result.page)
     }
 
@@ -317,7 +317,7 @@ class CoerceToCapacityTest {
     fun `state - ProgressPage type preserved after trimming`() {
         val p = paginator(1)
         val state = ProgressPage(page = 1, data = listOf("a", "b"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertIs<ProgressPage<String>>(result)
     }
 
@@ -326,7 +326,7 @@ class CoerceToCapacityTest {
         val p = paginator(1)
         val ex = RuntimeException("fail")
         val state = ErrorPage(exception = ex, page = 1, data = listOf("a", "b"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertIs<ErrorPage<String>>(result)
     }
 
@@ -334,7 +334,7 @@ class CoerceToCapacityTest {
     fun `state - data exactly one over capacity is trimmed`() {
         val p = paginator(3)
         val state = SuccessPage(page = 1, data = listOf("a", "b", "c", "d"))
-        val result = p.coerceToCapacity(state)
+        val result = p.core.coerceToCapacity(state)
         assertEquals(3, result.data.size)
     }
 }
