@@ -69,6 +69,13 @@ Paginator can be seamlessly used across all layers of an application
   dirty via the `isDirty` flag
 - **Two-tier API** -- `Paginator` (read-only navigation, dirty tracking, release) and
   `MutablePaginator` (element-level CRUD, resize, public `setState`)
+- **DSL builder** -- declarative `paginator<T> { … }` and `mutablePaginator<T> { … }` blocks that
+  collapse `PagingCore` setup, cache composition, bookmarks, logger and custom `PageState`
+  initializers into one configuration site
+- **Rich extension API** -- collection-style helpers on `Paginator` (`find`, `count`, `flatten`,
+  `firstOrNull`, `contains`, …) and bulk CRUD on `MutablePaginator` (`prependElement`,
+  `moveElement`, `swapElements`, `insertBefore`/`After`, `removeAll`, `retainAll`, `distinctBy`,
+  `updateAll`/`updateWhere`)
 - **Lock flags** -- prevent specific operations at runtime (`lockJump`, `lockGoNextPage`,
   `lockGoPreviousPage`, `lockRestart`, `lockRefresh`)
 - **Scroll-based prefetch** -- `PaginatorPrefetchController` monitors scroll position and
@@ -128,21 +135,30 @@ dependencies {
 
 ### Step 1: Create a Paginator
 
-Create a `MutablePaginator` in your ViewModel or Presenter, providing a data source lambda:
+The simplest way to create a `MutablePaginator` is via the DSL builder:
 
 ```kotlin
+import com.jamal_aliev.paginator.dsl.mutablePaginator
 import com.jamal_aliev.paginator.load.LoadResult
 
 class MyViewModel : ViewModel() {
 
-    private val paginator = MutablePaginator<Item>(load = { page ->
-        LoadResult(repository.loadPage(page))
-    })
+    private val paginator = mutablePaginator<Item> {
+        load { page -> LoadResult(repository.loadPage(page)) }
+    }
 }
 ```
 
+The `load { }` block is the only required call — every other knob (capacity, cache strategy,
+logger, bookmarks, custom `PageState` factories) has sensible defaults. See
+[DSL Builder](docs/11.%20dsl-builder.md) for the full configuration surface.
+
+If you only need read-only navigation, use `paginator<T> { … }` instead — it returns a
+`Paginator<T>`, so element-level mutations are not exposed at the call site.
+
 The `load` lambda receives an `Int` page number and should return a `LoadResult<T>` wrapping
-your data list. For the simplest case, just wrap with `LoadResult(list)`.
+your data list. For the simplest case, just wrap with `LoadResult(list)`. The direct constructor
+form (`MutablePaginator(load = { … })`) is also still available if you prefer it.
 
 ### Step 2: Observe and Start
 
@@ -232,9 +248,11 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 7. [**Prefetch**](docs/7.%20prefetch.md) — auto-pagination on scroll with
    `PaginatorPrefetchController`
 8. [**Logger**](docs/8.%20logger.md) — pluggable logging via `PaginatorLogger`
-9. [**Extensions & Full Example**](docs/9.%20extensions.md) — extension functions and a complete
-   ViewModel example
+9. [**Extensions**](docs/9.%20extensions.md) — extension function reference (`PageExt`,
+   iteration, search/aggregation, CRUD, refresh, prefetch) plus a complete ViewModel example
 10. [**API Reference**](docs/10.%20api-reference.md) — complete property / method / operator tables
+11. [**DSL Builder**](docs/11.%20dsl-builder.md) — `paginator<T> { … }` and
+    `mutablePaginator<T> { … }` builder DSL
 
 Maintainer docs:
 
