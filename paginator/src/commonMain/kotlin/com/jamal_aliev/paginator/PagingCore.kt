@@ -26,6 +26,7 @@ import com.jamal_aliev.paginator.serialization.PagingCoreSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.JsonElement
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
@@ -867,7 +868,10 @@ open class PagingCore<T>(
      *   are included in the snapshot. Useful for reducing snapshot size.
      * @return A [PagingCoreSnapshot] containing all the state needed for restoration.
      */
-    fun saveState(contextOnly: Boolean = false): PagingCoreSnapshot<T> {
+    fun saveState(
+        contextOnly: Boolean = false,
+        metadataEncoder: ((Metadata?) -> JsonElement?)? = null,
+    ): PagingCoreSnapshot<T> {
         val allStates = this.states
         val filteredStates = if (contextOnly && startContextPage > 0 && endContextPage > 0) {
             allStates.filter { it.page in startContextPage..endContextPage }
@@ -894,6 +898,7 @@ open class PagingCore<T>(
                     data = state.data,
                     wasDirty = wasDirty,
                     errorMessage = errorMessage,
+                    metadata = metadataEncoder?.invoke(state.metadata),
                 )
             }
         return PagingCoreSnapshot(
@@ -922,6 +927,7 @@ open class PagingCore<T>(
     fun restoreState(
         snapshot: PagingCoreSnapshot<T>,
         silently: Boolean = false,
+        metadataDecoder: ((JsonElement?) -> Metadata?)? = null,
     ) {
         validateSnapshot(snapshot)
 
@@ -929,12 +935,13 @@ open class PagingCore<T>(
         _dirtyPages.clear()
 
         snapshot.entries.forEach { entry: PageEntry<T> ->
+            val metadata = metadataDecoder?.invoke(entry.metadata)
             val pageState: PageState<T> = when (entry.type) {
                 PageEntryType.EMPTY -> {
                     initializerEmptyPage(
                         entry.page,
                         entry.data,
-                        null
+                        metadata
                     )
                 }
 
@@ -943,7 +950,7 @@ open class PagingCore<T>(
                     initializerSuccessPage(
                         entry.page,
                         data,
-                        null
+                        metadata
                     )
                 }
             }

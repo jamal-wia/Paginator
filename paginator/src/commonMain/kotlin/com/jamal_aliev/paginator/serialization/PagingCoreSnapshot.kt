@@ -1,6 +1,7 @@
 package com.jamal_aliev.paginator.serialization
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /**
  * The type of a page state entry for serialization purposes.
@@ -27,6 +28,8 @@ enum class PageEntryType {
  *   or if it was an ErrorPage/ProgressPage that was converted during save.
  * @param errorMessage The exception message from an [com.jamal_aliev.paginator.page.PageState.ErrorPage],
  *   preserved so that the UI can display the error reason after restoration. `null` for non-error pages.
+ * @param metadata The serialized metadata attached to this page, or `null` if none was provided or
+ *   no [metadataEncoder][com.jamal_aliev.paginator.PagingCore.saveState] was supplied during save.
  */
 @Serializable
 data class PageEntry<T>(
@@ -35,6 +38,7 @@ data class PageEntry<T>(
     val data: List<T>,
     val wasDirty: Boolean,
     val errorMessage: String? = null,
+    val metadata: JsonElement? = null,
 )
 
 /**

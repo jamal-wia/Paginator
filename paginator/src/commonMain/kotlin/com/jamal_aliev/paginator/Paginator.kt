@@ -17,6 +17,7 @@ import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.load.LoadResult
+import com.jamal_aliev.paginator.load.Metadata
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.logger.debug
@@ -35,6 +36,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonElement
 
 /**
  * A read-only, reactive pagination manager for Kotlin/Android.
@@ -1245,11 +1247,12 @@ open class Paginator<T>(
      */
     suspend fun saveState(
         contextOnly: Boolean = false,
+        metadataEncoder: ((Metadata?) -> JsonElement?)? = null,
     ): PaginatorSnapshot<T> {
         navigationMutex.lock()
         try {
             return PaginatorSnapshot(
-                coreSnapshot = core.saveState(contextOnly),
+                coreSnapshot = core.saveState(contextOnly, metadataEncoder),
                 finalPage = finalPage,
                 bookmarkPages = bookmarks.map { it.page },
                 bookmarkIndex = bookmarkIndex,
@@ -1280,10 +1283,11 @@ open class Paginator<T>(
     suspend fun restoreState(
         snapshot: PaginatorSnapshot<T>,
         silently: Boolean = false,
+        metadataDecoder: ((JsonElement?) -> Metadata?)? = null,
     ) {
         navigationMutex.lock()
         try {
-            core.restoreState(snapshot.coreSnapshot, silently)
+            core.restoreState(snapshot.coreSnapshot, silently, metadataDecoder)
 
             finalPage = snapshot.finalPage
 
