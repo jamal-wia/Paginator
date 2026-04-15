@@ -215,23 +215,26 @@ them.
 
 Detailed documentation lives in the [`docs/`](docs/) directory:
 
-- [**Core Concepts**](docs/core-concepts.md) — `PageState`, `Paginator` vs `MutablePaginator`,
+1. [**Core Concepts**](docs/1.%20core-concepts.md) — `PageState`, `Paginator` vs `MutablePaginator`,
   context window, bookmarks, `LoadResult` & metadata, capacity, final page limit
-- [**Navigation**](docs/navigation.md) — `goNextPage`, `goPreviousPage`, `jump`, `jumpForward` /
+2. [**Navigation**](docs/2.%20navigation.md) — `goNextPage`, `goPreviousPage`, `jump`,
+   `jumpForward` /
   `jumpBack`, `restart`, `refresh`
-- [**State, Transactions & Locks**](docs/state.md) — dirty pages, reactive state (snapshot &
+3. [**State, Transactions & Locks**](docs/3.%20state.md) — dirty pages, reactive state (snapshot &
   cache flows), atomic `transaction { }`, lock flags
-- [**Element Operations & Custom Page States**](docs/elements.md) — element-level CRUD, custom
+4. [**Element Operations & Custom Page States**](docs/4.%20elements.md) — element-level CRUD, custom
   `PageState` subclasses, `PlaceholderPageState`, metadata propagation
-- [**State Serialization**](docs/serialization.md) — saving & restoring paginator state via
+5. [**State Serialization**](docs/5.%20serialization.md) — saving & restoring paginator state via
   `kotlinx.serialization`, surviving process death
-- [**Caching**](docs/caching.md) — eviction strategies (LRU, FIFO, TTL, sliding window), composing
-  strategies, persistent L2 cache
-- [**Prefetch**](docs/prefetch.md) — auto-pagination on scroll with `PaginatorPrefetchController`
-- [**Logger**](docs/logger.md) — pluggable logging via `PaginatorLogger`
-- [**Extensions & Full Example**](docs/extensions.md) — extension functions and a complete
-  ViewModel example
-- [**API Reference**](docs/api-reference.md) — complete property / method / operator tables
+6. [**Caching**](docs/6.%20caching.md) — eviction strategies (LRU, FIFO, TTL, sliding window),
+   composing
+   strategies, persistent L2 cache
+7. [**Prefetch**](docs/7.%20prefetch.md) — auto-pagination on scroll with
+   `PaginatorPrefetchController`
+8. [**Logger**](docs/8.%20logger.md) — pluggable logging via `PaginatorLogger`
+9. [**Extensions & Full Example**](docs/9.%20extensions.md) — extension functions and a complete
+   ViewModel example
+10. [**API Reference**](docs/10.%20api-reference.md) — complete property / method / operator tables
 
 Maintainer docs:
 
