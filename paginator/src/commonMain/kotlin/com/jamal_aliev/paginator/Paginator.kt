@@ -509,14 +509,16 @@ open class Paginator<T>(
             return@coroutineScope bookmark to resultState
         } catch (e: CancellationException) {
             if (shouldCleanup) {
-                core.startContextPage = savedStartContextPage
-                core.endContextPage = savedEndContextPage
-                if (savedPageState != null) {
-                    cache.setState(savedPageState, silently = true)
-                } else {
-                    cache.removeFromCache(bookmark.page)
+                withContext(NonCancellable) {
+                    core.startContextPage = savedStartContextPage
+                    core.endContextPage = savedEndContextPage
+                    if (savedPageState != null) {
+                        cache.setState(savedPageState, silently = true)
+                    } else {
+                        cache.removeFromCache(bookmark.page)
+                    }
+                    core.snapshot()
                 }
-                core.snapshot()
             }
             throw e
         } finally {
@@ -680,12 +682,14 @@ open class Paginator<T>(
             }
         } catch (e: CancellationException) {
             if (shouldCleanup) {
-                if (savedNextPageState != null) {
-                    cache.setState(savedNextPageState, silently = true)
-                } else {
-                    cache.removeFromCache(savedNextPage)
+                withContext(NonCancellable) {
+                    if (savedNextPageState != null) {
+                        cache.setState(savedNextPageState, silently = true)
+                    } else {
+                        cache.removeFromCache(savedNextPage)
+                    }
+                    core.snapshot()
                 }
-                core.snapshot()
             }
             throw e
         } finally {
@@ -827,12 +831,14 @@ open class Paginator<T>(
             }
         } catch (e: CancellationException) {
             if (shouldCleanup) {
-                if (savedPreviousPageState != null) {
-                    cache.setState(savedPreviousPageState, silently = true)
-                } else {
-                    cache.removeFromCache(savedPreviousPage)
+                withContext(NonCancellable) {
+                    if (savedPreviousPageState != null) {
+                        cache.setState(savedPreviousPageState, silently = true)
+                    } else {
+                        cache.removeFromCache(savedPreviousPage)
+                    }
+                    core.snapshot()
                 }
-                core.snapshot()
             }
             throw e
         } finally {
@@ -941,14 +947,16 @@ open class Paginator<T>(
             }
         } catch (e: CancellationException) {
             if (shouldCleanup) {
-                core.startContextPage = savedStartContextPage
-                core.endContextPage = savedEndContextPage
-                if (savedFirstPageState != null) {
-                    cache.setState(savedFirstPageState, silently = true)
-                } else {
-                    cache.removeFromCache(1)
+                withContext(NonCancellable) {
+                    core.startContextPage = savedStartContextPage
+                    core.endContextPage = savedEndContextPage
+                    if (savedFirstPageState != null) {
+                        cache.setState(savedFirstPageState, silently = true)
+                    } else {
+                        cache.removeFromCache(1)
+                    }
+                    core.snapshot()
                 }
-                core.snapshot()
             }
             throw e
         } finally {
