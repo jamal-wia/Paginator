@@ -60,10 +60,10 @@ Paginator can be seamlessly used across all layers of an application
 - [Lock Flags](#lock-flags)
 - [Prefetch (Auto-Pagination on Scroll)](#prefetch-auto-pagination-on-scroll)
 - [Cache Eviction Strategies](#cache-eviction-strategies)
-    - [LruPagingCore](#lrupagingcore)
-    - [FifoPagingCore](#fifopagingcore)
-    - [TtlPagingCore](#ttlpagingcore)
-    - [SlidingWindowPagingCore](#slidingwindowpagingcore)
+    - [LruPagingCache](#lrupagingcache)
+    - [FifoPagingCache](#fifopagingcache)
+    - [TtlPagingCache](#ttlpagingcache)
+    - [SlidingWindowPagingCache](#slidingwindowpagingcache)
     - [Eviction Listener](#eviction-listener)
     - [Custom Strategies](#custom-strategies)
 - [Persistent Cache (L2)](#persistent-cache-l2)
@@ -98,7 +98,7 @@ Paginator can be seamlessly used across all layers of an application
 - **Element-level CRUD** -- get, set, add, remove, and replace individual elements within pages,
   with automatic page rebalancing
 - **Capacity management** -- resize pages on the fly with automatic data redistribution
-- **Source metadata** -- `source` returns `LoadResult<T>`, an open wrapper that carries both
+- **Source metadata** -- `load` returns `LoadResult<T>`, an open wrapper that carries both
   page data and arbitrary metadata from the API response (total count, cursors, etc.). Metadata
   flows through initializer lambdas into custom `PageState` subclasses
 - **Custom PageState subclasses** -- extend `SuccessPage`, `ErrorPage`, `ProgressPage`, or
@@ -170,7 +170,7 @@ dependencies {
 Create a `MutablePaginator` in your ViewModel or Presenter, providing a data source lambda:
 
 ```kotlin
-import com.jamal_aliev.paginator.source.LoadResult
+import com.jamal_aliev.paginator.load.LoadResult
 
 class MyViewModel : ViewModel() {
 
@@ -180,9 +180,8 @@ class MyViewModel : ViewModel() {
 }
 ```
 
-The `source` lambda receives an `Int` page number and should return a `LoadResult<T>` wrapping
-your data list. For the simplest case, just wrap with `LoadResult(list)` or use the
-`.toLoadResult()` extension.
+The `load` lambda receives an `Int` page number and should return a `LoadResult<T>` wrapping
+your data list. For the simplest case, just wrap with `LoadResult(list)`.
 
 ### Step 2: Observe and Start
 
@@ -236,7 +235,7 @@ Paginator works perfectly for a simple infinite scroll — and this is a first-c
 afterthought.
 
 Every feature in the library is **strictly opt-in**. If all you need is "load the next page when the
-user scrolls down", the entire setup is what you already saw in Quick Start: one `source` lambda,
+user scrolls down", the entire setup is what you already saw in Quick Start: one `load` lambda,
 one `snapshot` observer, and `goNextPage()` on scroll. Nothing else is required.
 
 What you still get for free, with zero extra code:
@@ -283,16 +282,15 @@ The library provides two classes with different levels of access:
 |---|---|---|
 | **Role** | Read-only base class | Full-featured mutable extension |
 | **Navigation** | `jump`, `goNextPage`, `goPreviousPage`, `restart`, `refresh` | Inherits all from `Paginator` |
-| **State access** | `getStateOf`, `getElement`, `scan`, `snapshot` | `setState` (public), `removeState` |
+| **State access** | `core.getStateOf`, `core.getElement`, `core.scan`, `core.snapshot` | Inherits + `removeState`, `+=` / `-=` operators |
 | **CRUD** | -- | `setElement`, `removeElement`, `addAllElements`, `replaceAllElements` |
-| **Capacity** | Read-only `capacity` | `core.resize()` |
-| **Dirty pages** | `markDirty`, `clearDirty`, `isDirty` | Inherits + `isDirty` param on CRUD ops |
-| **Transaction** | `transaction { }` | Inherits |
-| **Lifecycle** | `release()` | Inherits |
+| **Capacity** | `core.capacity` (read-only) | `core.resize()` |
+| **Dirty pages** | `core.markDirty`, `core.clearDirty`, `core.isDirty` | Inherits + `isDirty` param on CRUD ops |
+| **Transaction** | `transaction { }` | Inherits + auto-flush to L2 on success |
+| **Lifecycle** | `release()` | Inherits + `flush()` |
 
 **When to use `Paginator`:** Use it when you only need to navigate and observe pages (e.g., a
-read-only list screen). It keeps `setState` protected, preventing accidental cache mutations from
-outside the class hierarchy.
+read-only list screen). Element-level CRUD methods are not exposed.
 
 **When to use `MutablePaginator`:** Use it when you need element-level CRUD, capacity resizing, or
 direct state manipulation. Most use cases will use this class.
@@ -309,7 +307,7 @@ val readOnlyPaginator = Paginator<String>(load = { page ->
 })
 ```
 
-The constructor takes a single `source` lambda -- a suspending function that loads data for a given
+The constructor takes a single `load` lambda -- a suspending function that loads data for a given
 page. It returns a `LoadResult<T>` wrapping the data list (and optionally metadata).
 The receiver is the paginator itself, giving you access to its properties during loading.
 
@@ -346,8 +344,8 @@ You can also implement the `Bookmark` interface for custom bookmark types.
 
 ### LoadResult & Metadata
 
-The `source` lambda returns `LoadResult<T>` -- an open class wrapping the page data. For simple
-sources, wrap your list directly:
+The `load` lambda returns `LoadResult<T>` -- an open class wrapping the page `data` and optional
+`metadata`. For simple sources with no metadata, wrap your list directly:
 
 ```kotlin
 val paginator = MutablePaginator<Item>(load = { page ->
@@ -355,40 +353,31 @@ val paginator = MutablePaginator<Item>(load = { page ->
 })
 ```
 
-Or use the `toLoadResult()` extension:
-
-```kotlin
-val paginator = MutablePaginator<Item>(load = { page ->
-    api.getItems(page).toLoadResult()
-})
-```
-
 When your API returns metadata alongside the list (total count, cursors, pagination info),
-subclass `LoadResult` to carry it:
+subclass `Metadata` to carry it:
 
 ```kotlin
-class PagedResponse<T>(
-    override val data: List<T>,
+class PagedMetadata(
     val totalPages: Int,
     val nextCursor: String?,
-) : LoadResult<T>(data)
+) : Metadata()
 ```
 
-Then return it from your source:
+Then pass it to `LoadResult` from your `load` lambda:
 
 ```kotlin
 val paginator = MutablePaginator<Item>(load = { page ->
     val response = api.getItems(page)
-    PagedResponse(
+    LoadResult(
         data = response.items,
-        totalPages = response.totalPages,
-        nextCursor = response.nextCursor,
+        metadata = PagedMetadata(response.totalPages, response.nextCursor),
     )
 })
 ```
 
-To use metadata in your UI, combine `LoadResult` subclasses with
-[custom PageState subclasses](#custom-pagestate-subclasses) via initializer lambdas.
+The `metadata` you pass here is forwarded into the resulting `PageState.metadata` and to every
+initializer lambda (see [Custom PageState Subclasses](#custom-pagestate-subclasses)). It also
+survives cache eviction, snapshots, and serialization.
 
 ### Capacity & Incomplete Pages
 
@@ -654,73 +643,77 @@ will be automatically refreshed on the next navigation (see [Dirty Pages](#dirty
 You can create custom `PageState` subclasses and use them via the initializer lambdas:
 
 ```kotlin
-// Custom progress page with additional metadata
+// Custom progress page with additional info
 class DetailedProgress<T>(
     page: Int,
     data: List<T>,
-    val source: String = "network"
+    val origin: String = "network"
 ) : PageState.ProgressPage<T>(page, data)
 
 // Register the custom initializer
-paginator.core.initializerProgressPage = { page, data ->
-    DetailedProgress(page = page, data = data, source = "api")
+paginator.core.initializerProgressPage = { page, data, metadata ->
+    DetailedProgress(page = page, data = data, origin = "api")
 }
 ```
 
 ### Propagating Source Metadata into PageState
 
-The `initializerSuccessPage` and `initializerEmptyPage` lambdas receive the `LoadResult` from
-the source call. Combined with custom `PageState` subclasses, this lets you embed API metadata
-directly into your page states:
+When your API returns metadata alongside page data (total count, cursor, etc.), subclass
+[Metadata](#loadresult--metadata) and return it from the `load` lambda. All four initializer
+lambdas receive this metadata as their last parameter, so you can embed it directly into your
+custom `PageState`:
 
 ```kotlin
-// 1. Define a LoadResult subclass with your metadata
-class PagedResponse<T>(
-    override val data: List<T>,
+// 1. Define a Metadata subclass with your API fields
+class PagedMetadata(
     val totalPages: Int,
     val nextCursor: String?,
-) : LoadResult<T>(data)
+) : Metadata()
 
-// 2. Define a PageState subclass that carries the metadata
+// 2. Return it from your `load` lambda
+val paginator = MutablePaginator<Item>(load = { page ->
+    val response = api.getItems(page)
+    LoadResult(response.items, PagedMetadata(response.totalPages, response.nextCursor))
+})
+
+// 3. Define a PageState subclass that carries the metadata
 class RichSuccessPage<T>(
     page: Int,
     data: List<T>,
-    val totalPages: Int,
-    val nextCursor: String?,
-) : PageState.SuccessPage<T>(page, data)
+    override val metadata: PagedMetadata,
+) : PageState.SuccessPage<T>(page, data, metadata)
 
-// 3. Wire them together via the initializer
-paginator.core.initializerSuccessPage = { page, data, sourceResult ->
-    val response = sourceResult as PagedResponse
-    RichSuccessPage(page, data, response.totalPages, response.nextCursor)
+// 4. Wire them together via the initializer
+paginator.core.initializerSuccessPage = { page, data, metadata ->
+    RichSuccessPage(page, data, metadata as PagedMetadata)
 }
 
-// 4. Use the metadata when processing snapshot pages
+// 5. Use the metadata when processing snapshot pages
 paginator.core.snapshot.collect { pages ->
     pages.forEach { pageState ->
         if (pageState is RichSuccessPage) {
-            println("Total pages: ${pageState.totalPages}")
+            println("Total pages: ${pageState.metadata.totalPages}")
         }
     }
 }
 ```
 
-The metadata travels through the entire pipeline -- cache, snapshot Flow, eviction -- because it
-lives inside the `PageState` object itself.
+The metadata travels through the entire pipeline -- cache, snapshot Flow, eviction, serialization --
+because it lives inside the `PageState` object itself.
 
 ### Available Initializer Properties
 
 Properties on `paginator.core`:
 
-- `initializerProgressPage: (page: Int, data: List<T>) -> ProgressPage<T>`
--
-`initializerSuccessPage: (page: Int, data: List<T>, sourceResult: LoadResult<T>) -> SuccessPage<T>`
-- `initializerEmptyPage: (page: Int, data: List<T>, sourceResult: LoadResult<T>) -> EmptyPage<T>`
-- `initializerErrorPage: (exception: Exception, page: Int, data: List<T>) -> ErrorPage<T>`
+- `initializerProgressPage: (page: Int, data: List<T>, metadata: Metadata?) -> ProgressPage<T>`
+- `initializerSuccessPage: (page: Int, data: List<T>, metadata: Metadata?) -> SuccessPage<T>`
+- `initializerEmptyPage: (page: Int, data: List<T>, metadata: Metadata?) -> EmptyPage<T>`
+- `initializerErrorPage: (exception: Exception, page: Int, data: List<T>, metadata: Metadata?) -> ErrorPage<T>`
 
-`initializerSuccessPage` and `initializerEmptyPage` receive `sourceResult` because they are
-created from a successful source call. `initializerProgressPage` and `initializerErrorPage` do not
--- progress is emitted before the source call, and errors are created when the source fails.
+All four initializers receive a `metadata: Metadata?` parameter — the metadata passed through
+`LoadResult(data, metadata)` from your `load` lambda. For `initializerProgressPage` and
+`initializerErrorPage`, this is the metadata of the **previously cached** page state (if any),
+since progress/error are emitted before or instead of a successful load.
 
 Use `isRealProgressState(MyCustomProgress::class)` and similar extension functions to check for
 specific subclasses with smart-casting.
@@ -754,39 +747,43 @@ Define your own placeholder type (any class or object will do) and assign the in
 data object Skeleton  // your placeholder marker
 
 // Shown while a page is loading
-paginator.core.initializerProgressPage = { page, data ->
+paginator.core.initializerProgressPage = { page, data, metadata ->
     PlaceholderPageState.PlaceholderProgressPage(
         page = page,
         data = data,
         placeholders = List(paginator.core.capacity) { Skeleton },
+        metadata = metadata,
     )
 }
 
 // Shown when a page loaded successfully
-paginator.core.initializerSuccessPage = { page, data, _ ->
+paginator.core.initializerSuccessPage = { page, data, metadata ->
     PlaceholderPageState.PlaceholderSuccessPage(
         page = page,
         data = data,
         placeholders = emptyList(),
+        metadata = metadata,
     )
 }
 
 // Shown when a page returned no items
-paginator.core.initializerEmptyPage = { page, data, _ ->
+paginator.core.initializerEmptyPage = { page, data, metadata ->
     PlaceholderPageState.PlaceholderEmptyPage(
         page = page,
         data = data,
         placeholders = emptyList(),
+        metadata = metadata,
     )
 }
 
 // Shown when a page failed to load — placeholders allow showing skeletons alongside stale data
-paginator.core.initializerErrorPage = { exception, page, data ->
+paginator.core.initializerErrorPage = { exception, page, data, metadata ->
     PlaceholderPageState.PlaceholderErrorPage(
         exception = exception,
         page = page,
         data = data,
         placeholders = List(paginator.core.capacity - data.size) { Skeleton },
+        metadata = metadata,
     )
 }
 ```
@@ -796,33 +793,37 @@ paginator.core.initializerErrorPage = { exception, page, data ->
 ```kotlin
 paginator.jump(
     bookmark = BookmarkInt(1),
-    initProgressState = { page, data ->
+    initProgressState = { page, data, metadata ->
         PlaceholderPageState.PlaceholderProgressPage(
             page = page,
             data = data,
             placeholders = List(10) { Skeleton },
+            metadata = metadata,
         )
     },
-    initSuccessState = { page, data ->
+    initSuccessState = { page, data, metadata ->
         PlaceholderPageState.PlaceholderSuccessPage(
             page = page,
             data = data,
             placeholders = emptyList(),
+            metadata = metadata,
         )
     },
-    initEmptyState = { page, data ->
+    initEmptyState = { page, data, metadata ->
         PlaceholderPageState.PlaceholderEmptyPage(
             page = page,
             data = data,
             placeholders = emptyList(),
+            metadata = metadata,
         )
     },
-    initErrorState = { exception, page, data ->
+    initErrorState = { exception, page, data, metadata ->
         PlaceholderPageState.PlaceholderErrorPage(
             exception = exception,
             page = page,
             data = data,
             placeholders = List(10 - data.size) { Skeleton },
+            metadata = metadata,
         )
     },
 )
@@ -948,7 +949,7 @@ restored pages, and navigation (`goNextPage`, `goPreviousPage`, `jump`) works as
 
 | Included                        | Not included (re-initialize in code)  |
 |---------------------------------|---------------------------------------|
-| All cached page data            | `source` lambda                       |
+| All cached page data            | `load` lambda                         |
 | Context window boundaries       | Logger                                |
 | Capacity                        |                                       |
 | Dirty page flags                |                                       |
@@ -961,7 +962,7 @@ restored pages, and navigation (`goNextPage`, `goPreviousPage`, `jump`) works as
 
 | Included                        | Not included (re-initialize in code)  |
 |---------------------------------|---------------------------------------|
-| All cached page data            | `source` lambda                       |
+| All cached page data            | `load` lambda                         |
 | Context window boundaries       | `finalPage`                           |
 | Capacity                        | Bookmarks                             |
 | Dirty page flags                | Lock flags                            |
@@ -1463,11 +1464,11 @@ The library ships only the interface -- the implementation is entirely up to you
 ### How It Works
 
 **Read path:** L1 (in-memory) → L2 (persistent) → source (network).
-When a navigation method encounters a cache miss in L1, it checks L2 before calling the source
+When a navigation method encounters a cache miss in L1, it checks L2 before calling the `load`
 lambda. If L2 has the page, it is promoted back into L1 and returned immediately -- no loading
 indicator, no network call.
 
-**Write path:** After every successful source load, the resulting `SuccessPage` (or `EmptyPage`)
+**Write path:** After every successful `load` call, the resulting `SuccessPage` (or `EmptyPage`)
 is automatically saved to L2.
 
 ### PersistentPagingCache Interface
@@ -1602,26 +1603,48 @@ logs about navigation, state changes, and element-level operations.
 
 ```kotlin
 interface PaginatorLogger {
-    fun log(tag: String, message: String)
+    companion object {
+        var global: PaginatorLogger? = null
+    }
+    val minLevel: LogLevel get() = LogLevel.DEBUG
+    fun log(level: LogLevel, component: LogComponent, message: String)
+    fun isEnabled(level: LogLevel, component: LogComponent): Boolean = level >= minLevel
 }
 ```
 
 ### Usage
 
-```kotlin
-import com.jamal_aliev.paginator.logger.PaginatorLogger
+The library ships `PrintPaginatorLogger` — a ready-to-use implementation that prints to stdout:
 
+```kotlin
+import com.jamal_aliev.paginator.logger.PrintPaginatorLogger
+import com.jamal_aliev.paginator.logger.LogLevel
+import com.jamal_aliev.paginator.logger.LogComponent
+
+// Global logger — applies to all paginator instances
+PaginatorLogger.global = PrintPaginatorLogger()
+
+// Per-instance with level/component filtering
+paginator.logger = PrintPaginatorLogger(
+    minLevel = LogLevel.WARN,
+    enabledComponents = setOf(LogComponent.NAVIGATION, LogComponent.CACHE)
+)
+```
+
+For a custom implementation:
+
+```kotlin
 // Platform-agnostic (works on all KMP targets)
 object ConsoleLogger : PaginatorLogger {
-    override fun log(tag: String, message: String) {
-        println("[$tag] $message")
+    override fun log(level: LogLevel, component: LogComponent, message: String) {
+        println("[${level.name}] [${component.name}] $message")
     }
 }
 
 // Android-specific
 object AndroidLogger : PaginatorLogger {
-    override fun log(tag: String, message: String) {
-        android.util.Log.d(tag, message)
+    override fun log(level: LogLevel, component: LogComponent, message: String) {
+        android.util.Log.d(component.name, message)
     }
 }
 
@@ -1725,11 +1748,7 @@ class PaginatorViewModel : ViewModel() {
         finalPage = 20
         bookmarks.addAll(listOf(BookmarkInt(5), BookmarkInt(10), BookmarkInt(15)))
         recyclingBookmark = true
-        logger = object : PaginatorLogger {
-            override fun log(tag: String, message: String) {
-                println("[$tag] $message")
-            }
-        }
+        logger = PrintPaginatorLogger(minLevel = LogLevel.DEBUG)
     }
 
     init {
@@ -1833,7 +1852,7 @@ fun PaginatedList(pages: List<PageState<String>>) {
 
 | Property             | Type                                          | Description                                    |
 |----------------------|-----------------------------------------------|------------------------------------------------|
-| `source`             | `suspend Paginator<T>.(Int) -> LoadResult<T>` | Data source lambda                             |
+| `load`               | `suspend Paginator<T>.(Int) -> LoadResult<T>` | Data source lambda                             |
 | `logger`             | `PaginatorLogger?`                            | Logging interface (`null` by default)          |
 | `finalPage`          | `Int`                                         | Maximum allowed page (default `Int.MAX_VALUE`) |
 | `bookmarks`          | `MutableList<Bookmark>`                       | Bookmark list (default: page 1)                |
@@ -1910,15 +1929,17 @@ fun PaginatedList(pages: List<PageState<String>>) {
 
 ### MutablePaginator Methods (additional)
 
-| Method                                           | Returns         | Description                             |
-|--------------------------------------------------|-----------------|-----------------------------------------|
-| `setState(state, silently)`                      | `Unit`          | Set a page state (public)               |
-| `removeState(page, silently)`                    | `PageState<T>?` | Remove a page                           |
-| `setElement(element, page, index, isDirty)`      | `Unit`          | Replace element (optionally mark dirty) |
-| `removeElement(page, index, isDirty)`            | `T`             | Remove element (optionally mark dirty)  |
-| `addAllElements(elements, page, index, isDirty)` | `Unit`          | Insert elements (optionally mark dirty) |
-| `replaceAllElements(provider, predicate)`        | `Unit`          | Bulk replace/remove across all pages    |
-| `flush()`                                        | `Unit`          | Flush CRUD changes to L2 (suspend)      |
+| Method                                                | Returns         | Description                             |
+|-------------------------------------------------------|-----------------|-----------------------------------------|
+| `removeState(pageToRemove, silently)`                 | `PageState<T>?` | Remove a page                           |
+| `setElement(element, page, index, silently, isDirty)` | `Unit`          | Replace element (optionally mark dirty) |
+| `removeElement(page, index, silently, isDirty)`       | `T`             | Remove element (optionally mark dirty)  |
+| `addAllElements(elements, targetPage, index, …)`      | `Unit`          | Insert elements (optionally mark dirty) |
+| `replaceAllElements(providerElement, …, predicate)`   | `Unit`          | Bulk replace/remove across all pages    |
+| `flush()`                                             | `Unit`          | Flush CRUD changes to L2 (suspend)      |
+
+> **Note:** there is no direct `setState` method on `MutablePaginator`. Use
+> `paginator.core.setState(state)` or the `paginator += state` operator.
 
 ### MutablePaginator Operators
 

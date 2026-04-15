@@ -204,7 +204,7 @@ open class MutablePaginator<T>(
     /**
      * Replaces an element at a specific position within a cached page.
      *
-     * **L2 note:** this operation only modifies L1. Call [flush] afterwards
+     * **L2 note:** this operation only modifies L1. Call [flush] afterward
      * to flush the change to the persistent cache, or use [transaction] which flushes
      * automatically on success.
      *
@@ -248,7 +248,7 @@ open class MutablePaginator<T>(
      * When removing an element causes the page to have fewer items than capacity, elements
      * are pulled from the **next** page (if it exists and is the same type) to fill the gap.
      *
-     * **L2 note:** this operation only modifies L1. Call [flush] afterwards
+     * **L2 note:** this operation only modifies L1. Call [flush] afterward
      * to flush the change to the persistent cache, or use [transaction] which flushes
      * automatically on success.
      *
@@ -323,7 +323,7 @@ open class MutablePaginator<T>(
      * If inserting the elements causes the page to exceed capacity, the excess elements
      * are cascaded to the **next** page (recursively).
      *
-     * **L2 note:** this operation only modifies L1. Call [flush] afterwards
+     * **L2 note:** this operation only modifies L1. Call [flush] afterward
      * to flush the change to the persistent cache, or use [transaction] which flushes
      * automatically on success.
      *
@@ -541,7 +541,7 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * **L2 note:** this operation only modifies L1. Call [flush] afterwards
+     * **L2 note:** this operation only modifies L1. Call [flush] afterward
      * to flush the change to the persistent cache, or use [transaction] which flushes
      * automatically on success.
      */
