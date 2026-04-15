@@ -1,0 +1,158 @@
+# State Serialization
+
+[← Back to README](../README.md)
+
+## Table of Contents
+
+- [Setup](#setup)
+- [Saving State (Paginator-level)](#saving-state-paginator-level)
+- [Restoring State (Paginator-level)](#restoring-state-paginator-level)
+- [What Gets Serialized](#what-gets-serialized)
+- [How ErrorPage and ProgressPage Are Handled](#how-errorpage-and-progresspage-are-handled)
+- [Snapshot Validation](#snapshot-validation)
+- [Low-Level API (PagingCore)](#low-level-api-pagingcore)
+- [Object-Level API (Paginator)](#object-level-api-paginator)
+
+---
+
+The paginator supports saving and restoring its full state via `kotlinx.serialization`. This is
+essential for surviving Android/iOS process death -- when the system kills your app, you can save
+the
+paginator state to `SavedStateHandle` or a file and restore it when the user returns.
+
+There are two levels of serialization:
+
+- **Paginator-level** (recommended) — saves everything: cache, context window, capacity, dirty
+  pages, `finalPage`, bookmarks, bookmark position, lock flags
+- **PagingCore-level** — saves only the cache layer (cache, context window, capacity, dirty pages)
+
+## Setup
+
+Your element type `T` must be annotated with `@Serializable`:
+
+```kotlin
+@Serializable
+data class Article(val id: Long, val title: String, val body: String)
+```
+
+## Saving State (Paginator-level)
+
+Use `saveStateToJson` to serialize the entire Paginator state into a JSON string. This is a
+`suspend` function that acquires the navigation mutex for thread-safety:
+
+```kotlin
+val json: String = paginator.saveStateToJson(Article.serializer())
+```
+
+To save only pages within the current context window (reduces snapshot size):
+
+```kotlin
+val json: String = paginator.saveStateToJson(Article.serializer(), contextOnly = true)
+```
+
+Persist it using whatever mechanism fits your platform:
+
+```kotlin
+// Android — SavedStateHandle (survives process death)
+savedStateHandle["paginator_state"] = json
+
+// Any KMP target — file storage
+// (use expect/actual or a KMP file I/O library)
+```
+
+## Restoring State (Paginator-level)
+
+Use `restoreStateFromJson` to rebuild the full state from a previously saved JSON string.
+The snapshot is validated before restoration — invalid data throws `IllegalArgumentException`:
+
+```kotlin
+val json: String? = savedStateHandle["paginator_state"]
+if (json != null) {
+    paginator.restoreStateFromJson(json, Article.serializer())
+}
+```
+
+After restoration, the paginator is ready to use immediately — the `snapshot` flow emits the
+restored pages, and navigation (`goNextPage`, `goPreviousPage`, `jump`) works as normal.
+
+## What Gets Serialized
+
+### Paginator-level (`PaginatorSnapshot`)
+
+| Included                       | Not included (re-initialize in code) |
+|--------------------------------|--------------------------------------|
+| All cached page data           | `load` lambda                        |
+| Context window boundaries      | Logger                               |
+| Capacity                       |                                      |
+| Dirty page flags               |                                      |
+| `finalPage`                    |                                      |
+| Bookmarks & bookmark position  |                                      |
+| Lock flags                     |                                      |
+| Error messages from ErrorPages |                                      |
+
+### PagingCore-level (`PagingCoreSnapshot`)
+
+| Included                       | Not included (re-initialize in code) |
+|--------------------------------|--------------------------------------|
+| All cached page data           | `load` lambda                        |
+| Context window boundaries      | `finalPage`                          |
+| Capacity                       | Bookmarks                            |
+| Dirty page flags               | Lock flags                           |
+| Error messages from ErrorPages |                                      |
+
+## How ErrorPage and ProgressPage Are Handled
+
+`ErrorPage` and `ProgressPage` cannot be serialized as-is (`Exception` is not serializable, and
+in-flight loads are meaningless after process death). During save, these pages are converted:
+
+- Their **cached data is preserved** (e.g., stale data shown before the error/reload)
+- The **error message** (`exception.message`) is preserved in the `errorMessage` field of
+  `PageEntry`, so the UI can display the error reason after restoration
+- They are restored as `SuccessPage` (or `EmptyPage` if data was empty)
+- They are automatically **marked as dirty**, so the next navigation triggers a fire-and-forget
+  refresh to re-fetch fresh data from the source
+
+## Snapshot Validation
+
+When restoring from a snapshot, the following validations are performed:
+
+- `capacity` must be > 0
+- `startContextPage` and `endContextPage` must be >= 0
+- `startContextPage` must be <= `endContextPage` (unless both are 0)
+- All page numbers must be >= 1
+- No duplicate page numbers are allowed
+
+Invalid snapshots throw `IllegalArgumentException`.
+
+## Low-Level API (PagingCore)
+
+For advanced use cases, you can work with `PagingCore` directly. These methods are **not**
+`suspend` and do **not** acquire the mutex — ensure proper synchronization if calling
+concurrently:
+
+```kotlin
+// Save to a snapshot object
+val snapshot: PagingCoreSnapshot<Article> = paginator.core.saveState()
+
+// Save only context window pages
+val snapshot: PagingCoreSnapshot<Article> = paginator.core.saveState(contextOnly = true)
+
+// Restore from a snapshot object
+paginator.core.restoreState(snapshot)
+
+// JSON round-trip
+val json: String = paginator.core.saveStateToJson(Article.serializer())
+paginator.core.restoreStateFromJson(json, Article.serializer())
+```
+
+## Object-Level API (Paginator)
+
+For custom serialization formats or non-JSON persistence:
+
+```kotlin
+// Save to a snapshot object (suspend, thread-safe)
+val snapshot: PaginatorSnapshot<Article> = paginator.saveState()
+
+// Restore from a snapshot object (suspend, thread-safe)
+paginator.restoreState(snapshot)
+```

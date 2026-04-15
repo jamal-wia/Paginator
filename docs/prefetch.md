@@ -1,0 +1,111 @@
+# Prefetch (Auto-Pagination on Scroll)
+
+[← Back to README](../README.md)
+
+## Table of Contents
+
+- [Creating a Controller](#creating-a-controller)
+- [Android RecyclerView](#android-recyclerview)
+- [Jetpack Compose LazyColumn](#jetpack-compose-lazycolumn)
+- [Configuration](#configuration)
+- [Lifecycle Control](#lifecycle-control)
+- [Interaction with Other Mechanisms](#interaction-with-other-mechanisms)
+
+---
+
+`PaginatorPrefetchController` monitors scroll position and automatically calls `goNextPage()` /
+`goPreviousPage()` **before** the user reaches the edge of loaded content. This eliminates manual
+"load more" buttons and provides a seamless infinite-scroll experience.
+
+The controller is **platform-agnostic** -- it receives visibility information via the `onScroll()`
+method, so the same logic works with RecyclerView, LazyColumn, UITableView, or any other list.
+
+## Creating a Controller
+
+```kotlin
+val prefetch = paginator.prefetchController(
+    scope = viewModelScope,       // coroutine scope for prefetch jobs
+    prefetchDistance = 10,         // start loading when 10 items from the edge
+    enableBackwardPrefetch = true, // also prefetch when scrolling up (default: false)
+)
+```
+
+The first `onScroll()` call is **calibration only** -- it records the initial position without
+triggering any load, preventing a false positive when the list first appears.
+
+## Android RecyclerView
+
+```kotlin
+recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+    override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+        val lm = rv.layoutManager as LinearLayoutManager
+        prefetch.onScroll(
+            firstVisibleIndex = lm.findFirstVisibleItemPosition(),
+            lastVisibleIndex  = lm.findLastVisibleItemPosition(),
+            totalItemCount    = adapter.itemCount,
+        )
+    }
+})
+```
+
+## Jetpack Compose LazyColumn
+
+```kotlin
+val listState = rememberLazyListState()
+
+LaunchedEffect(listState.firstVisibleItemIndex, listState.layoutInfo) {
+    val info = listState.layoutInfo
+    prefetch.onScroll(
+        firstVisibleIndex = listState.firstVisibleItemIndex,
+        lastVisibleIndex  = info.visibleItemsInfo.lastOrNull()?.index ?: 0,
+        totalItemCount    = info.totalItemsCount,
+    )
+}
+```
+
+> **Important:** `totalItemCount` must reflect only **data items**. Do not include headers, footers,
+> dividers, or loading indicators -- otherwise `prefetchDistance` will trigger inaccurately.
+
+## Configuration
+
+All properties can be changed at runtime:
+
+| Property                 | Default            | Description                                             |
+|--------------------------|--------------------|---------------------------------------------------------|
+| `prefetchDistance`       | *(required)*       | Items from edge to trigger load. Must be > 0            |
+| `enableBackwardPrefetch` | `false`            | Enable `goPreviousPage()` on scroll up                  |
+| `enabled`                | `true`             | Master switch. `false` = `onScroll()` is a no-op        |
+| `silentlyLoading`        | `true`             | Suppress `ProgressPage` emission during prefetch        |
+| `silentlyResult`         | `false`            | Suppress snapshot emission when prefetched page arrives |
+| `loadGuard`              | `{ _, _ -> true }` | Guard callback passed to navigation functions           |
+| `onPrefetchError`        | `null`             | Callback for errors (excluding `CancellationException`) |
+
+## Lifecycle Control
+
+```kotlin
+// Pause prefetching (e.g. modal is shown), in-flight jobs continue
+prefetch.enabled = false
+
+// Cancel in-flight jobs, but new scrolls can still trigger prefetch
+prefetch.cancel()
+
+// Full reset: cancel jobs + clear calibration.
+// Next onScroll() becomes calibration again (no prefetch on first call).
+// Use after jump() or restart() when the list contents change entirely.
+prefetch.reset()
+```
+
+## Interaction with Other Mechanisms
+
+- **Incomplete pages:** if `removeElement()` makes the last loaded page shorter than `capacity`,
+  `goNextPage()` re-fetches that page instead of loading the next one -- this is standard paginator
+  behavior and the prefetch controller respects it transparently.
+- **Dirty pages:** CRUD operations with `isDirty = true` mark pages for refresh. The next prefetch
+  navigation triggers a fire-and-forget refresh for all dirty pages in the context window.
+- **Lock flags:** `lockGoNextPage` / `lockGoPreviousPage` block the corresponding prefetch
+  direction.
+  Unlocking mid-scroll resumes prefetching on the next `onScroll()` call.
+- **`finalPage`:** forward prefetch stops when `endContextPage >= finalPage`. Changing `finalPage`
+  at runtime immediately affects the next scroll check.
+- **`resize` / `release`:** after `release()` or significant `resize()`, call `prefetch.reset()` to
+  re-calibrate from the new list state.

@@ -1,0 +1,197 @@
+# Core Concepts
+
+[← Back to README](../README.md)
+
+## Table of Contents
+
+- [PageState](#pagestate)
+- [Paginator vs MutablePaginator](#paginator-vs-mutablepaginator)
+- [Context Window](#context-window)
+- [Bookmarks](#bookmarks)
+- [LoadResult & Metadata](#loadresult--metadata)
+- [Capacity & Incomplete Pages](#capacity--incomplete-pages)
+- [Final Page Limit](#final-page-limit)
+
+---
+
+## PageState
+
+`PageState<E>` is a sealed class representing the state of a single page. Every page has a
+`page: Int` number, `data: List<E>` items, and a unique `id: Long`.
+
+| Type              | Description                                                                              |
+|-------------------|------------------------------------------------------------------------------------------|
+| `SuccessPage<T>`  | Successfully loaded page with non-empty data                                             |
+| `EmptyPage<T>`    | Successfully loaded page with no data (extends `SuccessPage`)                            |
+| `ProgressPage<T>` | Page currently being loaded. May contain cached data from a previous load                |
+| `ErrorPage<T>`    | Page that failed to load. Carries the `exception` and may contain previously cached data |
+
+All `PageState` subclasses are `open`, so you can create your own custom types:
+
+```kotlin
+class MyCustomProgress<T>(
+    page: Int,
+    data: List<T>,
+    val progressPercent: Int = 0
+) : PageState.ProgressPage<T>(page, data)
+```
+
+## Paginator vs MutablePaginator
+
+The library provides two classes with different levels of access:
+
+|                  | `Paginator<T>`                                                     | `MutablePaginator<T>`                                                 |
+|------------------|--------------------------------------------------------------------|-----------------------------------------------------------------------|
+| **Role**         | Read-only base class                                               | Full-featured mutable extension                                       |
+| **Navigation**   | `jump`, `goNextPage`, `goPreviousPage`, `restart`, `refresh`       | Inherits all from `Paginator`                                         |
+| **State access** | `core.getStateOf`, `core.getElement`, `core.scan`, `core.snapshot` | Inherits + `removeState`, `+=` / `-=` operators                       |
+| **CRUD**         | --                                                                 | `setElement`, `removeElement`, `addAllElements`, `replaceAllElements` |
+| **Capacity**     | `core.capacity` (read-only)                                        | `core.resize()`                                                       |
+| **Dirty pages**  | `core.markDirty`, `core.clearDirty`, `core.isDirty`                | Inherits + `isDirty` param on CRUD ops                                |
+| **Transaction**  | `transaction { }`                                                  | Inherits + auto-flush to L2 on success                                |
+| **Lifecycle**    | `release()`                                                        | Inherits + `flush()`                                                  |
+
+**When to use `Paginator`:** Use it when you only need to navigate and observe pages (e.g., a
+read-only list screen). Element-level CRUD methods are not exposed.
+
+**When to use `MutablePaginator`:** Use it when you need element-level CRUD, capacity resizing, or
+direct state manipulation. Most use cases will use this class.
+
+```kotlin
+// Most common: full-featured paginator
+val paginator = MutablePaginator<String>(load = { page ->
+    LoadResult(api.fetchItems(page))
+})
+
+// Read-only: only navigation, no element mutations
+val readOnlyPaginator = Paginator<String>(load = { page ->
+    LoadResult(api.fetchItems(page))
+})
+```
+
+The constructor takes a single `load` lambda -- a suspending function that loads data for a given
+page. It returns a `LoadResult<T>` wrapping the data list (and optionally metadata).
+The receiver is the paginator itself, giving you access to its properties during loading.
+
+## Context Window
+
+The paginator maintains a **context window** defined by `startContextPage` and `endContextPage`.
+This represents the contiguous range of successfully loaded pages visible to the user. The`snapshot`
+Flow emits only pages within (and adjacent to) this window.
+
+When you call `goNextPage`, the window expands forward. When you call `goPreviousPage`, it expands
+backward. When you `jump`, the window resets to the target page and expands outward.
+
+## Bookmarks
+
+Bookmarks are predefined page targets for quick navigation:
+
+```kotlin
+paginator.bookmarks.addAll(
+    listOf(
+        BookmarkInt(5),
+        BookmarkInt(10),
+        BookmarkInt(15),
+    )
+)
+paginator.recyclingBookmark = true // Wrap around when reaching the end
+```
+
+Navigate through bookmarks with:
+
+- `jumpForward()` -- moves to the next bookmark
+- `jumpBack()` -- moves to the previous bookmark
+
+You can also implement the `Bookmark` interface for custom bookmark types.
+
+## LoadResult & Metadata
+
+The `load` lambda returns `LoadResult<T>` -- an open class wrapping the page `data` and optional
+`metadata`. For simple sources with no metadata, wrap your list directly:
+
+```kotlin
+val paginator = MutablePaginator<Item>(load = { page ->
+    LoadResult(api.getItems(page))
+})
+```
+
+When your API returns metadata alongside the list (total count, cursors, pagination info),
+subclass `Metadata` to carry it:
+
+```kotlin
+class PagedMetadata(
+    val totalPages: Int,
+    val nextCursor: String?,
+) : Metadata()
+```
+
+Then pass it to `LoadResult` from your `load` lambda:
+
+```kotlin
+val paginator = MutablePaginator<Item>(load = { page ->
+    val response = api.getItems(page)
+    LoadResult(
+        data = response.items,
+        metadata = PagedMetadata(response.totalPages, response.nextCursor),
+    )
+})
+```
+
+The `metadata` you pass here is forwarded into the resulting `PageState.metadata` and to every
+initializer lambda (see [Custom PageState Subclasses](elements.md#custom-pagestate-subclasses)). It
+also
+survives cache eviction, snapshots, and serialization.
+
+## Capacity & Incomplete Pages
+
+`capacity` defines the expected number of items per page (default: 20). This is critical for the
+paginator to determine whether a page is **filled** (complete) or **incomplete**.
+
+```kotlin
+paginator.core.resize(capacity = 10, resize = false, silently = true)
+```
+
+When a page returns fewer items than `capacity`, the paginator considers it **incomplete**. On the
+next `goNextPage` call, instead of advancing to a new page, the paginator re-requests the same page.
+During this re-request, it creates a `ProgressPage` containing the previously cached data, so the UI
+can show the existing items alongside a loading indicator.
+
+This is useful when a backend occasionally returns partial results.
+
+Set `capacity` to `UNLIMITED_CAPACITY` (0) to disable capacity checks entirely.
+
+### coerceToCapacity
+
+`PagingCore` provides two overloaded `coerceToCapacity` functions that enforce the capacity limit
+on data and page states. They are called automatically during all loading paths (`jump`,
+`goNextPage`, `goPreviousPage`, `restart`, `refresh`) to guarantee that no page ever holds more
+items than `capacity`.
+
+```kotlin
+// Trims a list to capacity. Returns a MutableList when trimmed; input as-is otherwise.
+paginator.core.coerceToCapacity(data: List< T >): List<T>
+
+// Trims a PageState's data to capacity via copy(). Returns the same instance if no trim needed.
+paginator.core.coerceToCapacity(state: PageState< T >): PageState<T>
+```
+
+When `capacity` is set to `UNLIMITED_CAPACITY`, both functions return their input unchanged.
+
+## Final Page Limit
+
+Set `finalPage` to enforce an upper boundary on pagination:
+
+```kotlin
+paginator.finalPage = 20 // Typically from backend metadata
+```
+
+Any attempt to navigate beyond this page (via `goNextPage`, `jump`, etc.) throws
+`FinalPageExceededException`:
+
+```kotlin
+try {
+    paginator.goNextPage()
+} catch (e: FinalPageExceededException) {
+    showMessage("Reached page ${e.finalPage}, no more data")
+}
+```

@@ -1,0 +1,348 @@
+# Caching
+
+[← Back to README](../README.md)
+
+## Table of Contents
+
+- [Cache Eviction Strategies](#cache-eviction-strategies)
+    - [LruPagingCache](#lrupagingcache)
+    - [FifoPagingCache](#fifopagingcache)
+    - [TtlPagingCache](#ttlpagingcache)
+    - [SlidingWindowPagingCache](#slidingwindowpagingcache)
+    - [Composing Strategies](#composing-strategies)
+    - [Eviction Listener](#eviction-listener)
+    - [Custom Strategies](#custom-strategies)
+- [Persistent Cache (L2)](#persistent-cache-l2)
+    - [How It Works](#how-it-works)
+    - [PersistentPagingCache Interface](#persistentpagingcache-interface)
+    - [Usage](#usage)
+    - [Example Room Implementation](#example-room-implementation)
+    - [Persisting CRUD Changes](#persisting-crud-changes)
+    - [Lifecycle](#lifecycle)
+    - [Composing with Eviction Strategies](#composing-with-eviction-strategies)
+
+---
+
+## Cache Eviction Strategies
+
+By default, `PagingCore` uses `DefaultPagingCache` -- every loaded page stays in memory
+forever. For long-lived paginators or memory-constrained environments, pass a
+**cache strategy** via the `cache` parameter of `PagingCore`:
+
+```kotlin
+val paginator = MutablePaginator<Item>(
+    core = PagingCore(cache = LruPagingCache(maxSize = 50)),
+    load = { page -> LoadResult(api.loadPage(page)) }
+)
+```
+
+Available strategies:
+
+| Strategy                   | Eviction rule                     | Key parameter   |
+|----------------------------|-----------------------------------|-----------------|
+| `DefaultPagingCache`       | None -- unlimited cache           | --              |
+| `LruPagingCache`           | Least recently used page          | `maxSize`       |
+| `FifoPagingCache`          | First inserted page               | `maxSize`       |
+| `TtlPagingCache`           | Pages older than TTL              | `ttl: Duration` |
+| `SlidingWindowPagingCache` | Everything outside context window | `margin`        |
+
+### LruPagingCache
+
+Evicts the **least recently used** page when the cache exceeds `maxSize`. Both reads
+(`getStateOf`, `getElement`) and writes (`setState`) count as "usage".
+
+```kotlin
+val paginator = MutablePaginator<Item>(
+    core = PagingCore(
+        cache = LruPagingCache(
+            maxSize = 50,                   // max pages in cache
+            protectContextWindow = true,    // never evict visible pages (default)
+        )
+    ),
+    load = { page -> LoadResult(api.loadPage(page)) }
+)
+```
+
+| Parameter              | Default      | Description                                                   |
+|------------------------|--------------|---------------------------------------------------------------|
+| `maxSize`              | *(required)* | Maximum cached pages. Must be > 0                             |
+| `protectContextWindow` | `true`       | Pages in `startContextPage..endContextPage` are never evicted |
+| `evictionListener`     | `null`       | Callback when a page is evicted                               |
+
+### FifoPagingCache
+
+Evicts the **oldest inserted** page when the cache exceeds `maxSize`. Unlike LRU, reading
+a page does **not** change its eviction priority -- only the original insertion order matters.
+
+```kotlin
+val paginator = MutablePaginator<Item>(
+    core = PagingCore(cache = FifoPagingCache(maxSize = 30)),
+    load = { page -> LoadResult(api.loadPage(page)) }
+)
+```
+
+Parameters are the same as `LruPagingCache`.
+
+### TtlPagingCache
+
+Evicts pages whose age exceeds a **time-to-live** duration. There is no `maxSize` --
+the cache can hold any number of pages as long as they are fresh.
+
+```kotlin
+import kotlin.time.Duration.Companion.minutes
+
+val paginator = MutablePaginator<Item>(
+    core = PagingCore(
+        cache = TtlPagingCache(
+            ttl = 5.minutes,            // max page age
+            refreshOnAccess = false,    // true = reading resets the timer
+            protectContextWindow = true,
+        )
+    ),
+    load = { page -> LoadResult(api.loadPage(page)) }
+)
+```
+
+| Parameter              | Default                | Description                                                |
+|------------------------|------------------------|------------------------------------------------------------|
+| `ttl`                  | *(required)*           | Maximum page age. Must be positive                         |
+| `refreshOnAccess`      | `false`                | If `true`, `getStateOf` / `getElement` reset the TTL timer |
+| `protectContextWindow` | `true`                 | Expired pages in the context window are kept               |
+| `timeSource`           | `TimeSource.Monotonic` | Override for deterministic testing                         |
+| `evictionListener`     | `null`                 | Callback when a page is evicted                            |
+
+### SlidingWindowPagingCache
+
+Keeps **only** pages within (or near) the current context window. After a `jump()` to a
+distant page, all pages from the previous location are discarded immediately. This is the
+most aggressive strategy -- ideal for memory-constrained environments.
+
+```kotlin
+val paginator = MutablePaginator<Item>(
+    core = PagingCore(
+        cache = SlidingWindowPagingCache(
+            margin = 2,   // keep 2 extra pages beyond each edge of the context window
+        )
+    ),
+    load = { page -> LoadResult(api.loadPage(page)) }
+)
+```
+
+| Parameter          | Default | Description                                              |
+|--------------------|---------|----------------------------------------------------------|
+| `margin`           | `0`     | Pages to keep beyond each edge. `0` = strict window only |
+| `evictionListener` | `null`  | Callback when a page is evicted                          |
+
+With `margin = 0`, the cache contains exactly `startContextPage..endContextPage`. With
+`margin = 2`, it keeps `(startContextPage - 2)..(endContextPage + 2)`.
+
+### Composing Strategies
+
+Strategies implement `WrappablePagingCache<T>` and can be **chained** with the `+` operator.
+The leftmost strategy is the outermost decorator -- its eviction policy takes priority.
+
+```kotlin
+// LRU(50) governs eviction count; TTL(5min) evicts stale pages from the inner cache
+val cache = LruPagingCache<Item>(maxSize = 50) + TtlPagingCache(ttl = 5.minutes)
+
+val paginator = MutablePaginator<Item>(
+    core = PagingCore(cache = cache),
+    load = { page -> LoadResult(api.loadPage(page)) }
+)
+```
+
+`+` is left-associative, so `a + b + c` builds the chain `a → b → c → DefaultPagingCache`:
+
+```kotlin
+val cache = LruPagingCache<Item>(maxSize = 50) +
+            TtlPagingCache(ttl = 5.minutes) +
+            SlidingWindowPagingCache(margin = 1)
+```
+
+### Eviction Listener
+
+All strategies accept an optional `evictionListener` to react when a page is removed
+from the cache (e.g., to persist data before it is lost):
+
+```kotlin
+val cache = LruPagingCache<Item>(
+    maxSize = 20,
+    evictionListener = CacheEvictionListener { evictedPage ->
+        println("Evicted page ${evictedPage.page} with ${evictedPage.data.size} items")
+    }
+)
+```
+
+The listener is a `fun interface`, so a lambda works directly.
+
+### Custom Strategies
+
+Implement `PagingCache<T>` to define your own eviction logic. To participate in `+`
+composition, also implement `WrappablePagingCache<T>` and use the `withLeaf()` helper
+inside `replaceLeaf()`:
+
+```kotlin
+class MyCache<T>(
+    private val cache: PagingCache<T> = DefaultPagingCache(),
+    val myParam: Int,
+) : PagingCache<T> by cache, WrappablePagingCache<T> {
+
+    override fun replaceLeaf(newLeaf: PagingCache<T>): MyCache<T> =
+        MyCache(cache = cache.withLeaf(newLeaf), myParam = myParam)
+
+    override fun setState(state: PageState<T>, silently: Boolean) {
+        cache.setState(state, silently)
+        // your eviction logic here
+    }
+
+    override fun removeFromCache(page: Int): PageState<T>? = cache.removeFromCache(page)
+    override fun clear() = cache.clear()
+    override fun release(capacity: Int, silently: Boolean) = cache.release(capacity, silently)
+}
+
+// Composes with built-in strategies via +:
+val cache = LruPagingCache<Item>(maxSize = 50) + MyCache(myParam = 42)
+```
+
+`cache.withLeaf(newLeaf)` recurses down the delegation chain and replaces the
+`DefaultPagingCache` leaf with `newLeaf`, so your strategy works correctly at any depth.
+
+---
+
+## Persistent Cache (L2)
+
+The paginator supports an optional **second-level persistent cache** that allows pages to survive
+process death. While the in-memory `PagingCache` (L1) provides fast synchronous access, a
+`PersistentPagingCache` (L2) stores pages in a durable backend (Room, SQLite, files, etc.).
+
+The library ships only the interface -- the implementation is entirely up to you.
+
+### How It Works
+
+**Read path:** L1 (in-memory) → L2 (persistent) → source (network).
+When a navigation method encounters a cache miss in L1, it checks L2 before calling the `load`
+lambda. If L2 has the page, it is promoted back into L1 and returned immediately -- no loading
+indicator, no network call.
+
+**Write path:** After every successful `load` call, the resulting `SuccessPage` (or `EmptyPage`)
+is automatically saved to L2.
+
+### PersistentPagingCache Interface
+
+```kotlin
+interface PersistentPagingCache<T> {
+    suspend fun save(state: PageState<T>)
+    suspend fun saveAll(states: List<PageState<T>>) { states.forEach { save(it) } }
+    suspend fun load(page: Int): PageState<T>?
+    suspend fun loadAll(): List<PageState<T>>
+    suspend fun remove(page: Int)
+    suspend fun removeAll(pages: List<Int>) { pages.forEach { remove(it) } }
+    suspend fun clear()
+    suspend fun <R> transaction(block: suspend PersistentPagingCache<T>.() -> R): R = block()
+}
+```
+
+All methods are `suspend`, enabling native integration with Room, SQLite, or any async storage.
+Override `transaction` to wrap the block in a real DB transaction (e.g., Room's `withTransaction`).
+Override `saveAll` / `removeAll` for batch-optimized storage.
+
+### Usage
+
+Provide your implementation when constructing the `PagingCore`:
+
+```kotlin
+val paginator = MutablePaginator(
+    core = PagingCore(
+        cache = LruPagingCache(maxSize = 50),
+        persistentCache = RoomPagingCache(dao, json, serializer),
+    ),
+    load = { page -> LoadResult(api.loadPage(page)) }
+)
+```
+
+### Example Room Implementation
+
+```kotlin
+class RoomPagingCache(
+    private val dao: PageDao,
+    private val json: Json,
+    private val serializer: KSerializer<MyItem>,
+) : PersistentPagingCache<MyItem> {
+
+    override suspend fun save(state: PageState<MyItem>) {
+        val jsonData = json.encodeToString(ListSerializer(serializer), state.data)
+        dao.upsert(PageEntity(page = state.page, data = jsonData, isEmpty = state.isEmptyState()))
+    }
+
+    override suspend fun load(page: Int): PageState<MyItem>? {
+        val entity = dao.getPage(page) ?: return null
+        val data = json.decodeFromString(ListSerializer(serializer), entity.data)
+        return if (entity.isEmpty) EmptyPage(page, data)
+        else SuccessPage(page, data.toMutableList())
+    }
+
+    override suspend fun loadAll(): List<PageState<MyItem>> =
+        dao.getAllPages().map { load(it.page)!! }
+
+    override suspend fun remove(page: Int) = dao.deletePage(page)
+
+    override suspend fun clear() = dao.deleteAll()
+}
+```
+
+### Persisting CRUD Changes
+
+CRUD operations (`setElement`, `removeElement`, `addAllElements`, `replaceAllElements`,
+`removeState`, `+=`) are synchronous and modify only L1. To flush those changes to L2, call
+`flush()`:
+
+```kotlin
+paginator.setElement("updated", page = 1, index = 0)
+paginator.removeElement(page = 2, index = 3)
+
+// Flush all CRUD changes to L2 in one batch
+paginator.flush()
+```
+
+Inside a `transaction`, CRUD changes are **auto-persisted** on success and **discarded** on
+failure — no manual flush needed:
+
+```kotlin
+paginator.transaction {
+    (this as MutablePaginator).setElement("a", page = 1, index = 0)
+    removeElement(page = 2, index = 3)
+    // If everything succeeds, changes are auto-persisted to L2.
+    // If anything throws, L1 is rolled back and L2 remains unchanged.
+}
+```
+
+The method tracks affected pages automatically (including cascading effects from rebalancing
+and overflow). At flush time, pages still present in L1 as `SuccessPage` are saved; pages that
+no longer exist in L1 are removed from L2.
+
+### Lifecycle
+
+- **`restart()`** does **not** clear the persistent cache. Fresh data from the source overwrites
+  stale persistent entries via auto-persist.
+- **`release()`** does **not** clear the persistent cache. L2 is meant to outlive the paginator
+  instance.
+- **Transaction rollback** does **not** affect the persistent cache (eventual consistency).
+- **MutablePaginator CRUD** operations track affected pages internally. Call
+  `flush()` to flush changes to L2 (automatic inside `transaction`).
+- To manually clear L2, call `persistentCache.clear()` directly.
+
+### Composing with Eviction Strategies
+
+Persistent cache works alongside eviction strategies. When a page is evicted from L1 (e.g., by
+`LruPagingCache`), it remains in L2. The next time that page is requested, it is restored from
+L2 instead of making a network call:
+
+```kotlin
+val paginator = MutablePaginator(
+    core = PagingCore(
+        cache = LruPagingCache(maxSize = 20),     // L1: keep only 20 pages in memory
+        persistentCache = MyRoomPagingCache(dao),  // L2: unlimited persistent storage
+    ),
+    load = { page -> LoadResult(api.loadPage(page)) }
+)
+```
