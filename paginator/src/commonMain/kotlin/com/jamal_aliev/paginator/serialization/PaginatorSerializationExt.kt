@@ -19,7 +19,7 @@ import kotlinx.serialization.json.Json
  * ```
  *
  * @param elementSerializer The [KSerializer] for the element type `T`.
- * @param json The [Json] instance to use for encoding. Defaults to [PagingCoreJson].
+ * @param json The [Json] instance to use for encoding. Defaults to `Json { ignoreUnknownKeys = true }`.
  * @param contextOnly If `true`, only pages within the context window are included.
  * @return A JSON string representation of the [PaginatorSnapshot].
  */
@@ -46,7 +46,7 @@ suspend fun <T> Paginator<T>.saveStateToJson(
  *
  * @param jsonString The JSON string to decode.
  * @param elementSerializer The [KSerializer] for the element type `T`.
- * @param json The [Json] instance to use for decoding. Defaults to [PagingCoreJson].
+ * @param json The [Json] instance to use for decoding. Defaults to `Json { ignoreUnknownKeys = true }`.
  * @param silently If `true`, no snapshot is emitted after restoration.
  */
 suspend fun <T> Paginator<T>.restoreStateFromJson(
@@ -74,7 +74,7 @@ suspend fun <T> Paginator<T>.restoreStateFromJson(
  * @param metadataSerializer The [KSerializer] for the metadata type `M`. All pages are
  *   expected to carry the same metadata subtype; a `ClassCastException` will be thrown
  *   at runtime if a page contains a different [Metadata] subtype.
- * @param json The [Json] instance to use for encoding. Defaults to [PagingCoreJson].
+ * @param json The [Json] instance to use for encoding. Defaults to `Json { ignoreUnknownKeys = true }`.
  * @param contextOnly If `true`, only pages within the context window are included.
  * @return A JSON string representation of the [PaginatorSnapshot] with metadata.
  */
@@ -107,7 +107,7 @@ suspend fun <T, M : Metadata> Paginator<T>.saveStateToJson(
  * @param jsonString The JSON string to decode.
  * @param elementSerializer The [KSerializer] for the element type `T`.
  * @param metadataSerializer The [KSerializer] for the metadata type `M`.
- * @param json The [Json] instance to use for decoding. Defaults to [PagingCoreJson].
+ * @param json The [Json] instance to use for decoding. Defaults to `Json { ignoreUnknownKeys = true }`.
  * @param silently If `true`, no snapshot is emitted after restoration.
  */
 suspend fun <T, M : Metadata> Paginator<T>.restoreStateFromJson(
