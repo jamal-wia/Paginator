@@ -295,7 +295,7 @@ class PlaceholderPageStateIntegrationTest {
             bookmark = BookmarkInt(1),
             silentlyLoading = true,
             silentlyResult = true,
-            initProgressState = { page, data ->
+            initProgressState = { page, data, _ ->
                 overrideUsed = true
                 PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
             },
