@@ -1,10 +1,13 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.extension
+
+import com.jamal_aliev.paginator.cache.PagingCache
+import com.jamal_aliev.paginator.cache.WrappablePagingCache
 
 /**
  * Composes two cache strategies so that [this] wraps [inner].
  *
  * The operator is left-associative, so `a + b + c` builds the chain `a → b → c → DefaultPagingCache`.
- * The leaf [DefaultPagingCache] of [this] is replaced by [inner], recursively.
+ * The leaf [com.jamal_aliev.paginator.cache.DefaultPagingCache] of [this] is replaced by [inner], recursively.
  *
  * ```kotlin
  * // Equivalent forms:
@@ -19,18 +22,18 @@ package com.jamal_aliev.paginator.cache
  * )
  * ```
  *
- * When [this] is not a [WrappablePagingCache] (i.e., it is the leaf [DefaultPagingCache]),
+ * When [this] is not a [com.jamal_aliev.paginator.cache.WrappablePagingCache] (i.e., it is the leaf [com.jamal_aliev.paginator.cache.DefaultPagingCache]),
  * [inner] is returned directly.
  */
 operator fun <T> PagingCache<T>.plus(inner: PagingCache<T>): PagingCache<T> =
     withLeaf(inner)
 
 /**
- * Replaces the leaf [DefaultPagingCache] at the bottom of this cache's delegation chain
- * with [newLeaf]. If [this] is not a [WrappablePagingCache], [newLeaf] is returned directly.
+ * Replaces the leaf [com.jamal_aliev.paginator.cache.DefaultPagingCache] at the bottom of this cache's delegation chain
+ * with [newLeaf]. If [this] is not a [com.jamal_aliev.paginator.cache.WrappablePagingCache], [newLeaf] is returned directly.
  *
  * Custom strategy implementations should call this on their private inner cache field
- * inside [WrappablePagingCache.replaceLeaf]:
+ * inside [com.jamal_aliev.paginator.cache.WrappablePagingCache.replaceLeaf]:
  * ```kotlin
  * override fun replaceLeaf(newLeaf: PagingCache<T>): MyCache<T> =
  *     MyCache(cache = cache.withLeaf(newLeaf), myParam = myParam)

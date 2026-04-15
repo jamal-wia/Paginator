@@ -1,5 +1,6 @@
 package com.jamal_aliev.paginator.cache
 
+import com.jamal_aliev.paginator.extension.plus
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.test.Test
 import kotlin.test.assertEquals

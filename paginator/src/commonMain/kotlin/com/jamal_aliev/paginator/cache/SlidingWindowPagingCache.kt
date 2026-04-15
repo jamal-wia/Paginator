@@ -1,5 +1,6 @@
 package com.jamal_aliev.paginator.cache
 
+import com.jamal_aliev.paginator.extension.withLeaf
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.debug
 import com.jamal_aliev.paginator.page.PageState
