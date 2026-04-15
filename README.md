@@ -33,6 +33,7 @@ Paginator can be seamlessly used across all layers of an application
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Infinite Scroll / Infinite Feed](#infinite-scroll--infinite-feed)
 - [Core Concepts](#core-concepts)
     - [PageState](#pagestate)
     - [Paginator vs MutablePaginator](#paginator-vs-mutablepaginator)
@@ -498,7 +499,7 @@ When `recyclingBookmark = true`, the iterator wraps around.
 
 ### restart
 
-Clears all cached pages except page 1's structure, resets the context to page 1, and reloads it:
+Clears all cached pages, resets the context window to page 1, and reloads it:
 
 ```kotlin
 suspend fun restart()
@@ -762,7 +763,7 @@ paginator.core.initializerProgressPage = { page, data ->
 }
 
 // Shown when a page loaded successfully
-paginator.core.initializerSuccessPage = { page, data ->
+paginator.core.initializerSuccessPage = { page, data, _ ->
     PlaceholderPageState.PlaceholderSuccessPage(
         page = page,
         data = data,
@@ -771,7 +772,7 @@ paginator.core.initializerSuccessPage = { page, data ->
 }
 
 // Shown when a page returned no items
-paginator.core.initializerEmptyPage = { page, data ->
+paginator.core.initializerEmptyPage = { page, data, _ ->
     PlaceholderPageState.PlaceholderEmptyPage(
         page = page,
         data = data,
@@ -1033,9 +1034,10 @@ back to the point before the block was entered.
 
 ```kotlin
 paginator.transaction {
-    (this as MutablePaginator).setElement(updatedItem, page = 1, index = 0)
-    removeElement(page = 2, index = 3)
-    addAllElements(listOf(newItem), targetPage = 3, index = 0)
+  val mp = this as MutablePaginator<Item>
+  mp.setElement(updatedItem, page = 1, index = 0)
+  mp.removeElement(page = 2, index = 3)
+  mp.addAllElements(listOf(newItem), targetPage = 3, index = 0)
     // If any operation fails, ALL changes are reverted
 }
 ```

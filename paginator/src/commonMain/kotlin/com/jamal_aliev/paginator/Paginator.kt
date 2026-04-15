@@ -465,7 +465,7 @@ open class Paginator<T>(
                 loading = { page: Int, pageState: PageState<T>? ->
                     val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
                     val progressState: ProgressPage<T> = core.coerceToCapacity(
-                        state = initProgressState.invoke(page, data)
+                        state = initProgressState.invoke(page, data, pageState?.metadata)
                     ) as ProgressPage
                     cache.setState(
                         state = progressState,
@@ -639,7 +639,7 @@ open class Paginator<T>(
                 loading = { page: Int, pageState: PageState<T>? ->
                     val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
                     val progressState: ProgressPage<T> = core.coerceToCapacity(
-                        state = initProgressState.invoke(page, data)
+                        state = initProgressState.invoke(page, data, pageState?.metadata)
                     ) as ProgressPage
                     cache.setState(
                         state = progressState,
@@ -788,7 +788,7 @@ open class Paginator<T>(
                 loading = { page: Int, pageState: PageState<T>? ->
                     val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
                     val progressState: ProgressPage<T> = core.coerceToCapacity(
-                        state = initProgressState.invoke(page, data)
+                        state = initProgressState.invoke(page, data, pageState?.metadata)
                     ) as ProgressPage
                     cache.setState(
                         state = progressState,
@@ -913,7 +913,7 @@ open class Paginator<T>(
                     val dataOfState: List<T> =
                         core.coerceToCapacity(pageState?.data ?: mutableListOf())
                     val progressState: ProgressPage<T> = core.coerceToCapacity(
-                        state = initProgressState.invoke(page, dataOfState)
+                        state = initProgressState.invoke(page, dataOfState, pageState?.metadata)
                     ) as ProgressPage
                     cache.setState(
                         state = progressState,
@@ -1015,7 +1015,11 @@ open class Paginator<T>(
                     val dataOfPage =
                         core.coerceToCapacity(savedStates[page]?.data ?: mutableListOf())
                     val progressState = core.coerceToCapacity(
-                        state = initProgressState.invoke(page, dataOfPage)
+                        state = initProgressState.invoke(
+                            page,
+                            dataOfPage,
+                            savedStates[page]?.metadata
+                        )
                     ) as ProgressPage
                     cache.setState(
                         state = progressState,
@@ -1165,7 +1169,7 @@ open class Paginator<T>(
                 data = cachedState?.data ?: mutableListOf()
             )
             core.coerceToCapacity(
-                state = initErrorState.invoke(exception, page, data)
+                state = initErrorState.invoke(exception, page, data, cachedState?.metadata)
             )
         }
     }

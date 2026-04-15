@@ -730,8 +730,8 @@ open class PagingCore<T>(
      * Override to provide custom progress page subclasses with additional metadata.
      */
     var initializerProgressPage: InitializerProgressPage<T> =
-        fun(page: Int, data: List<T>): ProgressPage<T> {
-            return ProgressPage(page = page, data = data)
+        fun(page: Int, data: List<T>, metadata: Metadata?): ProgressPage<T> {
+            return ProgressPage(page = page, data = data, metadata = metadata)
         }
 
     /**
@@ -742,7 +742,7 @@ open class PagingCore<T>(
     var initializerSuccessPage: InitializerSuccessPage<T> =
         fun(page: Int, data: List<T>, metadata: Metadata?): SuccessPage<T> {
             return if (data.isEmpty()) initializerEmptyPage.invoke(page, data, metadata)
-            else SuccessPage(page = page, data = data)
+            else SuccessPage(page = page, data = data, metadata = metadata)
         }
 
     /**
@@ -751,7 +751,7 @@ open class PagingCore<T>(
      */
     var initializerEmptyPage: InitializerEmptyPage<T> =
         fun(page: Int, data: List<T>, metadata: Metadata?): EmptyPage<T> {
-            return EmptyPage(page = page, data = data)
+            return EmptyPage(page = page, data = data, metadata = metadata)
         }
 
     /**
@@ -760,8 +760,8 @@ open class PagingCore<T>(
      * Override to provide custom error page subclasses.
      */
     var initializerErrorPage: InitializerErrorPage<T> =
-        fun(exception: Exception, page: Int, data: List<T>): ErrorPage<T> {
-            return ErrorPage(exception = exception, page = page, data = data)
+        fun(exception: Exception, page: Int, data: List<T>, metadata: Metadata?): ErrorPage<T> {
+            return ErrorPage(exception = exception, page = page, data = data, metadata = metadata)
         }
 
     /**

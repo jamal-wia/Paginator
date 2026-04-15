@@ -8,8 +8,8 @@ import com.jamal_aliev.paginator.page.PageState.SuccessPage
 
 typealias InitializerEmptyPage<T> = (page: Int, data: List<T>, metadata: Metadata?) -> EmptyPage<T>
 
-typealias InitializerErrorPage<T> = (e: Exception, page: Int, data: List<T>) -> ErrorPage<T>
+typealias InitializerErrorPage<T> = (e: Exception, page: Int, data: List<T>, metadata: Metadata?) -> ErrorPage<T>
 
-typealias InitializerProgressPage<T> = (page: Int, data: List<T>) -> ProgressPage<T>
+typealias InitializerProgressPage<T> = (page: Int, data: List<T>, metadata: Metadata?) -> ProgressPage<T>
 
 typealias InitializerSuccessPage<T> = (page: Int, data: List<T>, metadata: Metadata?) -> SuccessPage<T>

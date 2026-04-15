@@ -35,7 +35,7 @@ class PlaceholderPageStateIntegrationTest {
     ): MutablePaginator<String> {
         val paginator = MutablePaginator(load = load)
         paginator.core.resize(capacity = capacity, resize = false, silently = true)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             PlaceholderProgressPage(
                 page = page,
                 data = data,
@@ -55,7 +55,7 @@ class PlaceholderPageStateIntegrationTest {
         val paginator =
             MutablePaginator { page -> LoadResult(List(core.capacity) { "p${page}_item$it" }) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
                 .also { capturedProgress = it }
         }
@@ -69,7 +69,7 @@ class PlaceholderPageStateIntegrationTest {
     fun `jump - PlaceholderProgressPage carries correct placeholders`() = runTest {
         var capturedPlaceholders: List<Skeleton>? = null
         val paginator = createPaginator(capacity = 3, skeletonCount = 5)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(5))
                 .also {
                     capturedPlaceholders = it.placeholders
@@ -87,7 +87,7 @@ class PlaceholderPageStateIntegrationTest {
     fun `jump - placeholders are separate from data`() = runTest {
         var capturedState: PlaceholderProgressPage<String, Skeleton>? = null
         val paginator = createPaginator(capacity = 3, skeletonCount = 3)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
                 .also {
                     capturedState = it
@@ -118,7 +118,7 @@ class PlaceholderPageStateIntegrationTest {
     fun `jump - page number in progress state matches target`() = runTest {
         var capturedPage = -1
         val paginator = createPaginator(capacity = 3)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             capturedPage = page
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -137,7 +137,7 @@ class PlaceholderPageStateIntegrationTest {
         val paginator = createPaginator(capacity = 3)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -153,7 +153,7 @@ class PlaceholderPageStateIntegrationTest {
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
         // page 2 has no cache yet — data should be empty
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             capturedProgressData = data
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -184,7 +184,7 @@ class PlaceholderPageStateIntegrationTest {
         paginator.jump(BookmarkInt(2), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -212,7 +212,7 @@ class PlaceholderPageStateIntegrationTest {
         ) // reloads page 2 (incomplete)
 
         // After reload context is at page 2-3. goPreviousPage goes to page 1 (no cache → empty data)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             capturedProgressData = data
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -235,7 +235,7 @@ class PlaceholderPageStateIntegrationTest {
         val paginator = createPaginator(capacity = 3)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -264,7 +264,7 @@ class PlaceholderPageStateIntegrationTest {
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             progressCount++
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -286,7 +286,7 @@ class PlaceholderPageStateIntegrationTest {
         val paginator =
             MutablePaginator { page -> LoadResult(List(core.capacity) { "p${page}_item$it" }) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             defaultUsed = true
             ProgressPage(page = page, data = data)
         }
@@ -312,7 +312,7 @@ class PlaceholderPageStateIntegrationTest {
         val paginator =
             MutablePaginator { page -> LoadResult(List(core.capacity) { "p${page}_item$it" }) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             defaultUsed = true
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -381,7 +381,7 @@ class PlaceholderPageStateIntegrationTest {
         var progressCreated = false
         val paginator = MutablePaginator<String> { _ -> throw RuntimeException("network error") }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -400,7 +400,7 @@ class PlaceholderPageStateIntegrationTest {
         var progressCreated = false
         val paginator = MutablePaginator<String> { _ -> LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
@@ -422,7 +422,7 @@ class PlaceholderPageStateIntegrationTest {
     fun `PlaceholderProgressPage created for each navigation step in sequence`() = runTest {
         val progressPages = mutableListOf<Int>()
         val paginator = createPaginator(capacity = 3)
-        paginator.core.initializerProgressPage = { page, data ->
+        paginator.core.initializerProgressPage = { page, data, _ ->
             progressPages.add(page)
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
