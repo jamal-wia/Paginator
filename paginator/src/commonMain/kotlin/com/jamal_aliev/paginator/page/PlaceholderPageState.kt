@@ -39,7 +39,7 @@ sealed interface PlaceholderPageState<R> {
             page: Int = this.page,
             data: List<T> = this.data,
             placeholders: List<R> = this.placeholders,
-            result: Metadata = this.metadata,
+            result: Metadata? = this.metadata,
             id: Long = this.id,
         ): PlaceholderErrorPage<T, R> {
             return PlaceholderErrorPage(exception, page, data, placeholders, result, id)
@@ -67,7 +67,7 @@ sealed interface PlaceholderPageState<R> {
             page: Int = this.page,
             data: List<T> = this.data,
             placeholders: List<R> = this.placeholders,
-            result: Metadata = this.metadata,
+            result: Metadata? = this.metadata,
             id: Long = this.id,
         ): PlaceholderProgressPage<T, R> {
             return PlaceholderProgressPage(page, data, placeholders, result, id)
@@ -99,7 +99,7 @@ sealed interface PlaceholderPageState<R> {
             page: Int = this.page,
             data: List<T> = this.data,
             placeholders: List<R> = this.placeholders,
-            result: Metadata = this.metadata,
+            result: Metadata? = this.metadata,
             id: Long = this.id,
         ): PageState.SuccessPage<T> {
             return if (data.isEmpty()) PlaceholderEmptyPage(page, data, placeholders, result, id)
@@ -128,7 +128,7 @@ sealed interface PlaceholderPageState<R> {
             page: Int = this.page,
             data: List<T> = this.data,
             placeholders: List<R> = this.placeholders,
-            result: Metadata = this.metadata,
+            result: Metadata? = this.metadata,
             id: Long = this.id,
         ): PlaceholderEmptyPage<T, R> {
             return PlaceholderEmptyPage(page, data, placeholders, result, id)

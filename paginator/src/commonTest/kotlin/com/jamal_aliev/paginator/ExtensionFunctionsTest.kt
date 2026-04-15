@@ -186,7 +186,7 @@ class ExtensionFunctionsTest {
         val start = paginator.cache.getStateOf(1)
         val last = paginator.walkForwardWhile(start)
         assertNotNull(last)
-        assertEquals(5, last!!.page) // walks all the way to page 5
+        assertEquals(5, last.page) // walks all the way to page 5
     }
 
     @Test
@@ -211,7 +211,7 @@ class ExtensionFunctionsTest {
         val start = paginator.cache.getStateOf(5)
         val first = paginator.walkBackwardWhile(start)
         assertNotNull(first)
-        assertEquals(1, first!!.page)
+        assertEquals(1, first.page)
     }
 
     @Test

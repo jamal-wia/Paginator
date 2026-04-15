@@ -815,7 +815,7 @@ class MainActivity : ComponentActivity() {
                                     Color(0xFF1565C0) to "p${pageState.page}: Loading..."
 
                                 pageState.isErrorState() ->
-                                    Color(0xFFC62828) to "p${pageState.page}: Error - ${(pageState as PageState.ErrorPage).exception.message}"
+                                    Color(0xFFC62828) to "p${pageState.page}: Error - ${pageState.exception.message}"
 
                                 pageState.isEmptyState() ->
                                     Color(0xFF757575) to "p${pageState.page}: Empty"

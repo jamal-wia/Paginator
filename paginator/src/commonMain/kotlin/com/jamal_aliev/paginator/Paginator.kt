@@ -765,7 +765,7 @@ open class Paginator<T>(
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyPagesInContext()
-                return@coroutineScope previousPageState!!
+                return@coroutineScope previousPageState
             }
 
             if (!loadGuard.invoke(previousPage, previousPageState)) {

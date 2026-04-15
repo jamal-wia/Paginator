@@ -39,7 +39,7 @@ class BookmarkNavigationTest {
         // Default bookmarks = [BookmarkInt(1)]
         val result = paginator.jumpForward(silentlyLoading = true, silentlyResult = true)
         assertNotNull(result)
-        assertEquals(1, result!!.first.page)
+        assertEquals(1, result.first.page)
         assertTrue(result.second.isSuccessState())
     }
 
@@ -78,7 +78,7 @@ class BookmarkNavigationTest {
             silentlyResult = true
         )
         assertNotNull(recycled)
-        assertEquals(1, recycled!!.first.page)
+        assertEquals(1, recycled.first.page)
     }
 
     @Test
@@ -100,12 +100,12 @@ class BookmarkNavigationTest {
         // Default bookmarks = [BookmarkInt(1)]
         val forward = paginator.jumpForward(silentlyLoading = true, silentlyResult = true)
         assertNotNull(forward)
-        assertEquals(1, forward!!.first.page)
+        assertEquals(1, forward.first.page)
 
         // jumpBack should go to same (previous) which is 1
         val back = paginator.jumpBack(silentlyLoading = true, silentlyResult = true)
         assertNotNull(back)
-        assertEquals(1, back!!.first.page)
+        assertEquals(1, back.first.page)
     }
 
     @Test
@@ -156,7 +156,7 @@ class BookmarkNavigationTest {
         // With recyclingBookmark = true, jumpForward should recycle by default
         val result = paginator.jumpForward(silentlyLoading = true, silentlyResult = true)
         assertNotNull(result)
-        assertEquals(1, result!!.first.page)
+        assertEquals(1, result.first.page)
     }
 
     @Test
@@ -201,7 +201,7 @@ class BookmarkNavigationTest {
             silentlyResult = false
         )
         assertNotNull(result)
-        assertEquals(5, result!!.first.page)
+        assertEquals(5, result.first.page)
         assertTrue(result.second.isSuccessState())
     }
 
@@ -225,7 +225,7 @@ class BookmarkNavigationTest {
             silentlyResult = false
         )
         assertNotNull(result)
-        assertTrue(result!!.first.page in 1..3)
+        assertTrue(result.first.page in 1..3)
     }
 
     @Test
@@ -249,7 +249,7 @@ class BookmarkNavigationTest {
             silentlyResult = false
         )
         assertNotNull(fwdResult)
-        assertEquals(10, fwdResult!!.first.page)
+        assertEquals(10, fwdResult.first.page)
         // After jump(10), snapshot = [10], visibleRange = 10..10
         // Iterator is now at position 3 (past bookmark 10)
 
@@ -258,7 +258,7 @@ class BookmarkNavigationTest {
         // candidate = BookmarkInt(2), 2 NOT in 10..10 → jump to 2
         val result = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
         assertNotNull(result)
-        assertEquals(2, result!!.first.page)
+        assertEquals(2, result.first.page)
     }
 
     @Test
@@ -280,7 +280,7 @@ class BookmarkNavigationTest {
         // jumpBack should go to bookmark 5 (nearest bookmark before current page 6)
         val result = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
         assertNotNull(result)
-        assertEquals(5, result!!.first.page)
+        assertEquals(5, result.first.page)
     }
 
     @Test
@@ -299,7 +299,7 @@ class BookmarkNavigationTest {
         // jumpForward should go to bookmark 10 (first bookmark after page 7)
         val result = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(result)
-        assertEquals(10, result!!.first.page)
+        assertEquals(10, result.first.page)
     }
 
     @Test
@@ -322,6 +322,6 @@ class BookmarkNavigationTest {
             silentlyResult = false
         )
         assertNotNull(result)
-        assertEquals(10, result!!.first.page)
+        assertEquals(10, result.first.page)
     }
 }

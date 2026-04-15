@@ -72,16 +72,15 @@ class PlaceholderPageStateIntegrationTest {
         paginator.core.initializerProgressPage = { page, data ->
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(5))
                 .also {
-                    @Suppress("UNCHECKED_CAST")
-                    capturedPlaceholders = it.placeholders as List<Skeleton>
+                    capturedPlaceholders = it.placeholders
                 }
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
         assertNotNull(capturedPlaceholders)
-        assertEquals(5, capturedPlaceholders!!.size)
-        assertTrue(capturedPlaceholders!!.all { it === Skeleton })
+        assertEquals(5, capturedPlaceholders.size)
+        assertTrue(capturedPlaceholders.all { it === Skeleton })
     }
 
     @Test
@@ -91,8 +90,7 @@ class PlaceholderPageStateIntegrationTest {
         paginator.core.initializerProgressPage = { page, data ->
             PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
                 .also {
-                    @Suppress("UNCHECKED_CAST")
-                    capturedState = it as PlaceholderProgressPage<String, Skeleton>
+                    capturedState = it
                 }
         }
 
@@ -100,8 +98,8 @@ class PlaceholderPageStateIntegrationTest {
 
         assertNotNull(capturedState)
         // data contains only real items (empty on first load), placeholders are separate
-        assertTrue(capturedState!!.data.isEmpty())
-        assertEquals(3, capturedState!!.placeholders.size)
+        assertTrue(capturedState.data.isEmpty())
+        assertEquals(3, capturedState.placeholders.size)
     }
 
     @Test
@@ -163,7 +161,7 @@ class PlaceholderPageStateIntegrationTest {
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
         assertNotNull(capturedProgressData)
-        assertTrue(capturedProgressData!!.isEmpty())
+        assertTrue(capturedProgressData.isEmpty())
     }
 
     @Test
@@ -224,7 +222,7 @@ class PlaceholderPageStateIntegrationTest {
 
         // Page 3 has no prior cache, data passed to progress is empty
         assertNotNull(capturedProgressData)
-        assertTrue(capturedProgressData!!.isEmpty())
+        assertTrue(capturedProgressData.isEmpty())
     }
 
     // ══════════════════════════════════════════════════════════════════════

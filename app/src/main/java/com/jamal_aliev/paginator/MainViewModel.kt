@@ -14,6 +14,7 @@ import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isRealProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
+import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.LogLevel
 import com.jamal_aliev.paginator.logger.PaginatorLogger
@@ -38,8 +39,8 @@ class MainViewModel(
     private val _state = MutableStateFlow(MainViewState())
     val state = _state.asStateFlow()
 
-    val paginator = MutablePaginator<String>(source = { page ->
-        SampleRepository.loadPage(page)
+    val paginator = MutablePaginator<String>(load = { page ->
+        LoadResult(SampleRepository.loadPage(page))
     }).apply {
         core.resize(SampleRepository.PAGE_SIZE, resize = false, silently = true)
         finalPage = SampleRepository.FINAL_PAGE

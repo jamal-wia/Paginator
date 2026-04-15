@@ -34,7 +34,7 @@ class BookmarkSyncEdgeCasesTest {
         // jumpForward should find bookmark 5 (not 15)
         val result = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(result)
-        assertEquals(5, result!!.first.page)
+        assertEquals(5, result.first.page)
     }
 
     @Test
@@ -78,7 +78,7 @@ class BookmarkSyncEdgeCasesTest {
         // jumpForward should go to 10 (next bookmark after 5)
         val fwd = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd)
-        assertEquals(10, fwd!!.first.page)
+        assertEquals(10, fwd.first.page)
     }
 
     @Test
@@ -97,7 +97,7 @@ class BookmarkSyncEdgeCasesTest {
         //           checks index 1 = page 5, NOT in 10..10 → returns 5
         val back = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
         assertNotNull(back)
-        assertEquals(5, back!!.first.page)
+        assertEquals(5, back.first.page)
     }
 
     // ── jump beyond / before all bookmarks ───────────────────────────────
@@ -116,7 +116,7 @@ class BookmarkSyncEdgeCasesTest {
         // jumpBack should find bookmark 10 (last one before page 18)
         val back = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
         assertNotNull(back)
-        assertEquals(10, back!!.first.page)
+        assertEquals(10, back.first.page)
     }
 
     @Test
@@ -152,7 +152,7 @@ class BookmarkSyncEdgeCasesTest {
         // jumpForward should find bookmark 5
         val fwd = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd)
-        assertEquals(5, fwd!!.first.page)
+        assertEquals(5, fwd.first.page)
     }
 
     @Test
@@ -187,19 +187,19 @@ class BookmarkSyncEdgeCasesTest {
         paginator.jump(BookmarkInt(3), silentlyLoading = true, silentlyResult = false)
         var fwd = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd)
-        assertEquals(5, fwd!!.first.page)
+        assertEquals(5, fwd.first.page)
 
         // jump(12) → bookmarkIndex should point before bookmark 15
         paginator.jump(BookmarkInt(12), silentlyLoading = true, silentlyResult = false)
         fwd = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd)
-        assertEquals(15, fwd!!.first.page)
+        assertEquals(15, fwd.first.page)
 
         // jump(7) → bookmarkIndex should point before bookmark 10
         paginator.jump(BookmarkInt(7), silentlyLoading = true, silentlyResult = false)
         var back = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
         assertNotNull(back)
-        assertEquals(5, back!!.first.page)
+        assertEquals(5, back.first.page)
     }
 
     // ── goNextPage extensive navigation + jumpBack ───────────────────────
@@ -228,7 +228,7 @@ class BookmarkSyncEdgeCasesTest {
         )
         // With recycling, jumpBack should wrap around and find 15 (only one outside 1..12)
         assertNotNull(back)
-        assertEquals(15, back!!.first.page)
+        assertEquals(15, back.first.page)
     }
 
     @Test
@@ -250,7 +250,7 @@ class BookmarkSyncEdgeCasesTest {
         // jumpBack should find 10 (nearest bookmark before 12, outside visible range 12..12)
         val back = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
         assertNotNull(back)
-        assertEquals(10, back!!.first.page)
+        assertEquals(10, back.first.page)
     }
 
     // ── goPreviousPage + jumpForward ─────────────────────────────────────
@@ -275,7 +275,7 @@ class BookmarkSyncEdgeCasesTest {
         // jumpForward from 3: checks 3 (page 15, NOT in 8..12) → returns 15
         val fwd = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd)
-        assertEquals(15, fwd!!.first.page)
+        assertEquals(15, fwd.first.page)
     }
 
     // ── Single bookmark ──────────────────────────────────────────────────
@@ -296,7 +296,7 @@ class BookmarkSyncEdgeCasesTest {
         // bookmarkIndex = 1, limit = 1 (no recycling)
         // checks index 0 = page 1, NOT in 5..5 → returns 1
         assertNotNull(back)
-        assertEquals(1, back!!.first.page)
+        assertEquals(1, back.first.page)
     }
 
     @Test
@@ -336,7 +336,7 @@ class BookmarkSyncEdgeCasesTest {
             silentlyResult = false
         )
         assertNotNull(fwd)
-        assertEquals(15, fwd!!.first.page)
+        assertEquals(15, fwd.first.page)
     }
 
     @Test
@@ -357,7 +357,7 @@ class BookmarkSyncEdgeCasesTest {
             silentlyResult = false
         )
         assertNotNull(back)
-        assertEquals(10, back!!.first.page)
+        assertEquals(10, back.first.page)
     }
 
     // ── jumpForward/jumpBack interleaving ────────────────────────────────
@@ -377,14 +377,14 @@ class BookmarkSyncEdgeCasesTest {
         // jumpForward → 10
         val fwd1 = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd1)
-        assertEquals(10, fwd1!!.first.page)
+        assertEquals(10, fwd1.first.page)
         // jumpForward internally: found index 2, sets bookmarkIndex = 3, calls jump(10) which syncs to 3, restores to 3
 
         // jumpBack → should find bookmark before page 10 (visible range after jump is 10..10)
         // bookmarkIndex = 3, checks index 2 (page 10, in 10..10 → skip), index 1 (page 5, NOT in range) → returns 5
         val back1 = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
         assertNotNull(back1)
-        assertEquals(5, back1!!.first.page)
+        assertEquals(5, back1.first.page)
     }
 
     // ── goNextPage auto-start syncs correctly ────────────────────────────
@@ -403,7 +403,7 @@ class BookmarkSyncEdgeCasesTest {
         // jumpForward should find bookmark 5 (not skip to 10)
         val fwd = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd)
-        assertEquals(5, fwd!!.first.page)
+        assertEquals(5, fwd.first.page)
     }
 
     // ── Stress: mixed operations ─────────────────────────────────────────
@@ -428,7 +428,7 @@ class BookmarkSyncEdgeCasesTest {
         // 4. jumpBack should go to 10
         val back1 = paginator.jumpBack(silentlyLoading = true, silentlyResult = false)
         assertNotNull(back1)
-        assertEquals(10, back1!!.first.page)
+        assertEquals(10, back1.first.page)
 
         // 5. Now at page 10. jumpForward should go to 15
         //    (jumpBack set bookmarkIndex, then jump(10) synced to 3)
@@ -437,7 +437,7 @@ class BookmarkSyncEdgeCasesTest {
         //    jumpForward from 2: checks index 2 (page 10, in 10..10 skip), index 3 (page 15, not in range) → 15
         val fwd1 = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd1)
-        assertEquals(15, fwd1!!.first.page)
+        assertEquals(15, fwd1.first.page)
 
         // 6. Restart
         paginator.restart(silentlyLoading = true, silentlyResult = false)
@@ -445,7 +445,7 @@ class BookmarkSyncEdgeCasesTest {
         // 7. After restart (page 1), jumpForward should go to 5
         val fwd2 = paginator.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd2)
-        assertEquals(5, fwd2!!.first.page)
+        assertEquals(5, fwd2.first.page)
     }
 
     // ── saveState/restoreState preserves synced bookmarkIndex ─────────────
@@ -470,6 +470,6 @@ class BookmarkSyncEdgeCasesTest {
         // jumpForward should find 10 (same as before save)
         val fwd = restored.jumpForward(silentlyLoading = true, silentlyResult = false)
         assertNotNull(fwd)
-        assertEquals(10, fwd!!.first.page)
+        assertEquals(10, fwd.first.page)
     }
 }
