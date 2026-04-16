@@ -56,6 +56,9 @@ Paginator can be seamlessly used across all layers of an application
   page removal
 - **Reactive state** -- observe page changes via `snapshot` Flow (visible pages) or `asFlow()` (
   entire cache)
+- **High-level UI state** -- `paginator.uiState: Flow<PaginatorUiState<T>>` collapses the raw
+  snapshot into `Idle` / `Loading` / `Empty` / `Error` / `Content(items, prependState, appendState)`
+  for screens that only need full-screen indicators and boundary activity markers
 - **Element-level CRUD** -- get, set, add, remove, and replace individual elements within pages,
   with automatic page rebalancing
 - **Capacity management** -- resize pages on the fly with automatic data redistribution
@@ -178,6 +181,11 @@ init {
     }
 }
 ```
+
+Prefer a simpler API? Collect `paginator.uiState` instead — it emits `Idle` / `Loading` / `Empty`
+/ `Error` / `Content(items, prependState, appendState)` so your UI does not have to reason about
+individual `PageState`s. See
+[State, Transactions & Locks → PaginatorUiState](docs/3.%20state.md#paginatoruistate).
 
 ### Step 3: Navigate
 
