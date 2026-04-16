@@ -108,8 +108,8 @@ sealed interface PaginatorUiState<out T> {
      *   or `null` if the bottom is a [SuccessPage].
      */
     data class Content<T>(
-        val items: List<T>,
         val prependState: PageState<T>?,
+        val items: List<T>,
         val appendState: PageState<T>?,
     ) : PaginatorUiState<T>
 }
