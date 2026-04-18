@@ -24,10 +24,6 @@ Paginator can be seamlessly used across all layers of an application
 ## AI Docs - https://deepwiki.com/jamal-wia/Paginator
 ---
 
-[Telegram Community](https://t.me/+0eeAM-EJpqgwNGZi)
-
----
-
 ## Table of Contents
 
 - [Features](#features)
@@ -261,6 +257,7 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 10. [**API Reference**](docs/10.%20api-reference.md) — complete property / method / operator tables
 11. [**DSL Builder**](docs/11.%20dsl-builder.md) — `paginator<T> { … }` and
     `mutablePaginator<T> { … }` builder DSL
+12. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
 
 Maintainer docs:
 
