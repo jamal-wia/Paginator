@@ -39,62 +39,6 @@ Paginator can be seamlessly used across all layers of an application
 
 ---
 
-## Features
-
-- **Bidirectional pagination** -- navigate forward (`goNextPage`) and backward (`goPreviousPage`)
-- **Jump to any page** -- jump to arbitrary pages with `jump(bookmark)`
-- **Bookmark system** -- define bookmarks and cycle through them with `jumpForward` / `jumpBack`,
-  with optional recycling (wrap-around)
-- **Incomplete page handling** -- when the server returns fewer items than expected, the paginator
-  detects this and re-requests the page on the next `goNextPage`, showing cached data with a loading
-  indicator
-- **Final page limit** -- set `finalPage` to enforce a maximum page boundary (typically from backend
-  metadata), throwing `FinalPageExceededException` when exceeded
-- **Page caching** -- loaded pages are cached in a sorted map for instant access
-- **Cache eviction strategies** -- pluggable eviction via decorator subclasses of `PagingCore`:
-  LRU, FIFO, TTL, and Sliding Window (context-only). Eviction listener callback for reacting to
-  page removal
-- **Reactive state** -- observe page changes via `snapshot` Flow (visible pages) or `asFlow()` (
-  entire cache)
-- **High-level UI state** -- `paginator.uiState: Flow<PaginatorUiState<T>>` collapses the raw
-  snapshot into `Idle` / `Loading` / `Empty` / `Error` / `Content(items, prependState, appendState)`
-  for screens that only need full-screen indicators and boundary activity markers
-- **Element-level CRUD** -- get, set, add, remove, and replace individual elements within pages,
-  with automatic page rebalancing
-- **Capacity management** -- resize pages on the fly with automatic data redistribution
-- **Source metadata** -- `load` returns `LoadResult<T>`, an open wrapper that carries both
-  page data and arbitrary metadata from the API response (total count, cursors, etc.). Metadata
-  flows through initializer lambdas into custom `PageState` subclasses
-- **Custom PageState subclasses** -- extend `SuccessPage`, `ErrorPage`, `ProgressPage`, or
-  `EmptyPage` with your own types via initializer lambdas
-- **Dirty pages** -- mark pages as "dirty" so they are automatically refreshed (fire-and-forget) on
-  the next navigation (`goNextPage`, `goPreviousPage`, `jump`). CRUD operations can also mark pages
-  dirty via the `isDirty` flag
-- **Two-tier API** -- `Paginator` (read-only navigation, dirty tracking, release) and
-  `MutablePaginator` (element-level CRUD, resize, public `setState`)
-- **DSL builder** -- declarative `paginator<T> { … }` and `mutablePaginator<T> { … }` blocks that
-  collapse `PagingCore` setup, cache composition, bookmarks, logger and custom `PageState`
-  initializers into one configuration site
-- **Rich extension API** -- collection-style helpers on `Paginator` (`find`, `count`, `flatten`,
-  `firstOrNull`, `contains`, …) and bulk CRUD on `MutablePaginator` (`prependElement`,
-  `moveElement`, `swapElements`, `insertBefore`/`After`, `removeAll`, `retainAll`, `distinctBy`,
-  `updateAll`/`updateWhere`)
-- **Lock flags** -- prevent specific operations at runtime (`lockJump`, `lockGoNextPage`,
-  `lockGoPreviousPage`, `lockRestart`, `lockRefresh`)
-- **Scroll-based prefetch** -- `PaginatorPrefetchController` monitors scroll position and
-  automatically loads the next/previous page before the user reaches the edge of content
-- **Parallel loading** -- preload multiple pages concurrently with `loadOrGetPageState`
-- **Pluggable logging** -- implement the `PaginatorLogger` interface to receive detailed logs about
-  navigation, state changes, and element-level operations. No logging by default (`null`)
-- **State serialization** -- save and restore the paginator's cache to/from JSON via
-  `kotlinx.serialization`, enabling seamless recovery after process death on any KMP target
-- **Transaction** -- execute a block of operations atomically with `transaction { }`. If any
-  exception occurs (including coroutine cancellation), the entire paginator state is rolled back
-- **Context window** -- the paginator tracks a contiguous range of successfully loaded pages (
-  `startContextPage..endContextPage`), which defines the visible snapshot
-
----
-
 ## Installation
 
 The library is published to **Maven Central**. No additional repository configuration needed.
@@ -232,6 +176,62 @@ What you still get for free, with zero extra code:
 
 Start with the simplest setup. Adopt advanced features only if and when your product actually needs
 them.
+
+---
+
+## Features
+
+- **Bidirectional pagination** -- navigate forward (`goNextPage`) and backward (`goPreviousPage`)
+- **Jump to any page** -- jump to arbitrary pages with `jump(bookmark)`
+- **Bookmark system** -- define bookmarks and cycle through them with `jumpForward` / `jumpBack`,
+  with optional recycling (wrap-around)
+- **Incomplete page handling** -- when the server returns fewer items than expected, the paginator
+  detects this and re-requests the page on the next `goNextPage`, showing cached data with a loading
+  indicator
+- **Final page limit** -- set `finalPage` to enforce a maximum page boundary (typically from backend
+  metadata), throwing `FinalPageExceededException` when exceeded
+- **Page caching** -- loaded pages are cached in a sorted map for instant access
+- **Cache eviction strategies** -- pluggable eviction via decorator subclasses of `PagingCore`:
+  LRU, FIFO, TTL, and Sliding Window (context-only). Eviction listener callback for reacting to
+  page removal
+- **Reactive state** -- observe page changes via `snapshot` Flow (visible pages) or `asFlow()` (
+  entire cache)
+- **High-level UI state** -- `paginator.uiState: Flow<PaginatorUiState<T>>` collapses the raw
+  snapshot into `Idle` / `Loading` / `Empty` / `Error` / `Content(items, prependState, appendState)`
+  for screens that only need full-screen indicators and boundary activity markers
+- **Element-level CRUD** -- get, set, add, remove, and replace individual elements within pages,
+  with automatic page rebalancing
+- **Capacity management** -- resize pages on the fly with automatic data redistribution
+- **Source metadata** -- `load` returns `LoadResult<T>`, an open wrapper that carries both
+  page data and arbitrary metadata from the API response (total count, cursors, etc.). Metadata
+  flows through initializer lambdas into custom `PageState` subclasses
+- **Custom PageState subclasses** -- extend `SuccessPage`, `ErrorPage`, `ProgressPage`, or
+  `EmptyPage` with your own types via initializer lambdas
+- **Dirty pages** -- mark pages as "dirty" so they are automatically refreshed (fire-and-forget) on
+  the next navigation (`goNextPage`, `goPreviousPage`, `jump`). CRUD operations can also mark pages
+  dirty via the `isDirty` flag
+- **Two-tier API** -- `Paginator` (read-only navigation, dirty tracking, release) and
+  `MutablePaginator` (element-level CRUD, resize, public `setState`)
+- **DSL builder** -- declarative `paginator<T> { … }` and `mutablePaginator<T> { … }` blocks that
+  collapse `PagingCore` setup, cache composition, bookmarks, logger and custom `PageState`
+  initializers into one configuration site
+- **Rich extension API** -- collection-style helpers on `Paginator` (`find`, `count`, `flatten`,
+  `firstOrNull`, `contains`, …) and bulk CRUD on `MutablePaginator` (`prependElement`,
+  `moveElement`, `swapElements`, `insertBefore`/`After`, `removeAll`, `retainAll`, `distinctBy`,
+  `updateAll`/`updateWhere`)
+- **Lock flags** -- prevent specific operations at runtime (`lockJump`, `lockGoNextPage`,
+  `lockGoPreviousPage`, `lockRestart`, `lockRefresh`)
+- **Scroll-based prefetch** -- `PaginatorPrefetchController` monitors scroll position and
+  automatically loads the next/previous page before the user reaches the edge of content
+- **Parallel loading** -- preload multiple pages concurrently with `loadOrGetPageState`
+- **Pluggable logging** -- implement the `PaginatorLogger` interface to receive detailed logs about
+  navigation, state changes, and element-level operations. No logging by default (`null`)
+- **State serialization** -- save and restore the paginator's cache to/from JSON via
+  `kotlinx.serialization`, enabling seamless recovery after process death on any KMP target
+- **Transaction** -- execute a block of operations atomically with `transaction { }`. If any
+  exception occurs (including coroutine cancellation), the entire paginator state is rolled back
+- **Context window** -- the paginator tracks a contiguous range of successfully loaded pages (
+  `startContextPage..endContextPage`), which defines the visible snapshot
 
 ---
 
