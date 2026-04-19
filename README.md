@@ -26,10 +26,10 @@ Paginator can be seamlessly used across all layers of an application
 
 ## Table of Contents
 
-- [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Infinite Scroll / Infinite Feed](#infinite-scroll--infinite-feed)
+- [Features](#features)
 - [Documentation](#documentation)
 - [License](#license)
 
