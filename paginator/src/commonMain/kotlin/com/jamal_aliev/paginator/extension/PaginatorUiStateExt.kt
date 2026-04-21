@@ -84,7 +84,7 @@ fun <T> List<PageState<T>>.toUiState(isStarted: Boolean): PaginatorUiState<T> {
     }
 
     return PaginatorUiState.Content(
-        prependState = prependState.takeIf { it !== appendState },
+        prependState = prependState,
         items = items,
         appendState = appendState,
     )
