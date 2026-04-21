@@ -26,6 +26,7 @@ import com.jamal_aliev.paginator.serialization.PagingCoreSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.JsonElement
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
@@ -544,7 +545,20 @@ open class PagingCore<T>(
     //  Snapshot
     // ──────────────────────────────────────────────────────────────────────────
 
-    protected val _snapshot = MutableStateFlow<List<PageState<T>>>(emptyList())
+    /**
+     * Wrapper around a snapshot list that carries a monotonically increasing [version].
+     *
+     * The backing [MutableStateFlow] conflates equal values by `equals`. Wrapping the list
+     * in [SnapshotEmission] and incrementing [version] on every emit makes each emission
+     * structurally distinct, so [StateFlow] never drops it. The [pages] list is what's
+     * exposed to subscribers via the [snapshot] flow.
+     */
+    private data class SnapshotEmission<T>(
+        val version: Long,
+        val pages: List<PageState<T>>,
+    )
+
+    private val _snapshot = MutableStateFlow(SnapshotEmission<T>(0L, emptyList()))
 
     /**
      * A [Flow] that emits the list of [PageState] objects within the current context window
@@ -555,8 +569,19 @@ open class PagingCore<T>(
      *
      * The emitted list includes pages from [startContextPage] to [endContextPage],
      * plus any adjacent non-success pages (e.g., [ProgressPage] or [ErrorPage]).
+     *
+     * **Delivery guarantee:** every call to the internal `snapshot()` method produces a
+     * new emission, even if the resulting list is structurally equal to the previous one.
+     * Although the flow is backed by a [kotlinx.coroutines.flow.StateFlow], identical
+     * consecutive values are **not** deduplicated: each emission carries an internal
+     * monotonically increasing version, which defeats [StateFlow]'s `equals`-based
+     * conflation. Apply `distinctUntilChanged()` yourself if you need deduplication.
+     *
+     * New subscribers immediately receive the last emitted list
+     * (or `emptyList()` if none has been emitted yet).
      */
-    val snapshot: Flow<List<PageState<T>>> = _snapshot.asStateFlow()
+    val snapshot: Flow<List<PageState<T>>> = _snapshot
+        .map { it.pages }
 
     /**
      * Returns the page range currently visible in the last emitted [snapshot],
@@ -565,7 +590,7 @@ open class PagingCore<T>(
      * Used by navigation to skip bookmarks whose pages are already visible on the UI.
      */
     fun snapshotPageRange(): IntRange? {
-        val pages: List<PageState<T>> = _snapshot.value
+        val pages: List<PageState<T>> = _snapshot.value.pages
         if (pages.isEmpty()) return null
         return pages.first().page..pages.last().page
     }
@@ -608,7 +633,8 @@ open class PagingCore<T>(
             val max: Int = expandedForwardPage ?: pivotForwardState.page
             return@run min..max
         })?.let { mPageRange: IntRange ->
-            _snapshot.value = scan(mPageRange)
+            val prev = _snapshot.value
+            _snapshot.value = SnapshotEmission(prev.version + 1, scan(mPageRange))
         }
     }
 
@@ -850,7 +876,10 @@ open class PagingCore<T>(
         silently: Boolean = false
     ) {
         cache.release(capacity, silently)
-        if (!silently) _snapshot.value = emptyList()
+        if (!silently) {
+            val prev = _snapshot.value
+            _snapshot.value = SnapshotEmission(prev.version + 1, emptyList())
+        }
         this.capacity = capacity
         _dirtyPages.clear()
     }

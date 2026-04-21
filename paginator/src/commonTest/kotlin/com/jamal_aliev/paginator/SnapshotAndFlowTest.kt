@@ -4,10 +4,13 @@ import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SnapshotAndFlowTest {
@@ -56,6 +59,91 @@ class SnapshotAndFlowTest {
         paginator.core.asFlow()
 
         assertTrue(paginator.core.enableCacheFlow)
+    }
+
+    @Test
+    fun `snapshot is not deduplicated when subsequent emissions are structurally equal`() =
+        runTest {
+            val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
+
+            val received = mutableListOf<List<com.jamal_aliev.paginator.page.PageState<String>>>()
+            val job = paginator.core.snapshot
+                .onEach { received += it }
+                .launchIn(this)
+
+            // Drain replay (initial emptyList emitted on construction).
+            kotlinx.coroutines.yield()
+
+            // Emit the same range three times, yielding between so the collector observes each.
+            // This is representative of real navigation paths, where snapshot() is always called
+            // from suspending functions with dispatcher yields in between.
+            paginator.core.snapshot(1..3)
+            kotlinx.coroutines.yield()
+            paginator.core.snapshot(1..3)
+            kotlinx.coroutines.yield()
+            paginator.core.snapshot(1..3)
+            kotlinx.coroutines.yield()
+
+            job.cancel()
+
+            // 1 replay (emptyList from init) + 3 explicit emits.
+            assertEquals(4, received.size)
+            assertTrue(received[0].isEmpty())
+            assertEquals(received[1], received[2])
+            assertEquals(received[2], received[3])
+            assertEquals(listOf(1, 2, 3), received[1].map { it.page })
+        }
+
+    @Test
+    fun `snapshot replays last value to late subscribers`() = runTest {
+        val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
+        paginator.core.snapshot(1..3)
+
+        // Late subscriber should immediately get the last emitted snapshot via replay cache.
+        val replayed = paginator.core.snapshot.first()
+        assertEquals(listOf(1, 2, 3), replayed.map { it.page })
+    }
+
+    @Test
+    fun `snapshotPageRange reflects last emission`() = runTest {
+        val paginator = createPopulatedPaginator(pageCount = 5, capacity = 3)
+
+        paginator.core.snapshot(2..4)
+        assertEquals(2..4, paginator.core.snapshotPageRange())
+
+        paginator.core.snapshot(1..3)
+        assertEquals(1..3, paginator.core.snapshotPageRange())
+    }
+
+    @Test
+    fun `snapshotPageRange is null after release`() = runTest {
+        val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
+        paginator.core.snapshot(1..3)
+        assertEquals(1..3, paginator.core.snapshotPageRange())
+
+        paginator.core.release()
+        assertNull(paginator.core.snapshotPageRange())
+    }
+
+    @Test
+    fun `release emits empty snapshot to subscribers`() = runTest {
+        val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
+        paginator.core.snapshot(1..3)
+
+        val received = mutableListOf<List<com.jamal_aliev.paginator.page.PageState<String>>>()
+        val job = paginator.core.snapshot
+            .onEach { received += it }
+            .launchIn(this)
+        kotlinx.coroutines.yield()
+
+        paginator.core.release()
+        kotlinx.coroutines.yield()
+
+        job.cancel()
+
+        // Replay (last non-empty) + empty list from release.
+        assertTrue(received.size >= 2)
+        assertTrue(received.last().isEmpty())
     }
 
     @Test
