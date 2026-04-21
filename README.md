@@ -228,6 +228,9 @@ them.
   exception occurs (including coroutine cancellation), the entire paginator state is rolled back
 - **Context window** -- the paginator tracks a contiguous range of successfully loaded pages (
   `startContextPage..endContextPage`), which defines the visible snapshot
+- **Interweaving** -- opt-in `Flow<PaginatorUiState<T>>.interweave(weaver)` operator that inserts
+  meta-rows (date headers, unread dividers, section labels, …) between data items without touching
+  the paginator core, cache, CRUD, serialization, or DSL
 
 ---
 
@@ -257,7 +260,9 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 10. [**API Reference**](docs/10.%20api-reference.md) — complete property / method / operator tables
 11. [**DSL Builder**](docs/11.%20dsl-builder.md) — `paginator<T> { … }` and
     `mutablePaginator<T> { … }` builder DSL
-12. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
+12. [**Interweaving**](docs/12.%20interweaving.md) — opt-in `Flow` operator that interleaves
+    meta-rows (date headers, unread dividers, …) between data items
+13. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
 
 Maintainer docs:
 
