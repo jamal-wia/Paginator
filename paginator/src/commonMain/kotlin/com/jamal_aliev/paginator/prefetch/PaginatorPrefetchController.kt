@@ -59,6 +59,24 @@ import kotlinx.coroutines.launch
  * include headers, footers, dividers, or loading indicators — otherwise
  * [prefetchDistance] will trigger inaccurately.
  *
+ * **Reversed layouts** (e.g. `LazyColumn(reverseLayout = true)` or
+ * `LinearLayoutManager(…, reverseLayout = true)`, typical for chats) are
+ * supported without any special configuration. The controller operates on
+ * **data indices**, not visual positions: `firstVisibleIndex` / `lastVisibleIndex`
+ * are reported by the UI framework in terms of the underlying data list,
+ * regardless of layout direction.
+ *
+ * Keep in mind the semantic mapping, which is inverted visually in a reversed
+ * layout:
+ * - **Forward prefetch** (default on) → loads pages beyond
+ *   [Paginator.cache].endContextPage via [Paginator.goNextPage]. In a
+ *   chat-style reversed layout this fires when the user scrolls **upward**
+ *   (toward older messages).
+ * - **Backward prefetch** ([enableBackwardPrefetch]) → loads pages before
+ *   [Paginator.cache].startContextPage via [Paginator.goPreviousPage]. In a
+ *   reversed layout this fires when the user scrolls **downward** (toward
+ *   the newest messages at index 0).
+ *
  * @param T The type of elements contained in each page.
  * @param paginator The paginator instance to prefetch pages for.
  * @param scope [CoroutineScope] in which prefetch coroutines are launched.
