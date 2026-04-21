@@ -348,7 +348,9 @@ open class MutablePaginator<T>(
         }
         markAffected(targetPage)
         val targetState: PageState<T> =
-            (cache.getStateOf(targetPage) ?: initPageState?.invoke(targetPage, mutableListOf()))
+            (cache.getStateOf(targetPage)
+                ?: initPageState?.invoke(targetPage, mutableListOf())
+                    ?.also { cache.setState(state = it, silently = true) })
                 ?: throw IndexOutOfBoundsException(
                     "page-$targetPage was not created"
                 )
@@ -384,10 +386,78 @@ open class MutablePaginator<T>(
                     initPageState = initPageState
                 )
             } else {
-                val lastPage = core.lastPage() ?: return
-                val rangePageInvalidated: IntRange = (targetPage + 1)..lastPage
-                markAffectedAll(rangePageInvalidated)
-                rangePageInvalidated.forEach { cache.removeFromCache(it) }
+                // Cascade blocked at targetPage+1:
+                //   (a) nextPageState exists but has a different class (transient blocker), or
+                //   (b) nextPageState == null AND no initPageState factory was supplied (gap).
+                //
+                // Semantics we want (per library design):
+                //   - extraElements belong to the slot right after targetPage; across a gap
+                //     or a foreign-class page they have no valid home, so they are DROPPED.
+                //   - The insertion at targetPage still logically shifts every later chunk
+                //     forward by N = extraElements.size positions. To keep the next cached
+                //     chunk internally consistent with that shift, we peel N items off the
+                //     tail of its first page and let the standard cascade propagate them
+                //     through the chunk, creating a new trailing page for the overflow.
+                //
+                // Outcome for data `1..5 gap 10..15 gap 20..25` + insert of N=5 at page 13:
+                //   pages 1..5   — untouched
+                //   pages 10..12 — untouched
+                //   pages 13..15 — cascade shifted by 5 (standard path, not this branch)
+                //   page  20     — loses its last 5 items, ends up partially filled
+                //                  (goPreviousPage will refill it from the source later)
+                //   pages 21..25 — shifted by 5 (full)
+                //   page  26     — newly created with page 25's original tail
+                val shiftSize = extraElements.size
+                val nextChunkStart: Int? = cache.pages
+                    .asSequence()
+                    .filter { it > targetPage + 1 }
+                    .firstOrNull { p ->
+                        cache.getStateOf(p)?.let { it::class == targetState::class } == true
+                    }
+
+                if (nextChunkStart != null) {
+                    val nextChunkState: PageState<T> =
+                        checkNotNull(cache.getStateOf(nextChunkStart))
+                    val nextChunkData: MutableList<T> = requireNotNull(
+                        value = nextChunkState.data as? MutableList
+                    ) { "data of next-chunk page state is not mutable" }
+
+                    val peel = minOf(shiftSize, nextChunkData.size)
+                    if (peel > 0) {
+                        val displaced = MutableList(peel) {
+                            nextChunkData.removeAt(nextChunkData.lastIndex)
+                        }.apply(MutableList<T>::reverse)
+
+                        markAffected(nextChunkStart)
+                        if (nextChunkData.isEmpty()) {
+                            // The shift emptied the first page of the chunk entirely —
+                            // drop it from the cache so we don't keep a zero-size state
+                            // around (a large batch can legitimately wipe a whole page).
+                            cache.removeFromCache(nextChunkStart)
+                        } else {
+                            if (nextChunkData is ArrayList) nextChunkData.trimToSize()
+                            cache.setState(
+                                state = nextChunkState.copy(data = nextChunkData),
+                                silently = true,
+                            )
+                        }
+
+                        addAllElements(
+                            elements = displaced,
+                            targetPage = nextChunkStart + 1,
+                            index = 0,
+                            silently = true,
+                            initPageState = { pageNum, pageData ->
+                                // Synthesize a page of the same class as targetState.
+                                // addAllElements's prologue registers it in the cache and
+                                // then mutates its data list in place.
+                                targetState.copy(page = pageNum, data = pageData.toMutableList())
+                            },
+                        )
+                    }
+                }
+                // If no subsequent chunk of the same class exists, extras are simply dropped
+                // and no shift is needed — there's nothing downstream left to keep consistent.
             }
         }
 
