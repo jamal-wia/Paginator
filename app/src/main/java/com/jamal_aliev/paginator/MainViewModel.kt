@@ -142,7 +142,7 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 paginator.goNextPage(
-                    initProgressState = { page: Int, data: List<String> ->
+                    initProgressState = { page: Int, data: List<String>, metadata ->
                         NextProgressState(page, data)
                     }
                 )
@@ -158,7 +158,7 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 paginator.goPreviousPage(
-                    initProgressState = { page: Int, data: List<String> ->
+                    initProgressState = { page: Int, data: List<String>, metadata ->
                         PreviousProgressState(page, data)
                     }
                 )
