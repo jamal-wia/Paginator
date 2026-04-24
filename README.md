@@ -56,7 +56,7 @@ Add the dependency to `commonMain` in your module's `build.gradle.kts`:
 kotlin {
     sourceSets {
         commonMain.dependencies {
-          implementation("io.github.jamal-wia:paginator:8.2.4")
+          implementation("io.github.jamal-wia:paginator:8.3.0")
         }
     }
 }
@@ -69,7 +69,7 @@ from the KMP metadata.
 
 ```kotlin
 dependencies {
-  implementation("io.github.jamal-wia:paginator:8.2.4")
+  implementation("io.github.jamal-wia:paginator:8.3.0")
 }
 ```
 
@@ -77,7 +77,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-  implementation("io.github.jamal-wia:paginator-jvm:8.2.4")
+  implementation("io.github.jamal-wia:paginator-jvm:8.3.0")
 }
 ```
 
