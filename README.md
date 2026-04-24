@@ -316,7 +316,9 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
     meta-rows (date headers, unread dividers, …) between data items
 13. [**Cursor-Based Pagination**](docs/13.%20cursor-pagination.md) — `CursorPaginator` /
     `MutableCursorPaginator` for opaque-token feeds (GraphQL connections, chat, activity streams)
-14. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
+14. [**Paginator vs CursorPaginator**](docs/14.%20paginator-vs-cursor.md) — full catalog of
+    behavioural differences, removed APIs, signature-only changes, and a migration cheat sheet
+15. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
 
 Maintainer docs:
 
