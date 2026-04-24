@@ -1,6 +1,6 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
+import com.jamal_aliev.paginator.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.extension.asUiState
 import com.jamal_aliev.paginator.extension.toUiState
 import com.jamal_aliev.paginator.extension.uiState

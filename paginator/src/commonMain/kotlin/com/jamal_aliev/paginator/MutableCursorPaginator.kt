@@ -49,6 +49,27 @@ open class MutableCursorPaginator<T>(
 
     private val _affectedSelves: AtomicRef<Set<Any>> = atomic(emptySet())
 
+    /**
+     * Read-only snapshot of page `self` keys modified by CRUD operations that have not
+     * yet been flushed to the [persistent cache][CursorPagingCore.persistentCache] (L2).
+     *
+     * Useful for diagnostics, tests, and UI "unsaved changes" indicators. The returned
+     * set is a copy — mutating it has no effect on the paginator.
+     *
+     * Mirrors [MutablePaginator.affectedPages] but keyed by `self` instead of `page: Int`.
+     */
+    val affectedSelves: Set<Any>
+        get() = _affectedSelves.value
+
+    /**
+     * `true` when there are CRUD changes tracked for the next [flush] call.
+     *
+     * Equivalent to `affectedSelves.isNotEmpty()` but avoids materialising the set.
+     * Always `false` when [CursorPagingCore.persistentCache] is `null`.
+     */
+    val hasPendingFlush: Boolean
+        get() = core.persistentCache != null && _affectedSelves.value.isNotEmpty()
+
     private fun markAffected(self: Any) {
         while (true) {
             val current = _affectedSelves.value

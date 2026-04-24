@@ -1,6 +1,6 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
+import com.jamal_aliev.paginator.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.cache.LruPagingCache
 import com.jamal_aliev.paginator.cache.PersistentPagingCache
 import com.jamal_aliev.paginator.dsl.mutablePaginator

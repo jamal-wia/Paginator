@@ -2,7 +2,7 @@ package com.jamal_aliev.paginator.cache
 
 import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.PagingCore
-import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
+import com.jamal_aliev.paginator.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.load.LoadResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
-import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
+import com.jamal_aliev.paginator.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.cache.PagingCache
 import com.jamal_aliev.paginator.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.exception.LoadGuardedException

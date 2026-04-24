@@ -3,7 +3,7 @@ package com.jamal_aliev.paginator.bookmark
 /**
  * LinkedList-style bookmark for cursor-based pagination.
  *
- * Unlike [Bookmark.BookmarkInt] — which identifies a page by its absolute index —
+ * Unlike [BookmarkInt] — which identifies a page by its absolute index —
  * a [CursorBookmark] knows only its immediate neighbors. This makes it suitable for
  * APIs that expose continuation tokens / opaque cursors instead of numeric offsets
  * (e.g. chat feeds, activity streams, infinite social timelines).

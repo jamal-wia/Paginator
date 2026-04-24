@@ -38,7 +38,7 @@ suspend fun createPopulatedPaginator(
     paginator.core.resize(capacity = capacity, resize = false, silently = true)
     // Load all pages via navigation
     paginator.jump(
-        bookmark = com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt(1),
+        bookmark = com.jamal_aliev.paginator.bookmark.BookmarkInt(1),
         silentlyLoading = true,
         silentlyResult = true,
     )

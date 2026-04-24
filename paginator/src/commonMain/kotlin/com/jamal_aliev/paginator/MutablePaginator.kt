@@ -58,6 +58,29 @@ open class MutablePaginator<T>(
      */
     private val _affectedPages: AtomicRef<Set<Int>> = atomic(emptySet())
 
+    /**
+     * Read-only snapshot of pages modified by CRUD operations that have not yet been
+     * flushed to the [persistent cache][PagingCore.persistentCache] (L2).
+     *
+     * Useful for diagnostics, tests, and UI "unsaved changes" indicators. The returned
+     * set is a copy — mutating it has no effect on the paginator.
+     *
+     * Note: the snapshot reflects the state at the moment of the read. Concurrent CRUD
+     * or [flush] calls may change the underlying set immediately after.
+     */
+    val affectedPages: Set<Int>
+        get() = _affectedPages.value
+
+    /**
+     * `true` when there are CRUD changes tracked for the next [flush] call.
+     *
+     * Equivalent to `affectedPages.isNotEmpty()` but avoids materialising the set.
+     * Always `false` when [PagingCore.persistentCache] is `null`, since unpersisted
+     * changes are meaningless without an L2 backend.
+     */
+    val hasPendingFlush: Boolean
+        get() = core.persistentCache != null && _affectedPages.value.isNotEmpty()
+
     private fun markAffected(page: Int) {
         while (true) {
             val current = _affectedPages.value
