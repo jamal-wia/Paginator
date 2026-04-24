@@ -14,6 +14,14 @@ simple "load next page" patterns. It provides a full-featured page management sy
 for jumping to arbitrary pages, bidirectional navigation, bookmarks, page caching, element-level
 CRUD, incomplete page handling, capacity management, and reactive state via Kotlin Flows.
 
+The library exposes **two flavors** that share the same page-state model, caches, CRUD, UI state
+and snapshot flows:
+
+- **`Paginator` / `MutablePaginator`** — offset/page-number addressing (`MutableList`-like).
+- **`CursorPaginator` / `MutableCursorPaginator`** — cursor-based, `prev`/`self`/`next` linked
+  navigation (`LinkedList`-like). See
+  [Cursor-Based Pagination](docs/13.%20cursor-pagination.md).
+
 Built entirely with pure Kotlin and without platform-specific dependencies, 
 Paginator can be seamlessly used across all layers of an application 
 — from data to domain to presentation — while preserving Clean Architecture principles and proper layer separation.
@@ -29,6 +37,7 @@ Paginator can be seamlessly used across all layers of an application
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Infinite Scroll / Infinite Feed](#infinite-scroll--infinite-feed)
+- [Cursor-Based Pagination](#cursor-based-pagination)
 - [Features](#features)
 - [Documentation](#documentation)
 - [License](#license)
@@ -175,8 +184,51 @@ them.
 
 ---
 
+## Cursor-Based Pagination
+
+If your backend returns opaque continuation tokens instead of numeric page offsets (GraphQL
+connections, chat feeds, activity streams, Slack/Instagram/Reddit-style APIs), reach for the
+cursor variant:
+
+```kotlin
+import com.jamal_aliev.paginator.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.dsl.mutableCursorPaginator
+import com.jamal_aliev.paginator.load.CursorLoadResult
+
+val messages = mutableCursorPaginator<Message>(capacity = 50) {
+  load { cursor ->
+    val page = api.getMessages(cursor?.self as? String)
+    CursorLoadResult(
+      data = page.items,
+      bookmark = CursorBookmark(
+        prev = page.prevCursor,   // null at the head of the feed
+        self = page.selfCursor,   // required — cache key
+        next = page.nextCursor,   // null at the tail of the feed
+      ),
+    )
+  }
+}
+
+viewModelScope.launch {
+  messages.restart()           // bootstrap from the first cursor (or initialCursor if set)
+  messages.goNextPage()        // follows endContextCursor.next — throws EndOfCursorFeedException at tail
+  messages.goPreviousPage()    // follows startContextCursor.prev — throws at head
+}
+```
+
+The cursor paginator shares caches, CRUD, UI state (`paginator.uiState`), snapshot flow,
+`transaction { }`, prefetch controller, logger, and serialization with the offset variant — it
+differs only in **how pages are addressed**. Read the full guide at
+[Cursor-Based Pagination](docs/13.%20cursor-pagination.md).
+
+---
+
 ## Features
 
+- **Two pagination flavours** -- offset-based `Paginator` (`MutableList`-like, numeric page
+  addressing) and cursor-based `CursorPaginator` (`LinkedList`-like, `prev`/`self`/`next` tokens)
+  sharing the same page-state model, caches, CRUD surface, UI state and snapshot flow. See
+  [Cursor-Based Pagination](docs/13.%20cursor-pagination.md)
 - **Bidirectional pagination** -- navigate forward (`goNextPage`) and backward (`goPreviousPage`)
 - **Jump to any page** -- jump to arbitrary pages with `jump(bookmark)`
 - **Bookmark system** -- define bookmarks and cycle through them with `jumpForward` / `jumpBack`,
@@ -262,7 +314,9 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
     `mutablePaginator<T> { … }` builder DSL
 12. [**Interweaving**](docs/12.%20interweaving.md) — opt-in `Flow` operator that interleaves
     meta-rows (date headers, unread dividers, …) between data items
-13. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
+13. [**Cursor-Based Pagination**](docs/13.%20cursor-pagination.md) — `CursorPaginator` /
+    `MutableCursorPaginator` for opaque-token feeds (GraphQL connections, chat, activity streams)
+14. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
 
 Maintainer docs:
 
