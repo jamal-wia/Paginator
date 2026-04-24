@@ -1,7 +1,6 @@
 package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
-import com.jamal_aliev.paginator.bookmark.Bookmark
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.cache.PagingCache
 import com.jamal_aliev.paginator.exception.FinalPageExceededException
@@ -122,7 +121,7 @@ open class Paginator<T>(
      * replace bookmarks at any time. The internal [bookmarkIndex] tracks the current position
      * within this list.
      */
-    val bookmarks: MutableList<Bookmark> = mutableListOf(BookmarkInt(page = 1))
+    val bookmarks: MutableList<BookmarkInt> = mutableListOf(BookmarkInt(page = 1))
 
     /**
      * If `true`, bookmark navigation ([jumpForward]/[jumpBack]) wraps around when
@@ -171,7 +170,7 @@ open class Paginator<T>(
      * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
      * @param initEmptyState Factory for creating empty page instances when the source returns no data.
      * @param initErrorState Factory for creating error page instances when the source throws.
-     * @return A [Pair] of the [Bookmark] and resulting [PageState], or `null` if no bookmark is available.
+     * @return A [Pair] of the [BookmarkInt] and resulting [PageState], or `null` if no bookmark is available.
      * @throws JumpWasLockedException If [lockJump] is `true`.
      * @throws FinalPageExceededException If the bookmark page exceeds [finalPage].
      * @throws LoadGuardedException If [loadGuard] returns `false`.
@@ -188,13 +187,13 @@ open class Paginator<T>(
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
-    ): Pair<Bookmark, PageState<T>>? {
+    ): Pair<BookmarkInt, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "jumpForward: recycling=$recycling" }
 
         val visibleRange: IntRange? = core.snapshotPageRange()
-        var lastSkippedBookmark: Bookmark? = null
-        var bookmark: Bookmark? = null
+        var lastSkippedBookmark: BookmarkInt? = null
+        var bookmark: BookmarkInt? = null
 
         val bookmarkSize: Int = bookmarks.size
         if (bookmarkSize > 0) {
@@ -211,7 +210,7 @@ open class Paginator<T>(
             for (i in 0 until limit) {
                 // Modular index allows the loop to wrap past the end back to 0
                 val index: Int = (bookmarkIndex + i) % bookmarkSize
-                val candidate: Bookmark = bookmarks[index]
+                val candidate: BookmarkInt = bookmarks[index]
                 if (visibleRange != null && candidate.page in visibleRange) {
                     lastSkippedBookmark = candidate
                     continue
@@ -274,13 +273,13 @@ open class Paginator<T>(
         initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
-    ): Pair<Bookmark, PageState<T>>? {
+    ): Pair<BookmarkInt, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "jumpBack: recycling=$recycling" }
 
         val visibleRange: IntRange? = core.snapshotPageRange()
-        var lastSkippedBookmark: Bookmark? = null
-        var bookmark: Bookmark? = null
+        var lastSkippedBookmark: BookmarkInt? = null
+        var bookmark: BookmarkInt? = null
 
         val bookmarkSize: Int = bookmarks.size
         if (bookmarkSize > 0) {
@@ -298,7 +297,7 @@ open class Paginator<T>(
             for (i in 1..limit) {
                 // Modular index allows the loop to wrap past 0 back to the end
                 val index = (bookmarkIndex - i + bookmarkSize) % bookmarkSize
-                val candidate: Bookmark = bookmarks[index]
+                val candidate: BookmarkInt = bookmarks[index]
                 if (visibleRange != null && candidate.page in visibleRange) {
                     lastSkippedBookmark = candidate
                     continue
@@ -395,14 +394,14 @@ open class Paginator<T>(
      * @param initEmptyState Factory for creating empty page instances.
      * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
-     * @return A [Pair] of the [Bookmark] and the resulting [PageState].
+     * @return A [Pair] of the [BookmarkInt] and the resulting [PageState].
      * @throws JumpWasLockedException If [lockJump] is `true`.
      * @throws FinalPageExceededException If [bookmark] page exceeds [finalPage].
      * @throws LoadGuardedException If [loadGuard] returns `false`.
      * @throws IllegalArgumentException If [bookmark] page is < 1.
      */
     suspend fun jump(
-        bookmark: Bookmark,
+        bookmark: BookmarkInt,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         finalPage: Int = this.finalPage,
@@ -413,7 +412,7 @@ open class Paginator<T>(
         initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
-    ): Pair<Bookmark, PageState<T>> = coroutineScope {
+    ): Pair<BookmarkInt, PageState<T>> = coroutineScope {
         if (lockJump) throw JumpWasLockedException()
 
         require(bookmark.page >= 1) { "bookmark.page should be >= 1, but was ${bookmark.page}" }
@@ -1319,7 +1318,7 @@ open class Paginator<T>(
         val capacity: Int,
         val dirtyPages: Set<Int>,
         val finalPage: Int,
-        val bookmarks: List<Bookmark>,
+        val bookmarks: List<BookmarkInt>,
         val bookmarkIndex: Int,
         val recyclingBookmark: Boolean,
         val lockJump: Boolean,

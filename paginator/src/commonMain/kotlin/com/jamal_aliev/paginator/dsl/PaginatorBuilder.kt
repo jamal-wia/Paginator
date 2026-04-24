@@ -4,7 +4,6 @@ import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.Paginator
 import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
-import com.jamal_aliev.paginator.bookmark.Bookmark
 import com.jamal_aliev.paginator.bookmark.Bookmark.BookmarkInt
 import com.jamal_aliev.paginator.cache.DefaultPagingCache
 import com.jamal_aliev.paginator.cache.PagingCache
@@ -149,7 +148,7 @@ sealed class BasePaginatorBuilder<T> protected constructor(
     internal var loadFn: (suspend Paginator<T>.(page: Int) -> LoadResult<T>)? = null
 
     @PublishedApi
-    internal var bookmarks: List<Bookmark>? = null
+    internal var bookmarks: List<BookmarkInt>? = null
 
     @PublishedApi
     internal var initializersBuilder: InitializersBuilder<T>? = null
@@ -174,9 +173,9 @@ sealed class BasePaginatorBuilder<T> protected constructor(
     }
 
     /**
-     * Replaces the default bookmark (page 1) with the supplied [Bookmark] list.
+     * Replaces the default bookmark (page 1) with the supplied [BookmarkInt] list.
      */
-    fun bookmarks(list: List<Bookmark>) {
+    fun bookmarks(list: List<BookmarkInt>) {
         bookmarks = list.toList()
     }
 
