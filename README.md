@@ -39,6 +39,7 @@ Paginator can be seamlessly used across all layers of an application
 - [Infinite Scroll / Infinite Feed](#infinite-scroll--infinite-feed)
 - [Cursor-Based Pagination](#cursor-based-pagination)
 - [Features](#features)
+- [Articles](#articles)
 - [Documentation](#documentation)
 - [License](#license)
 
@@ -114,14 +115,21 @@ form (`MutablePaginator(load = { … })`) is also still available if you prefer 
 
 ### Step 2: Observe and Start
 
-Subscribe to the `snapshot` Flow to receive UI updates, then start the paginator by jumping to the
+Subscribe to `paginator.uiState` to receive UI updates, then start the paginator by jumping to the
 first page:
 
 ```kotlin
 init {
-    paginator.core.snapshot
-        .filter { it.isNotEmpty() }
-        .onEach { pages -> updateUI(pages) }
+  paginator.uiState
+    .onEach { state ->
+      when (state) {
+        is PaginatorUiState.Content -> showContent(state.items)
+        is PaginatorUiState.Loading -> showLoading()
+        is PaginatorUiState.Empty -> showEmpty()
+        is PaginatorUiState.Error -> showError(state.cause)
+        is PaginatorUiState.Idle -> Unit
+      }
+    }
         .flowOn(Dispatchers.Main)
         .launchIn(viewModelScope)
 
@@ -131,9 +139,9 @@ init {
 }
 ```
 
-Prefer a simpler API? Collect `paginator.uiState` instead — it emits `Idle` / `Loading` / `Empty`
-/ `Error` / `Content(items, prependState, appendState)` so your UI does not have to reason about
-individual `PageState`s. See
+`uiState` emits `Idle` / `Loading` / `Empty` / `Error` / `Content(items, prependState, appendState)`
+so your UI does not have to reason about individual `PageState`s. If you need raw page-level access,
+collect `paginator.core.snapshot` instead. See
 [State, Transactions & Locks → PaginatorUiState](docs/3.%20state.md#paginatoruistate).
 
 ### Step 3: Navigate
@@ -170,7 +178,7 @@ afterthought.
 
 Every feature in the library is **strictly opt-in**. If all you need is "load the next page when the
 user scrolls down", the entire setup is what you already saw in Quick Start: one `load` lambda,
-one `snapshot` observer, and `goNextPage()` on scroll. Nothing else is required.
+one `uiState` observer, and `goNextPage()` on scroll. Nothing else is required.
 
 What you still get for free, with zero extra code:
 
@@ -283,6 +291,28 @@ differs only in **how pages are addressed**. Read the full guide at
 - **Interweaving** -- opt-in `Flow<PaginatorUiState<T>>.interweave(weaver)` operator that inserts
   meta-rows (date headers, unread dividers, section labels, …) between data items without touching
   the paginator core, cache, CRUD, serialization, or DSL
+
+---
+
+## Articles
+
+In-depth articles comparing Paginator with Jetpack Paging 3 and demonstrating real-world
+implementation patterns:
+
+**English**
+
+- [Paging 3 is good. Until you need something more.](articles/en/Paging%203%20is%20good.%20Until%20you%20need%20something%20more.md) —
+  side-by-side comparison of Paginator and Paging 3 on a realistic feed
+- [Messenger on Paginator. Real-world tasks.](articles/en/Messenger%20on%20Paginator.%20Real-world%20tasks.md) —
+  building a production-grade messenger feed: bidirectional scroll, cursor pagination, CRUD,
+  interweaving
+
+**Русский**
+
+- [Paging 3 хорош. Пока вам не понадобится что-то ещё.](articles/ru/Paging%203%20хорош.%20Пока%20вам%20не%20понадобится%20что-то%20ещё.md) —
+  сравнение Paginator и Paging 3 на реальном примере ленты
+- [Мессенджер на Paginator. Боевые задачи, а не туториал.](articles/ru/Мессенджер%20на%20Paginator.%20Боевые%20задачи%2C%20а%20не%20туториал.md) —
+  реализация мессенджера: двунаправленный скролл, курсорная пагинация, CRUD, interweaving
 
 ---
 
