@@ -26,8 +26,16 @@ mavenPublishing {
     coordinates(group.toString(), "paginator", version.toString())
 
     pom {
-        name.set("Paginator")
-        description.set("A powerful, flexible pagination library for Kotlin Multiplatform (KMP) with bidirectional navigation, bookmarks, CRUD, caching, and reactive state via Kotlin Flows.")
+        name.set("Paginator — KMP pagination library for Android, iOS & JVM")
+        description.set(
+            "Paginator is a pagination / paging library for Kotlin Multiplatform (Android, iOS, " +
+                    "JVM, Desktop). A pure-Kotlin alternative to Jetpack Paging 3 with cursor-based " +
+                    "pagination, bidirectional scroll (chat / messenger feeds), jump-to-page, " +
+                    "bookmarks, pluggable page caching (LRU / FIFO / TTL), element-level CRUD, " +
+                    "infinite scroll, prefetch, state serialization via kotlinx.serialization, and " +
+                    "reactive UI state via Kotlin Flows. Zero platform dependencies — usable across " +
+                    "data, domain and presentation layers in Clean Architecture."
+        )
         url.set("https://github.com/jamal-wia/Paginator")
         inceptionYear.set("2023")
 
@@ -52,6 +60,44 @@ mavenPublishing {
             connection.set("scm:git:git://github.com/jamal-wia/Paginator.git")
             developerConnection.set("scm:git:ssh://git@github.com/jamal-wia/Paginator.git")
         }
+
+        issueManagement {
+            system.set("GitHub Issues")
+            url.set("https://github.com/jamal-wia/Paginator/issues")
+        }
+
+        ciManagement {
+            system.set("GitHub Actions")
+            url.set("https://github.com/jamal-wia/Paginator/actions")
+        }
+
+        // Free-form properties — surfaced on Maven Central / MvnRepository search pages
+        // and improve discoverability for long-tail queries.
+        properties.set(
+            mapOf(
+                "project.tags" to listOf(
+                    "kotlin",
+                    "kotlin-multiplatform",
+                    "kmp",
+                    "android",
+                    "ios",
+                    "jvm",
+                    "pagination",
+                    "paging",
+                    "paginator",
+                    "cursor-pagination",
+                    "infinite-scroll",
+                    "bidirectional-pagination",
+                    "jetpack-paging-alternative",
+                    "coroutines",
+                    "flow",
+                    "clean-architecture",
+                    "messenger",
+                    "chat-feed",
+                    "graphql-connections"
+                ).joinToString(", ")
+            )
+        )
     }
 }
 
