@@ -1,4 +1,12 @@
-# Paginator
+# Paginator — KMP pagination library for Android, iOS & JVM
+
+> Pagination / paging library for **Kotlin Multiplatform** (Android, iOS, JVM, Desktop, Server).
+> A pure-Kotlin alternative to **Jetpack Paging 3** with cursor pagination, bidirectional scroll,
+> bookmarks, page caching, element-level CRUD, infinite scroll, prefetch and Flow-based UI state.
+
+**Keywords:** Kotlin Multiplatform pagination · KMP paging · Android paging library · iOS paging ·
+cursor pagination · infinite scroll · endless list · load more · Jetpack Paging 3 alternative ·
+bidirectional pagination · chat / messenger feed · GraphQL connections · coroutines · Flow.
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jamal-wia/Paginator)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.jamal-wia/paginator)](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -9,10 +17,12 @@
 
 ## [**📲 Download Demo APK**](https://raw.githubusercontent.com/jamal-wia/Paginator/master/PaginatorDemo.apk)
 
-**Paginator** is a powerful, flexible pagination library for **Kotlin Multiplatform (KMP)** that goes far beyond
-simple "load next page" patterns. It provides a full-featured page management system with support
-for jumping to arbitrary pages, bidirectional navigation, bookmarks, page caching, element-level
-CRUD, incomplete page handling, capacity management, and reactive state via Kotlin Flows.
+**Paginator** is a powerful, flexible **pagination library for Kotlin Multiplatform (KMP)** —
+Android, iOS, JVM and Desktop — that goes far beyond simple "load next page" patterns. It is a
+production-ready alternative to **Jetpack Paging 3** / `Pager` / `AsyncPagingDataDiffer` with a
+full-featured page management system: jumping to arbitrary pages, bidirectional navigation,
+bookmarks, page caching, cursor-based pagination, element-level CRUD, incomplete page handling,
+capacity management and reactive UI state via Kotlin Flows.
 
 The library exposes **two flavors** that share the same page-state model, caches, CRUD, UI state
 and snapshot flows:
@@ -34,6 +44,7 @@ Paginator can be seamlessly used across all layers of an application
 
 ## Table of Contents
 
+- [Why Paginator? (vs Jetpack Paging 3)](#why-paginator-vs-jetpack-paging-3)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Infinite Scroll / Infinite Feed](#infinite-scroll--infinite-feed)
@@ -42,6 +53,28 @@ Paginator can be seamlessly used across all layers of an application
 - [Articles](#articles)
 - [Documentation](#documentation)
 - [License](#license)
+
+---
+
+## Why Paginator? (vs Jetpack Paging 3)
+
+Most Android developers reach for **Jetpack Paging 3**, but it is Android-only, ViewModel/UI-coupled
+and intentionally opinionated. Paginator was built for the cases Paging 3 doesn't cover well:
+
+| Capability                              | Jetpack Paging 3            | **Paginator**                       |
+|-----------------------------------------|-----------------------------|-------------------------------------|
+| Targets                                 | Android only                | **Android · iOS · JVM · Desktop**   |
+| Layer                                   | UI / ViewModel              | **Data / Domain / Presentation**    |
+| Bidirectional scroll (chat / messenger) | Limited                     | **First-class**                     |
+| Cursor pagination (GraphQL, chat)       | Manual                      | **Built-in `CursorPaginator`**      |
+| Jump to arbitrary page / bookmarks      | No                          | **Yes (`jump`, `BookmarkInt`, …)**  |
+| Element-level CRUD inside pages         | No (immutable `PagingData`) | **Yes (`MutablePaginator`)**        |
+| Page caching strategies (LRU/FIFO/TTL)  | No                          | **Pluggable**                       |
+| State serialization (process death)     | No                          | **`kotlinx.serialization`**         |
+| Dependencies                            | AndroidX                    | **Pure Kotlin, zero platform deps** |
+
+See the side-by-side
+write-up: [Paging 3 is good. Until you need something more.](articles/en/Paging%203%20is%20good.%20Until%20you%20need%20something%20more.md)
 
 ---
 
