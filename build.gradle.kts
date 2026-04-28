@@ -6,5 +6,6 @@ plugins {
     id("org.jetbrains.kotlin.multiplatform") version "2.3.20" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.3.20"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.3.20" apply false
+    id("org.jetbrains.compose") version "1.10.0" apply false
     id("com.vanniktech.maven.publish") version "0.36.0" apply false
 }

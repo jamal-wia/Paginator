@@ -115,6 +115,36 @@ dependencies {
 }
 ```
 
+### Compose Multiplatform UI bindings (optional)
+
+If you use Jetpack Compose / Compose Multiplatform, the optional `paginator-compose`
+artifact provides one-line scroll-driven prefetch for `LazyColumn` / `LazyRow` /
+`LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and their horizontal counterparts) —
+no manual `LaunchedEffect` / `snapshotFlow` plumbing required. UI structure stays
+fully under your control; the artifact only feeds scroll signals to the
+`PrefetchController`.
+
+```kotlin
+dependencies {
+  implementation("io.github.jamal-wia:paginator:8.4.0")
+  implementation("io.github.jamal-wia:paginator-compose:8.4.0")
+}
+```
+
+```kotlin
+val listState = rememberLazyListState()
+val prefetch = paginator.rememberPrefetchController(prefetchDistance = 10)
+
+prefetch.BindToLazyList(
+  listState = listState,
+  dataItemCount = uiState.items.size,   // data-only count, no headers/footers
+)
+
+LazyColumn(state = listState) { /* render however you want */ }
+```
+
+See [docs/7. prefetch.md](docs/7.%20prefetch.md#jetpack-compose-paginator-compose) for details.
+
 ---
 
 ## Quick Start

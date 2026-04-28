@@ -67,6 +67,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jamal_aliev.paginator.compose.BindToLazyList
+import com.jamal_aliev.paginator.compose.rememberPrefetchController
 import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
@@ -313,6 +315,25 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun PaginatedContent(state: MainViewState, modifier: Modifier) {
         val lazyListState = rememberLazyListState()
+
+        // paginator-compose: one-line scroll-driven prefetch.
+        // Replaces the manual `LaunchedEffect { snapshotFlow { ... }; prefetch.onScroll(...) }`
+        // pattern shown in docs/7. prefetch.md. The controller's lifecycle is bound to this
+        // composable; if you keep the controller in your ViewModel, drop the `remember…` call
+        // and just use `prefetch.BindToLazyList(...)` directly.
+        val prefetch = viewModel.paginator.rememberPrefetchController(
+            prefetchDistance = 5,
+            enableBackwardPrefetch = true,
+        )
+        prefetch.BindToLazyList(
+            listState = lazyListState,
+            // The demo interleaves per-page debug headers with data items, so headerCount /
+            // footerCount don't apply cleanly here — we pass total cached items and let the
+            // controller's edge check fire slightly early. In a typical UI with a flat data
+            // list (e.g. driven by `paginator.uiState`'s `Content.items`), pass that list's
+            // size as `dataItemCount` and the headerCount / footerCount of any wrapping items.
+            dataItemCount = state.totalCachedItems,
+        )
 
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,

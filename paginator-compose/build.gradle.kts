@@ -4,7 +4,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
     id("com.android.library")
-    id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.vanniktech.maven.publish")
 }
 
@@ -23,21 +24,20 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates(group.toString(), "paginator", version.toString())
+    coordinates(group.toString(), "paginator-compose", version.toString())
 
     pom {
-        name.set("Paginator — KMP pagination library for Android, iOS & JVM")
+        name.set("Paginator Compose — Compose Multiplatform UI bindings for Paginator")
         description.set(
-            "Paginator is a pagination / paging library for Kotlin Multiplatform (Android, iOS, " +
-                    "JVM, Desktop). A pure-Kotlin alternative to Jetpack Paging 3 with cursor-based " +
-                    "pagination, bidirectional scroll (chat / messenger feeds), jump-to-page, " +
-                    "bookmarks, pluggable page caching (LRU / FIFO / TTL), element-level CRUD, " +
-                    "infinite scroll, prefetch, state serialization via kotlinx.serialization, and " +
-                    "reactive UI state via Kotlin Flows. Zero platform dependencies — usable across " +
-                    "data, domain and presentation layers in Clean Architecture."
+            "Compose Multiplatform integration for the Paginator pagination library. " +
+                    "Provides idiomatic bindings between Paginator's PrefetchController and " +
+                    "LazyListState / LazyGridState / LazyStaggeredGridState — auto-pagination on " +
+                    "scroll without manual snapshotFlow wiring. UI structure is left fully to the " +
+                    "user; this artifact only feeds scroll signals to the controller. Targets " +
+                    "Android, iOS and JVM (Desktop)."
         )
         url.set("https://github.com/jamal-wia/Paginator")
-        inceptionYear.set("2023")
+        inceptionYear.set("2026")
 
         licenses {
             license {
@@ -71,30 +71,26 @@ mavenPublishing {
             url.set("https://github.com/jamal-wia/Paginator/actions")
         }
 
-        // Free-form properties — surfaced on Maven Central / MvnRepository search pages
-        // and improve discoverability for long-tail queries.
         properties.set(
             mapOf(
                 "project.tags" to listOf(
                     "kotlin",
                     "kotlin-multiplatform",
                     "kmp",
+                    "compose",
+                    "compose-multiplatform",
+                    "jetpack-compose",
                     "android",
                     "ios",
                     "jvm",
                     "pagination",
                     "paging",
                     "paginator",
-                    "cursor-pagination",
+                    "lazycolumn",
+                    "lazygrid",
+                    "lazystaggeredgrid",
                     "infinite-scroll",
-                    "bidirectional-pagination",
-                    "jetpack-paging-alternative",
-                    "coroutines",
-                    "flow",
-                    "clean-architecture",
-                    "messenger",
-                    "chat-feed",
-                    "graphql-connections"
+                    "prefetch"
                 ).joinToString(", ")
             )
         )
@@ -121,9 +117,10 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation("org.jetbrains.kotlinx:atomicfu:0.32.1")
+            api(project(":paginator"))
+            implementation(compose.runtime)
+            implementation(compose.foundation)
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
@@ -133,7 +130,7 @@ kotlin {
 }
 
 android {
-    namespace = "com.jamal_aliev.paginator"
+    namespace = "com.jamal_aliev.paginator.compose"
     compileSdk = 36
 
     defaultConfig {
