@@ -3,7 +3,6 @@ package com.jamal_aliev.paginator
 import com.jamal_aliev.paginator.extension.smartForEach
 import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
@@ -123,7 +122,7 @@ private fun createPaginatorWith(n: Int): MutablePaginator<String> {
 private fun <T> createRandomPageState(page: Int, data: List<T>): PageState<T> {
     return when ((0..100).random()) {
         in 0..24 -> ProgressPage(page, data)
-        in 25..49 -> EmptyPage(page, data)
+        in 25..49 -> SuccessPage(page, emptyList())
         in 50..75 -> ErrorPage(Exception(), page, data)
         else -> SuccessPage(page, data)
     }

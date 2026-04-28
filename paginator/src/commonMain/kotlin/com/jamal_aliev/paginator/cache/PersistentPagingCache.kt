@@ -15,7 +15,7 @@ import com.jamal_aliev.paginator.page.PageState
  * back into L1 and returned immediately — no loading indicator, no source invocation.
  *
  * **Write path:** After every successful source load, the resulting [PageState.SuccessPage]
- * (or [PageState.EmptyPage]) is automatically saved to L2 via [save].
+ * (including pages that came back empty) is automatically saved to L2 via [save].
  *
  * **Lifecycle:** L2 is **not** cleared by [com.jamal_aliev.paginator.Paginator.restart],
  * [com.jamal_aliev.paginator.Paginator.release], or transaction rollback. It is the

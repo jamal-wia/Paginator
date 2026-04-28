@@ -1,7 +1,6 @@
 package com.jamal_aliev.paginator.extension
 
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
@@ -41,55 +40,42 @@ inline fun <T> PageState<T>.isRealProgressState(
 }
 
 /**
- * Checks if the PageState is in empty state.
+ * Checks if the PageState is an "empty" success — a [SuccessPage] whose `data` list is empty.
  *
- * @return True if the PageState is EmptyPage, false otherwise.
+ * Replaces the former `EmptyPage` type marker. The predicate is now derived from the
+ * data itself, so any `SuccessPage` (including custom subclasses) qualifies as empty
+ * iff it carries no items.
+ *
+ * @return True if the PageState is a SuccessPage with no items, false otherwise.
  */
 @OptIn(ExperimentalContracts::class)
 @Suppress("NOTHING_TO_INLINE")
 inline fun <T> PageState<T>?.isEmptyState(): Boolean {
     contract {
-        returns(true) implies (this@isEmptyState is EmptyPage<T>)
+        returns(true) implies (this@isEmptyState is SuccessPage<T>)
     }
-    return this is EmptyPage<*>
+    return this is SuccessPage<*> && this.data.isEmpty()
 }
 
 /**
- * Checks if the PageState is a real empty state.
+ * Checks if the PageState is in success state — a [SuccessPage] carrying at least one item.
  *
- * @return True if the PageState is EmptyPage of type T, false otherwise.
- */
-@OptIn(ExperimentalContracts::class)
-@Suppress("NOTHING_TO_INLINE")
-inline fun <T> PageState<T>.isRealEmptyState(
-    clazz: KClass<out EmptyPage<*>>
-): Boolean {
-    contract {
-        returns(true) implies (this@isRealEmptyState is EmptyPage<T>)
-    }
-    return this.isEmptyState() && clazz.isInstance(this)
-}
-
-/**
- * Checks if the PageState is in success state.
- *
- * @return True if the PageState is SuccessPage and not EmptyPage, false otherwise.
+ * @return True if the PageState is SuccessPage with non-empty data, false otherwise.
  */
 @OptIn(ExperimentalContracts::class)
 @Suppress("NOTHING_TO_INLINE")
 inline fun <T> PageState<T>?.isSuccessState(): Boolean {
     contract {
-        returns(true) implies (this@isSuccessState is SuccessPage<T>
-                && this@isSuccessState !is EmptyPage<T>)
-        returns(true) implies (this@isSuccessState !is EmptyPage<T>)
+        returns(true) implies (this@isSuccessState is SuccessPage<T>)
     }
-    return this is SuccessPage<*> && this !is EmptyPage<*>
+    return this is SuccessPage<*> && this.data.isNotEmpty()
 }
 
 /**
- * Checks if the PageState is a real success state.
+ * Checks if the PageState is a real success state — exactly the supplied [clazz] subtype
+ * with non-empty data.
  *
- * @return True if the PageState is SuccessPage of type T, false otherwise.
+ * @return True if the PageState is SuccessPage of type T with non-empty data, false otherwise.
  */
 @OptIn(ExperimentalContracts::class)
 @Suppress("NOTHING_TO_INLINE")
@@ -97,9 +83,7 @@ inline fun <T> PageState<T>.isRealSuccessState(
     clazz: KClass<out SuccessPage<*>>
 ): Boolean {
     contract {
-        returns(true) implies (this@isRealSuccessState is SuccessPage<T>
-                && this@isRealSuccessState !is EmptyPage<T>)
-        returns(true) implies (this@isRealSuccessState !is EmptyPage<T>)
+        returns(true) implies (this@isRealSuccessState is SuccessPage<T>)
     }
     return this.isSuccessState() && clazz.isInstance(this)
 }

@@ -2,7 +2,6 @@ package com.jamal_aliev.paginator.extension
 
 import com.jamal_aliev.paginator.CursorPaginator
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -26,7 +25,6 @@ fun <T> CursorPaginator<T>.prefetchController(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
     initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-    initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
     initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     onPrefetchError: ((Exception) -> Unit)? = null,
 ): CursorPaginatorPrefetchController<T> {
@@ -41,7 +39,6 @@ fun <T> CursorPaginator<T>.prefetchController(
         enableCacheFlow = enableCacheFlow,
         initProgressState = initProgressState,
         initSuccessState = initSuccessState,
-        initEmptyState = initEmptyState,
         initErrorState = initErrorState,
         onPrefetchError = onPrefetchError,
     )

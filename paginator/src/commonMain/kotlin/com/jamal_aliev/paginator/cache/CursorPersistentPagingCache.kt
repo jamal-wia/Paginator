@@ -15,8 +15,8 @@ import com.jamal_aliev.paginator.page.PageState
  * miss in L1, it checks L2 before making a network call.
  *
  * **Write path:** After every successful source load, the resulting
- * [PageState.SuccessPage] (or [PageState.EmptyPage]) is automatically saved
- * to L2 via [save] together with its [CursorBookmark].
+ * [PageState.SuccessPage] (including pages that came back empty) is automatically
+ * saved to L2 via [save] together with its [CursorBookmark].
  *
  * **Lifecycle:** L2 is **not** cleared by
  * [com.jamal_aliev.paginator.CursorPaginator.restart],

@@ -3,7 +3,6 @@ package com.jamal_aliev.paginator
 import com.jamal_aliev.paginator.PagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -361,10 +360,7 @@ class CrudOperationsTest {
             index = 0,
             silently = true,
             initPageState = { page, data ->
-                // SuccessPage asserts data is non-empty; the library calls the factory
-                // with an empty list, so use EmptyPage here — SuccessPage.copy auto-demotes
-                // to it anyway inside cascade. Data will be filled in-place afterward.
-                EmptyPage(page = page, data = data.toMutableList())
+                SuccessPage(page = page, data = data.toMutableList())
             },
         )
 

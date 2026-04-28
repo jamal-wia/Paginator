@@ -9,19 +9,16 @@ import com.jamal_aliev.paginator.extension.gap
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.load.Metadata
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.PageEntry
-import com.jamal_aliev.paginator.serialization.PageEntryType
 import com.jamal_aliev.paginator.serialization.PagingCoreSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -407,9 +404,10 @@ open class PagingCore<T>(
      * whose data set is considered "filled".
      *
      * A state is treated as "filled" when:
-     * - it is a [SuccessPage];
-     * - its data size is equal to the configured `capacity`, unless `capacity` is unlimited;
-     * - for any non-success state (including `EmptyPage`), the result is `false`.
+     * - it is a [SuccessPage] with non-empty data;
+     * - its data size is equal to the configured `capacity`, unless `capacity` is unlimited.
+     *
+     * For any non-success state — and for a [SuccessPage] with empty data — the result is `false`.
      *
      * @param state The [PageState] instance to evaluate.
      * @return `true` if `state` is a [SuccessPage] containing the maximum number of items
@@ -763,22 +761,13 @@ open class PagingCore<T>(
 
     /**
      * Factory for creating [SuccessPage] instances on successful load.
-     * Automatically delegates to [initializerEmptyPage] when the data list is empty.
+     * The same factory is used regardless of whether the source returned data or
+     * not — an "empty" page is just a [SuccessPage] with an empty `data` list.
      * Override to provide custom success page subclasses.
      */
     var initializerSuccessPage: InitializerSuccessPage<T> =
         fun(page: Int, data: List<T>, metadata: Metadata?): SuccessPage<T> {
-            return if (data.isEmpty()) initializerEmptyPage.invoke(page, data, metadata)
-            else SuccessPage(page = page, data = data, metadata = metadata)
-        }
-
-    /**
-     * Factory for creating [EmptyPage] instances when the source returns no data for a page.
-     * Override to provide custom empty page subclasses.
-     */
-    var initializerEmptyPage: InitializerEmptyPage<T> =
-        fun(page: Int, data: List<T>, metadata: Metadata?): EmptyPage<T> {
-            return EmptyPage(page = page, data = data, metadata = metadata)
+            return SuccessPage(page = page, data = data, metadata = metadata)
         }
 
     /**
@@ -889,9 +878,9 @@ open class PagingCore<T>(
      *
      * All cached pages are captured (or only pages within the context window if
      * [contextOnly] is `true`). [ErrorPage] and [ProgressPage] entries
-     * are converted to [SuccessPage]/[EmptyPage] (preserving their cached data
-     * and error messages), and their page numbers are marked as dirty in the snapshot
-     * so they will be re-fetched on next navigation after restore.
+     * are converted to [SuccessPage] (preserving their cached data and error
+     * messages), and their page numbers are marked as dirty in the snapshot so
+     * they will be re-fetched on next navigation after restore.
      *
      * @param contextOnly If `true`, only pages within `startContextPage..endContextPage`
      *   are included in the snapshot. Useful for reducing snapshot size.
@@ -913,17 +902,12 @@ open class PagingCore<T>(
                         || state.isErrorState()
                         || state.isProgressState()
 
-                val type: PageEntryType =
-                    if (state.data.isEmpty()) PageEntryType.EMPTY
-                    else PageEntryType.SUCCESS
-
                 val errorMessage: String? =
                     if (state.isErrorState()) state.exception.message
                     else null
 
                 PageEntry(
                     page = state.page,
-                    type = type,
                     data = state.data,
                     wasDirty = wasDirty,
                     errorMessage = errorMessage,
@@ -946,8 +930,8 @@ open class PagingCore<T>(
      * (including those that were ErrorPage/ProgressPage before saving) are
      * added to the dirty set for automatic re-fetch on next navigation.
      *
-     * Uses [initializerSuccessPage] and [initializerEmptyPage] factories,
-     * so custom PageState subclasses are honored on restore.
+     * Uses [initializerSuccessPage] for every entry, so custom PageState subclasses are
+     * honored on restore.
      *
      * @param snapshot The snapshot to restore from.
      * @param silently If `true`, no snapshot is emitted after restoration.
@@ -965,24 +949,11 @@ open class PagingCore<T>(
 
         snapshot.entries.forEach { entry: PageEntry<T> ->
             val metadata = metadataDecoder?.invoke(entry.metadata)
-            val pageState: PageState<T> = when (entry.type) {
-                PageEntryType.EMPTY -> {
-                    initializerEmptyPage(
-                        entry.page,
-                        entry.data,
-                        metadata
-                    )
-                }
-
-                PageEntryType.SUCCESS -> {
-                    val data = entry.data.toMutableList()
-                    initializerSuccessPage(
-                        entry.page,
-                        data,
-                        metadata
-                    )
-                }
-            }
+            val pageState: PageState<T> = initializerSuccessPage(
+                entry.page,
+                entry.data.toMutableList(),
+                metadata,
+            )
             setState(state = pageState, silently = true)
             if (entry.wasDirty) {
                 _dirtyPages.add(entry.page)

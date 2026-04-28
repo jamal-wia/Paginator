@@ -8,7 +8,6 @@ import com.jamal_aliev.paginator.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cache.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.cache.DefaultCursorPagingCache
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -165,7 +164,6 @@ class CursorInitializersBuilder<T> @PublishedApi internal constructor() {
 
     private var progress: InitializerProgressPage<T>? = null
     private var success: InitializerSuccessPage<T>? = null
-    private var empty: InitializerEmptyPage<T>? = null
     private var error: InitializerErrorPage<T>? = null
 
     fun progress(factory: InitializerProgressPage<T>) {
@@ -176,10 +174,6 @@ class CursorInitializersBuilder<T> @PublishedApi internal constructor() {
         success = factory
     }
 
-    fun empty(factory: InitializerEmptyPage<T>) {
-        empty = factory
-    }
-
     fun error(factory: InitializerErrorPage<T>) {
         error = factory
     }
@@ -187,7 +181,6 @@ class CursorInitializersBuilder<T> @PublishedApi internal constructor() {
     internal fun applyTo(core: CursorPagingCore<T>) {
         progress?.let { core.initializerProgressPage = it }
         success?.let { core.initializerSuccessPage = it }
-        empty?.let { core.initializerEmptyPage = it }
         error?.let { core.initializerErrorPage = it }
     }
 }

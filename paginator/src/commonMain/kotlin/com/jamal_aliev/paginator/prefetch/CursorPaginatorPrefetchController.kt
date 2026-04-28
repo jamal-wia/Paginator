@@ -2,7 +2,6 @@ package com.jamal_aliev.paginator.prefetch
 
 import com.jamal_aliev.paginator.CursorPaginator
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -36,7 +35,6 @@ class CursorPaginatorPrefetchController<T>(
     var enableCacheFlow: Boolean = paginator.core.enableCacheFlow,
     var initProgressState: InitializerProgressPage<T> = paginator.core.initializerProgressPage,
     var initSuccessState: InitializerSuccessPage<T> = paginator.core.initializerSuccessPage,
-    var initEmptyState: InitializerEmptyPage<T> = paginator.core.initializerEmptyPage,
     var initErrorState: InitializerErrorPage<T> = paginator.core.initializerErrorPage,
     var onPrefetchError: ((Exception) -> Unit)? = null,
 ) {
@@ -102,7 +100,6 @@ class CursorPaginatorPrefetchController<T>(
                             loadGuard = loadGuard,
                             enableCacheFlow = enableCacheFlow,
                             initProgressState = initProgressState,
-                            initEmptyState = initEmptyState,
                             initSuccessState = initSuccessState,
                             initErrorState = initErrorState,
                         )
@@ -128,7 +125,6 @@ class CursorPaginatorPrefetchController<T>(
                             loadGuard = loadGuard,
                             enableCacheFlow = enableCacheFlow,
                             initProgressState = initProgressState,
-                            initEmptyState = initEmptyState,
                             initSuccessState = initSuccessState,
                             initErrorState = initErrorState,
                         )

@@ -6,7 +6,6 @@ import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
@@ -335,7 +334,7 @@ class MutablePaginatorTest {
 
         // Jump to a high page number should work (page 100)
         val page100 = paginator.jump(BookmarkInt(100)).second
-        // Should be EmptyPage since our source returns empty list for page > 10
+        // Should be an empty SuccessPage since our source returns empty list for page > 10
         assertTrue(page100.isEmptyState())
         assertEquals(100, page100.page)
 
@@ -363,7 +362,7 @@ private data object Source {
 private fun <T> createRandomPageState(page: Int, data: List<T>): PageState<T> {
     return when ((0..100).random()) {
         in 0..24 -> ProgressPage(page, data)
-        in 25..49 -> EmptyPage(page, data)
+        in 25..49 -> SuccessPage(page, emptyList())
         in 50..75 -> ErrorPage(Exception(), page, data)
         else -> SuccessPage(page, data)
     }

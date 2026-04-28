@@ -1,7 +1,6 @@
 package com.jamal_aliev.paginator.prefetch
 
 import com.jamal_aliev.paginator.Paginator
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -98,7 +97,6 @@ import kotlinx.coroutines.launch
  * @param enableCacheFlow Forwarded to navigation functions.
  * @param initProgressState Factory for [PageState.ProgressPage] during loading.
  * @param initSuccessState Factory for [PageState.SuccessPage] on success.
- * @param initEmptyState Factory for [PageState.EmptyPage] when source returns no data.
  * @param initErrorState Factory for [PageState.ErrorPage] on failure.
  * @param onPrefetchError Optional callback invoked when a prefetch fails with
  *   an exception (excluding [CancellationException]). Useful for logging or
@@ -118,7 +116,6 @@ class PaginatorPrefetchController<T>(
     var enableCacheFlow: Boolean = paginator.core.enableCacheFlow,
     var initProgressState: InitializerProgressPage<T> = paginator.core.initializerProgressPage,
     var initSuccessState: InitializerSuccessPage<T> = paginator.core.initializerSuccessPage,
-    var initEmptyState: InitializerEmptyPage<T> = paginator.core.initializerEmptyPage,
     var initErrorState: InitializerErrorPage<T> = paginator.core.initializerErrorPage,
     var onPrefetchError: ((Exception) -> Unit)? = null,
 ) {
@@ -221,7 +218,6 @@ class PaginatorPrefetchController<T>(
                             loadGuard = loadGuard,
                             enableCacheFlow = enableCacheFlow,
                             initProgressState = initProgressState,
-                            initEmptyState = initEmptyState,
                             initSuccessState = initSuccessState,
                             initErrorState = initErrorState,
                         )
@@ -248,7 +244,6 @@ class PaginatorPrefetchController<T>(
                             loadGuard = loadGuard,
                             enableCacheFlow = enableCacheFlow,
                             initProgressState = initProgressState,
-                            initEmptyState = initEmptyState,
                             initSuccessState = initSuccessState,
                             initErrorState = initErrorState,
                         )

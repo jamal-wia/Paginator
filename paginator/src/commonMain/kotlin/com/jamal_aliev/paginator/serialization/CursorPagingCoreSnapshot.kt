@@ -20,7 +20,6 @@ data class CursorPageEntry<T>(
     val selfKey: JsonElement,
     val prevKey: JsonElement? = null,
     val nextKey: JsonElement? = null,
-    val type: PageEntryType,
     val data: List<T>,
     val wasDirty: Boolean,
     val errorMessage: String? = null,

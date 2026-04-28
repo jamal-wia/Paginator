@@ -6,7 +6,6 @@ import com.jamal_aliev.paginator.extension.toUiState
 import com.jamal_aliev.paginator.extension.uiState
 import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
@@ -53,8 +52,8 @@ class PaginatorUiStateTest {
     }
 
     @Test
-    fun `single EmptyPage with empty data returns Empty`() {
-        val list = listOf<PageState<String>>(EmptyPage(page = 1, data = mutableListOf()))
+    fun `single SuccessPage with empty data returns Empty`() {
+        val list = listOf<PageState<String>>(SuccessPage(page = 1, data = mutableListOf()))
         val state = list.toUiState(isStarted = true)
         assertEquals(PaginatorUiState.Empty(page = 1), state)
     }
@@ -171,9 +170,9 @@ class PaginatorUiStateTest {
     }
 
     @Test
-    fun `EmptyPage in the middle does not contribute data`() {
+    fun `empty SuccessPage in the middle does not contribute data`() {
         val a = SuccessPage(page = 1, data = mutableListOf("a"))
-        val emptyMid = EmptyPage(page = 2, data = mutableListOf<String>())
+        val emptyMid = SuccessPage(page = 2, data = mutableListOf<String>())
         val c = SuccessPage(page = 3, data = mutableListOf("c"))
         val list: List<PageState<String>> = listOf(a, emptyMid, c)
         val state = list.toUiState(isStarted = true)

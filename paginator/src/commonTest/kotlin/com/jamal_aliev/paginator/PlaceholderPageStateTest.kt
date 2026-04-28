@@ -1,19 +1,18 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
+import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.page.PlaceholderPageState
-import com.jamal_aliev.paginator.page.PlaceholderPageState.PlaceholderEmptyPage
 import com.jamal_aliev.paginator.page.PlaceholderPageState.PlaceholderErrorPage
 import com.jamal_aliev.paginator.page.PlaceholderPageState.PlaceholderProgressPage
 import com.jamal_aliev.paginator.page.PlaceholderPageState.PlaceholderSuccessPage
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class PlaceholderPageStateTest {
 
@@ -126,14 +125,14 @@ class PlaceholderPageStateTest {
     }
 
     @Test
-    fun `PlaceholderSuccessPage - requires non-empty data`() {
-        assertFailsWith<IllegalArgumentException> {
-            PlaceholderSuccessPage(
-                page = 1,
-                data = emptyList<String>(),
-                placeholders = skeletons,
-            )
-        }
+    fun `PlaceholderSuccessPage - allows empty data`() {
+        val state = PlaceholderSuccessPage(
+            page = 1,
+            data = emptyList<String>(),
+            placeholders = skeletons,
+        )
+        assertEquals(0, state.data.size)
+        assertTrue(state.isEmptyState())
     }
 
     @Test
@@ -147,58 +146,6 @@ class PlaceholderPageStateTest {
         val state = PlaceholderSuccessPage(page = 1, data = items, placeholders = skeletons)
         assertEquals(items, state.data)
         assertEquals(skeletons, state.placeholders)
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  PlaceholderEmptyPage
-    // ══════════════════════════════════════════════════════════════════════
-
-    @Test
-    fun `PlaceholderEmptyPage - stores page, data, placeholders`() {
-        val state = PlaceholderEmptyPage(
-            page = 4,
-            data = emptyList<String>(),
-            placeholders = skeletons,
-        )
-        assertEquals(4, state.page)
-        assertEquals(emptyList<String>(), state.data)
-        assertEquals(skeletons, state.placeholders)
-    }
-
-    @Test
-    fun `PlaceholderEmptyPage - is EmptyPage`() {
-        val state = PlaceholderEmptyPage(page = 1, data = emptyList<String>(), placeholders = skeletons)
-        assertIs<EmptyPage<*>>(state)
-    }
-
-    @Test
-    fun `PlaceholderEmptyPage - is SuccessPage`() {
-        val state = PlaceholderEmptyPage(page = 1, data = emptyList<String>(), placeholders = skeletons)
-        assertIs<SuccessPage<*>>(state)
-    }
-
-    @Test
-    fun `PlaceholderEmptyPage - is PlaceholderPageState`() {
-        val state = PlaceholderEmptyPage(page = 1, data = emptyList<String>(), placeholders = skeletons)
-        assertIs<PlaceholderPageState<*>>(state)
-    }
-
-    @Test
-    fun `PlaceholderEmptyPage - allows empty data`() {
-        val state = PlaceholderEmptyPage(page = 1, data = emptyList<String>(), placeholders = skeletons)
-        assertEquals(0, state.data.size)
-    }
-
-    @Test
-    fun `PlaceholderEmptyPage - allows non-empty data`() {
-        val state = PlaceholderEmptyPage(page = 1, data = items, placeholders = skeletons)
-        assertEquals(items, state.data)
-    }
-
-    @Test
-    fun `PlaceholderEmptyPage - empty placeholders is allowed`() {
-        val state = PlaceholderEmptyPage<String, Unit>(page = 1, data = emptyList(), placeholders = emptyList())
-        assertEquals(0, state.placeholders.size)
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -264,7 +211,8 @@ class PlaceholderPageStateTest {
     fun `all variants implement PlaceholderPageState`() {
         val progress = PlaceholderProgressPage(page = 1, data = items, placeholders = skeletons)
         val success  = PlaceholderSuccessPage(page = 1, data = items, placeholders = skeletons)
-        val empty    = PlaceholderEmptyPage(page = 1, data = emptyList<String>(), placeholders = skeletons)
+        val empty =
+            PlaceholderSuccessPage(page = 1, data = emptyList<String>(), placeholders = skeletons)
         val error    = PlaceholderErrorPage(exception, page = 1, data = items, placeholders = skeletons)
 
         assertIs<PlaceholderPageState<*>>(progress)
@@ -288,7 +236,14 @@ class PlaceholderPageStateTest {
     fun `page number is preserved across all variants`() {
         assertEquals(7, PlaceholderProgressPage(page = 7, data = items, placeholders = skeletons).page)
         assertEquals(7, PlaceholderSuccessPage(page = 7, data = items, placeholders = skeletons).page)
-        assertEquals(7, PlaceholderEmptyPage(page = 7, data = emptyList<String>(), placeholders = skeletons).page)
+        assertEquals(
+            7,
+            PlaceholderSuccessPage(
+                page = 7,
+                data = emptyList<String>(),
+                placeholders = skeletons
+            ).page
+        )
         assertEquals(7, PlaceholderErrorPage(exception, page = 7, data = items, placeholders = skeletons).page)
     }
 }

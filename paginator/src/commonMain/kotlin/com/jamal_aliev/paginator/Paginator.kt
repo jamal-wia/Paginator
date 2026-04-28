@@ -11,7 +11,6 @@ import com.jamal_aliev.paginator.exception.LockedException.JumpWasLockedExceptio
 import com.jamal_aliev.paginator.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.exception.LockedException.RestartWasLockedException
 import com.jamal_aliev.paginator.extension.isProgressState
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -168,7 +167,6 @@ open class Paginator<T>(
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
      * @param initProgressState Factory for creating [ProgressPage] instances during loading.
      * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
-     * @param initEmptyState Factory for creating empty page instances when the source returns no data.
      * @param initErrorState Factory for creating error page instances when the source throws.
      * @return A [Pair] of the [BookmarkInt] and resulting [PageState], or `null` if no bookmark is available.
      * @throws JumpWasLockedException If [lockJump] is `true`.
@@ -185,7 +183,6 @@ open class Paginator<T>(
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Pair<BookmarkInt, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
@@ -243,7 +240,6 @@ open class Paginator<T>(
                 loadGuard = loadGuard,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
@@ -270,7 +266,6 @@ open class Paginator<T>(
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Pair<BookmarkInt, PageState<T>>? {
@@ -330,7 +325,6 @@ open class Paginator<T>(
                 loadGuard = loadGuard,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
@@ -391,7 +385,6 @@ open class Paginator<T>(
      *   is thrown immediately. Defaults to [Paginator.lockJump].
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
      * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initEmptyState Factory for creating empty page instances.
      * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
      * @return A [Pair] of the [BookmarkInt] and the resulting [PageState].
@@ -409,7 +402,6 @@ open class Paginator<T>(
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Pair<BookmarkInt, PageState<T>> = coroutineScope {
@@ -482,7 +474,6 @@ open class Paginator<T>(
                         core.snapshot()
                     }
                 },
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
             )
@@ -540,7 +531,6 @@ open class Paginator<T>(
      * @param lockGoNextPage If `true`, throws [GoNextPageWasLockedException].
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
      * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initEmptyState Factory for creating empty page instances.
      * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
      * @return The resulting [PageState] of the loaded page.
@@ -556,7 +546,6 @@ open class Paginator<T>(
         lockGoNextPage: Boolean = this.lockGoNextPage,
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): PageState<T> = coroutineScope {
@@ -571,7 +560,6 @@ open class Paginator<T>(
                 finalPage = finalPage,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             ).second
@@ -653,7 +641,6 @@ open class Paginator<T>(
                         core.snapshot()
                     }
                 },
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
             ).also { resultState ->
@@ -708,7 +695,6 @@ open class Paginator<T>(
      * @param loadGuard A guard callback invoked before the page is loaded.
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
      * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initEmptyState Factory for creating empty page instances.
      * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
      * @return The resulting [PageState] of the loaded page.
@@ -722,7 +708,6 @@ open class Paginator<T>(
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): PageState<T> = coroutineScope {
@@ -802,7 +787,6 @@ open class Paginator<T>(
                         core.snapshot()
                     }
                 },
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
             ).also { resultState: PageState<T> ->
@@ -858,7 +842,6 @@ open class Paginator<T>(
      * @param loadGuard A guard callback invoked before page 1 is reloaded.
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
      * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initEmptyState Factory for creating empty page instances.
      * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
      * @throws RestartWasLockedException If [lockRestart] is `true`.
@@ -870,7 +853,6 @@ open class Paginator<T>(
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Unit = coroutineScope {
@@ -927,7 +909,6 @@ open class Paginator<T>(
                         core.snapshot(1..1)
                     }
                 },
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
             ).also { resultPageState ->
@@ -980,7 +961,6 @@ open class Paginator<T>(
      * @param loadGuard A guard callback invoked for each page before loading.
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
      * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initEmptyState Factory for creating empty page instances.
      * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
      * @throws RefreshWasLockedException If [lockRefresh] is `true`.
@@ -993,7 +973,6 @@ open class Paginator<T>(
         loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): Unit = coroutineScope {
@@ -1043,7 +1022,6 @@ open class Paginator<T>(
                     loadOrGetPageState(
                         page = page,
                         forceLoading = true,
-                        initEmptyState = initEmptyState,
                         initSuccessState = initSuccessState,
                         initErrorState = initErrorState
                     )
@@ -1114,7 +1092,6 @@ open class Paginator<T>(
      * @param forceLoading If `true`, always reloads from [load] even if a valid cached state exists.
      * @param loading A callback invoked just before loading starts.
      * @param load The data source suspend function. Defaults to [Paginator.load].
-     * @param initEmptyState Factory for empty page instances.
      * @param initSuccessState Factory for success page instances.
      * @param initErrorState Factory for error page instances.
      * @return The resulting [PageState] after loading or from cache.
@@ -1124,7 +1101,6 @@ open class Paginator<T>(
         forceLoading: Boolean = false,
         loading: ((page: Int, pageState: PageState<T>?) -> Unit) = { _, _ -> },
         noinline load: suspend Paginator<T>.(page: Int) -> LoadResult<T> = this.load,
-        noinline initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         noinline initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         noinline initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
     ): PageState<T> {
@@ -1145,21 +1121,12 @@ open class Paginator<T>(
                 if (core.isCapacityUnlimited) it
                 else it.take(core.capacity)
             }.toMutableList()
-            if (data.isEmpty()) {
-                logger.debug(LogComponent.NAVIGATION) {
-                    "loadOrGetPageState: page=$page data.isEmpty()"
-                }
-                core.coerceToCapacity(
-                    state = initEmptyState.invoke(page, data, loadResult.metadata)
-                )
-            } else {
-                logger.debug(LogComponent.NAVIGATION) {
-                    "loadOrGetPageState: page=$page data.isNotEmpty()"
-                }
-                core.coerceToCapacity(
-                    state = initSuccessState.invoke(page, data, loadResult.metadata)
-                )
+            logger.debug(LogComponent.NAVIGATION) {
+                "loadOrGetPageState: page=$page data.size=${data.size}"
             }
+            core.coerceToCapacity(
+                state = initSuccessState.invoke(page, data, loadResult.metadata)
+            )
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: Exception) {
@@ -1177,7 +1144,7 @@ open class Paginator<T>(
 
     /**
      * Saves [state] to the [persistent cache][PagingCore.persistentCache] if it is
-     * a [SuccessPage] (including [PageState.EmptyPage]).
+     * a [SuccessPage] (including pages that came back empty).
      *
      * Error and progress pages are **not** persisted because they represent
      * transient states that should be re-fetched from the source.

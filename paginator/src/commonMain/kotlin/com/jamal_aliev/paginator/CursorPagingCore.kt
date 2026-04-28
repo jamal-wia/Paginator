@@ -8,20 +8,17 @@ import com.jamal_aliev.paginator.cache.DefaultCursorPagingCache
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.load.Metadata
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.serialization.CursorPageEntry
 import com.jamal_aliev.paginator.serialization.CursorPagingCoreSnapshot
-import com.jamal_aliev.paginator.serialization.PageEntryType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -439,13 +436,7 @@ open class CursorPagingCore<T>(
 
     var initializerSuccessPage: InitializerSuccessPage<T> =
         fun(page: Int, data: List<T>, metadata: Metadata?): SuccessPage<T> {
-            return if (data.isEmpty()) initializerEmptyPage.invoke(page, data, metadata)
-            else SuccessPage(page = page, data = data, metadata = metadata)
-        }
-
-    var initializerEmptyPage: InitializerEmptyPage<T> =
-        fun(page: Int, data: List<T>, metadata: Metadata?): EmptyPage<T> {
-            return EmptyPage(page = page, data = data, metadata = metadata)
+            return SuccessPage(page = page, data = data, metadata = metadata)
         }
 
     var initializerErrorPage: InitializerErrorPage<T> =
@@ -495,7 +486,6 @@ open class CursorPagingCore<T>(
             val wasDirty = isDirty(cursor.self)
                     || state.isErrorState()
                     || state.isProgressState()
-            val type = if (state.data.isEmpty()) PageEntryType.EMPTY else PageEntryType.SUCCESS
             val errorMessage: String? =
                 if (state.isErrorState()) state.exception.message else null
 
@@ -503,7 +493,6 @@ open class CursorPagingCore<T>(
                 selfKey = selfEncoder.invoke(cursor.self),
                 prevKey = cursor.prev?.let(selfEncoder),
                 nextKey = cursor.next?.let(selfEncoder),
-                type = type,
                 data = state.data,
                 wasDirty = wasDirty,
                 errorMessage = errorMessage,
@@ -538,14 +527,11 @@ open class CursorPagingCore<T>(
             // a unique sequential value so the factories do not collide on it.
             val syntheticPage: Int =
                 (PageState.nextId() and Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
-            val pageState: PageState<T> = when (entry.type) {
-                PageEntryType.EMPTY -> initializerEmptyPage(syntheticPage, entry.data, metadata)
-                PageEntryType.SUCCESS -> initializerSuccessPage(
-                    syntheticPage,
-                    entry.data.toMutableList(),
-                    metadata,
-                )
-            }
+            val pageState: PageState<T> = initializerSuccessPage(
+                syntheticPage,
+                entry.data.toMutableList(),
+                metadata,
+            )
             val bookmark = CursorBookmark(prev = prevKey, self = selfKey, next = nextKey)
             cache.setState(bookmark, pageState, silently = true)
             if (entry.wasDirty) _dirtyCursors.add(selfKey)

@@ -123,7 +123,6 @@ private fun <T, I> PageState<T>.wrapData(
         WovenEntry.Data(value = item, wovenKey = weaver.itemKey(item))
     }
     return when (this) {
-        is PageState.EmptyPage -> PageState.EmptyPage(page, wrapped, metadata, id)
         is PageState.SuccessPage -> PageState.SuccessPage(page, wrapped, metadata, id)
         is PageState.ProgressPage -> PageState.ProgressPage(page, wrapped, metadata, id)
         is PageState.ErrorPage -> PageState.ErrorPage(exception, page, wrapped, metadata, id)

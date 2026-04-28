@@ -1,7 +1,6 @@
 package com.jamal_aliev.paginator.page
 
 import com.jamal_aliev.paginator.Paginator
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
@@ -51,7 +50,7 @@ sealed interface PaginatorUiState<out T> {
     data class Loading(val page: Int) : PaginatorUiState<Nothing>
 
     /**
-     * A single [EmptyPage] with empty data is visible.
+     * A single [SuccessPage] with empty data is visible.
      *
      * Indicates the load finished successfully but returned no data,
      * so a "no results" UI should be shown.
@@ -96,8 +95,8 @@ sealed interface PaginatorUiState<out T> {
      * and bottom of the snapshot are therefore represented twice: their carried
      * items flow into [items], and the state object itself is exposed via
      * [prependState] / [appendState] so the UI can render a "refreshing" or
-     * "retry" indicator alongside the items. An [EmptyPage] normally carries
-     * empty `data` and therefore contributes nothing to [items].
+     * "retry" indicator alongside the items. A [SuccessPage] with empty data
+     * contributes nothing to [items].
      *
      * @property items Flattened data from every visible page, in snapshot order.
      * @property prependState The non-success state at the top of the visible

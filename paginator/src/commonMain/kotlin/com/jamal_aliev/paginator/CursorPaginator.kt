@@ -11,7 +11,6 @@ import com.jamal_aliev.paginator.exception.LockedException.JumpWasLockedExceptio
 import com.jamal_aliev.paginator.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.exception.LockedException.RestartWasLockedException
 import com.jamal_aliev.paginator.extension.isProgressState
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -126,7 +125,6 @@ open class CursorPaginator<T>(
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     ): Pair<CursorBookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
@@ -166,7 +164,6 @@ open class CursorPaginator<T>(
                 loadGuard = loadGuard,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
@@ -190,7 +187,6 @@ open class CursorPaginator<T>(
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     ): Pair<CursorBookmark, PageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
@@ -230,7 +226,6 @@ open class CursorPaginator<T>(
                 loadGuard = loadGuard,
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
@@ -262,7 +257,6 @@ open class CursorPaginator<T>(
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     ): Pair<CursorBookmark, PageState<T>> = coroutineScope {
@@ -326,7 +320,6 @@ open class CursorPaginator<T>(
                     if (enableCacheFlow) core.repeatCacheFlow()
                     if (!silentlyLoading) core.snapshot()
                 },
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
@@ -381,7 +374,6 @@ open class CursorPaginator<T>(
         lockGoNextPage: Boolean = this.lockGoNextPage,
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     ): PageState<T> = coroutineScope {
@@ -397,7 +389,6 @@ open class CursorPaginator<T>(
                 loadGuard = { _, _ -> true },
                 enableCacheFlow = enableCacheFlow,
                 initProgressState = initProgressState,
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
@@ -480,7 +471,6 @@ open class CursorPaginator<T>(
                     if (enableCacheFlow) core.repeatCacheFlow()
                     if (!silentlyLoading) core.snapshot()
                 },
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
@@ -537,7 +527,6 @@ open class CursorPaginator<T>(
         loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     ): PageState<T> = coroutineScope {
@@ -624,7 +613,6 @@ open class CursorPaginator<T>(
                     if (enableCacheFlow) core.repeatCacheFlow()
                     if (!silentlyLoading) core.snapshot()
                 },
-                initEmptyState = initEmptyState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
             )
@@ -680,7 +668,6 @@ open class CursorPaginator<T>(
         loadGuard: (cursor: CursorBookmark?, state: PageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     ): Unit = coroutineScope {
@@ -692,7 +679,6 @@ open class CursorPaginator<T>(
             loadGuard = { cursor, state -> loadGuard.invoke(cursor, state) },
             enableCacheFlow = enableCacheFlow,
             initProgressState = initProgressState,
-            initEmptyState = initEmptyState,
             initSuccessState = initSuccessState,
             initErrorState = initErrorState,
         )
@@ -709,7 +695,6 @@ open class CursorPaginator<T>(
         loadGuard: (cursor: CursorBookmark?, state: PageState<T>?) -> Boolean,
         enableCacheFlow: Boolean,
         initProgressState: InitializerProgressPage<T>,
-        initEmptyState: InitializerEmptyPage<T>,
         initSuccessState: InitializerSuccessPage<T>,
         initErrorState: InitializerErrorPage<T>,
     ): PageState<T> = coroutineScope {
@@ -772,23 +757,13 @@ open class CursorPaginator<T>(
 
             val resultCursor: CursorBookmark = loadResult.bookmark
             val data: List<T> = core.coerceToCapacity(loadResult.data)
-            val resultState: PageState<T> = if (data.isEmpty()) {
-                core.coerceToCapacity(
-                    initEmptyState.invoke(
-                        syntheticPage(),
-                        data,
-                        loadResult.metadata
-                    )
+            val resultState: PageState<T> = core.coerceToCapacity(
+                initSuccessState.invoke(
+                    syntheticPage(),
+                    data.toMutableList(),
+                    loadResult.metadata
                 )
-            } else {
-                core.coerceToCapacity(
-                    initSuccessState.invoke(
-                        syntheticPage(),
-                        data.toMutableList(),
-                        loadResult.metadata
-                    )
-                )
-            }
+            )
 
             shouldCleanup = false
             // Replace the sentinel progress entry with the real one.
@@ -832,7 +807,6 @@ open class CursorPaginator<T>(
         loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     ): Unit = coroutineScope {
@@ -879,7 +853,6 @@ open class CursorPaginator<T>(
                         hint = candidate,
                         cachedCursor = savedStates[candidate.self]?.first ?: candidate,
                         forceLoading = true,
-                        initEmptyState = initEmptyState,
                         initSuccessState = initSuccessState,
                         initErrorState = initErrorState,
                     )
@@ -939,7 +912,6 @@ open class CursorPaginator<T>(
         forceLoading: Boolean = false,
         loading: ((cursor: CursorBookmark, state: PageState<T>?) -> Unit) = { _, _ -> },
         noinline load: suspend CursorPaginator<T>.(cursor: CursorBookmark?) -> CursorLoadResult<T> = this.load,
-        noinline initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
         noinline initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         noinline initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     ): Pair<CursorBookmark, PageState<T>> {
@@ -957,23 +929,13 @@ open class CursorPaginator<T>(
                 if (core.isCapacityUnlimited) it else it.take(core.capacity)
             }.toMutableList()
             val resultCursor = loadResult.bookmark
-            val resultState: PageState<T> = if (data.isEmpty()) {
-                core.coerceToCapacity(
-                    initEmptyState.invoke(
-                        syntheticPage(),
-                        data,
-                        loadResult.metadata
-                    )
+            val resultState: PageState<T> = core.coerceToCapacity(
+                initSuccessState.invoke(
+                    syntheticPage(),
+                    data,
+                    loadResult.metadata
                 )
-            } else {
-                core.coerceToCapacity(
-                    initSuccessState.invoke(
-                        syntheticPage(),
-                        data,
-                        loadResult.metadata
-                    )
-                )
-            }
+            )
             resultCursor to resultState
         } catch (exception: CancellationException) {
             throw exception

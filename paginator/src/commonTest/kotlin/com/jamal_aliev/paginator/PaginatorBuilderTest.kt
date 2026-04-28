@@ -9,8 +9,8 @@ import com.jamal_aliev.paginator.extension.plus
 import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.logger.PaginatorLogger
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
+import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -174,21 +174,24 @@ class PaginatorBuilderTest {
     // =========================================================================
 
     @Test
-    fun `initializers DSL overrides the empty factory`() = runTest {
-        var emptyCalls = 0
+    fun `initializers DSL success factory is used for empty results`() = runTest {
+        var successCalls = 0
         val p = paginator<String>(capacity = 2) {
             load { LoadResult(emptyList()) } // always empty
             initializers {
-                empty { page, data, meta ->
-                    emptyCalls++
-                    EmptyPage(page = page, data = data, metadata = meta)
+                success { page, data, meta ->
+                    successCalls++
+                    SuccessPage(page = page, data = data, metadata = meta)
                 }
             }
         }
         runCatching {
             p.goNextPage(silentlyLoading = true, silentlyResult = true)
         }
-        assertTrue(emptyCalls > 0, "custom empty initializer should run, got $emptyCalls call(s)")
+        assertTrue(
+            successCalls > 0,
+            "custom success initializer should run, got $successCalls call(s)"
+        )
     }
 
     @Test
@@ -214,14 +217,14 @@ class PaginatorBuilderTest {
         val p = paginator<String> {
             load { LoadResult(emptyList()) }
             initializers {
-                empty { page, data, meta -> EmptyPage(page, data, meta) }
+                success { page, data, meta -> SuccessPage(page, data, meta) }
             }
             initializers {
                 error { e, page, data, meta -> ErrorPage(e, page, data, meta) }
             }
         }
         // No assertion needed beyond "did not throw"; but make sure the wiring exists.
-        assertNotNull(p.core.initializerEmptyPage)
+        assertNotNull(p.core.initializerSuccessPage)
         assertNotNull(p.core.initializerErrorPage)
     }
 

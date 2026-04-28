@@ -2,7 +2,6 @@ package com.jamal_aliev.paginator.cursor
 
 import com.jamal_aliev.paginator.CursorPagingCore
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
@@ -112,13 +111,13 @@ class CursorPagingCoreTest {
 
     @Test
     fun snapshot_extends_by_one_boundary_page_on_each_side() = runTest {
-        // p0 = EmptyPage boundary, p1..p3 filled, p4 = ProgressPage boundary.
+        // p0 = empty SuccessPage boundary, p1..p3 filled, p4 = ProgressPage boundary.
         val core = CursorPagingCore<String>(initialCapacity = 3)
         val p0 = bookmarkAt(0, 5)
         val p4 = bookmarkAt(4, 5)
         core.cache.setState(
             p0,
-            com.jamal_aliev.paginator.page.PageState.EmptyPage<String>(1, emptyList()),
+            com.jamal_aliev.paginator.page.PageState.SuccessPage<String>(1, emptyList()),
             silently = true,
         )
         (1..3).forEach {
@@ -231,7 +230,7 @@ class CursorPagingCoreTest {
     fun isFilledSuccessState_rejects_non_success_states() {
         val core = CursorPagingCore<String>(initialCapacity = 3)
         assertTrue(core.isFilledSuccessState(full(1, 3)))
-        assertTrue(!core.isFilledSuccessState(EmptyPage<String>(page = 1, data = emptyList())))
+        assertTrue(!core.isFilledSuccessState(SuccessPage<String>(page = 1, data = emptyList())))
         assertTrue(
             !core.isFilledSuccessState(
                 ProgressPage<String>(page = 1, data = mutableListOf("x"))

@@ -86,7 +86,6 @@ class PagingCoreSerializationTest {
         // Verify snapshot entry
         val entry = snapshot.entries.first { it.page == 2 }
         assertTrue(entry.wasDirty)
-        assertEquals(PageEntryType.SUCCESS, entry.type)
         assertEquals(cachedData, entry.data)
 
         // Restore
@@ -125,19 +124,18 @@ class PagingCoreSerializationTest {
     }
 
     @Test
-    fun `EmptyPage preserved`() = runTest {
+    fun `empty SuccessPage preserved`() = runTest {
         val paginator = createTestPaginator()
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
         paginator.cache.setState(
-            PageState.EmptyPage<TestItem>(page = 2, data = emptyList()),
+            PageState.SuccessPage<TestItem>(page = 2, data = emptyList()),
             silently = true,
         )
 
         val snapshot = paginator.core.saveState()
 
         val entry = snapshot.entries.first { it.page == 2 }
-        assertEquals(PageEntryType.EMPTY, entry.type)
         assertTrue(entry.data.isEmpty())
 
         val restored = PagingCore<TestItem>()
@@ -415,8 +413,8 @@ class PagingCoreSerializationTest {
         val core = PagingCore<TestItem>()
         val snapshot = PagingCoreSnapshot<TestItem>(
             entries = listOf(
-                PageEntry(page = 1, type = PageEntryType.SUCCESS, data = listOf(TestItem("a", 1)), wasDirty = false),
-                PageEntry(page = 1, type = PageEntryType.SUCCESS, data = listOf(TestItem("b", 2)), wasDirty = false),
+                PageEntry(page = 1, data = listOf(TestItem("a", 1)), wasDirty = false),
+                PageEntry(page = 1, data = listOf(TestItem("b", 2)), wasDirty = false),
             ),
             startContextPage = 1,
             endContextPage = 1,
@@ -432,7 +430,7 @@ class PagingCoreSerializationTest {
         val core = PagingCore<TestItem>()
         val snapshot = PagingCoreSnapshot<TestItem>(
             entries = listOf(
-                PageEntry(page = 0, type = PageEntryType.SUCCESS, data = listOf(TestItem("a", 1)), wasDirty = false),
+                PageEntry(page = 0, data = listOf(TestItem("a", 1)), wasDirty = false),
             ),
             startContextPage = 0,
             endContextPage = 0,

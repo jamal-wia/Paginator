@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.BookmarkInt
+import com.jamal_aliev.paginator.extension.isEmptyState
 import com.jamal_aliev.paginator.load.LoadResult
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
@@ -396,7 +396,7 @@ class PlaceholderPageStateIntegrationTest {
     }
 
     @Test
-    fun `empty source after PlaceholderProgressPage results in EmptyPage`() = runTest {
+    fun `empty source after PlaceholderProgressPage results in empty SuccessPage`() = runTest {
         var progressCreated = false
         val paginator = MutablePaginator<String> { _ -> LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
@@ -411,7 +411,7 @@ class PlaceholderPageStateIntegrationTest {
             silentlyResult = true
         )
         assertTrue(progressCreated)
-        assertIs<EmptyPage<String>>(result)
+        assertTrue(result.isEmptyState())
     }
 
     // ══════════════════════════════════════════════════════════════════════

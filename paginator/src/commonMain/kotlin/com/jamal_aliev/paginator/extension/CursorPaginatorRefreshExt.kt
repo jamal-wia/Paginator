@@ -4,7 +4,6 @@ import com.jamal_aliev.paginator.CursorPaginator
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.exception.CursorLoadGuardedException
 import com.jamal_aliev.paginator.exception.LockedException.RefreshWasLockedException
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -23,7 +22,6 @@ suspend fun <T> CursorPaginator<T>.refreshAll(
     loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
     enableCacheFlow: Boolean = this.core.enableCacheFlow,
     initProgressState: InitializerProgressPage<T> = this.core.initializerProgressPage,
-    initEmptyState: InitializerEmptyPage<T> = this.core.initializerEmptyPage,
     initSuccessState: InitializerSuccessPage<T> = this.core.initializerSuccessPage,
     initErrorState: InitializerErrorPage<T> = this.core.initializerErrorPage,
 ) {
@@ -35,7 +33,6 @@ suspend fun <T> CursorPaginator<T>.refreshAll(
         loadGuard = loadGuard,
         enableCacheFlow = enableCacheFlow,
         initProgressState = initProgressState,
-        initEmptyState = initEmptyState,
         initSuccessState = initSuccessState,
         initErrorState = initErrorState,
     )

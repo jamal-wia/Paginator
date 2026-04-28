@@ -2,7 +2,6 @@ package com.jamal_aliev.paginator.extension
 
 import com.jamal_aliev.paginator.Paginator
 import com.jamal_aliev.paginator.page.PageState
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
@@ -17,14 +16,14 @@ import kotlinx.coroutines.flow.map
  * 1. If [isStarted] is `false` or the list is empty → [PaginatorUiState.Idle].
  * 2. If the list has exactly one element:
  *    - [ProgressPage] with empty data → [PaginatorUiState.Loading].
- *    - [EmptyPage] with empty data → [PaginatorUiState.Empty].
+ *    - [SuccessPage] with empty data → [PaginatorUiState.Empty].
  *    - [ErrorPage] with empty data → [PaginatorUiState.Error].
  *    - Otherwise falls through to [PaginatorUiState.Content] (see below).
  * 3. Everything else → [PaginatorUiState.Content], where:
  *    - [PaginatorUiState.Content.prependState] is the first element when it is
- *      not a [SuccessPage], otherwise `null`.
+ *      not a [SuccessPage] carrying items, otherwise `null`.
  *    - [PaginatorUiState.Content.appendState] is the last element when it is
- *      not a [SuccessPage], otherwise `null`.
+ *      not a [SuccessPage] carrying items, otherwise `null`.
  *    - [PaginatorUiState.Content.items] flattens the `data` of every state in
  *      the list. This covers data carried into [ProgressPage] / [ErrorPage] by
  *      the paginator when a position is reloaded: the `loading` callback in
@@ -36,16 +35,8 @@ import kotlinx.coroutines.flow.map
  *      [SuccessPage] at the end of the context window, the paginator reloads
  *      that position, and during the in-flight load (and on failure) the
  *      previously loaded items stay visible through
- *      [PaginatorUiState.Content.items]. An [EmptyPage] normally carries empty
- *      `data` and therefore contributes nothing on its own.
- *
- * The single-element branches for [PaginatorUiState.Loading],
- * [PaginatorUiState.Empty] and [PaginatorUiState.Error] explicitly check
- * `data.isEmpty()` so that a state whose `data` happens to be non-empty (for
- * example during a reload, or an [EmptyPage] whose `data` bypasses the
- * [PageState.SuccessPage] `checkData` invariant) falls through to
- * [PaginatorUiState.Content] instead of hiding already-visible items behind a
- * full-screen indicator.
+ *      [PaginatorUiState.Content.items]. A [SuccessPage] with empty data
+ *      contributes nothing on its own.
  *
  * @param isStarted Whether the paginator is currently started. Pass
  *   `paginator.core.isStarted` when mapping from a paginator's snapshot.
@@ -60,7 +51,7 @@ fun <T> List<PageState<T>>.toUiState(isStarted: Boolean): PaginatorUiState<T> {
             only.isProgressState() && only.data.isEmpty() ->
                 return PaginatorUiState.Loading(page = only.page)
 
-            only.isEmptyState() && only.data.isEmpty() ->
+            only.isEmptyState() ->
                 return PaginatorUiState.Empty(page = only.page)
 
             only.isErrorState() && only.data.isEmpty() ->

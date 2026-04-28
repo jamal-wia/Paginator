@@ -62,28 +62,8 @@ sealed class PageState<E>(
         override val id: Long = ids.incrementAndGet()
     ) : PageState<T>(page, data, metadata, id) {
 
-        init {
-            checkData()
-        }
-
-        @Suppress("NOTHING_TO_INLINE")
-        private inline fun checkData() {
-            if (this !is EmptyPage) require(data.isNotEmpty()) { "data must not be empty" }
-        }
-
         override fun copy(page: Int, data: List<T>, metadata: Metadata?, id: Long): SuccessPage<T> =
-            if (data.isEmpty()) EmptyPage(page, data, metadata, id)
-            else SuccessPage(page, data, metadata, id)
-    }
-
-    open class EmptyPage<T>(
-        override val page: Int,
-        override val data: List<T>,
-        override val metadata: Metadata? = null,
-        override val id: Long = ids.incrementAndGet()
-    ) : SuccessPage<T>(page, data, metadata, id) {
-        override fun copy(page: Int, data: List<T>, metadata: Metadata?, id: Long) =
-            EmptyPage(page, data, metadata, id)
+            SuccessPage(page, data, metadata, id)
     }
 
     companion object {

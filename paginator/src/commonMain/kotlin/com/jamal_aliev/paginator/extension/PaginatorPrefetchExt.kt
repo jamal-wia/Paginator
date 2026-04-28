@@ -1,7 +1,6 @@
 package com.jamal_aliev.paginator.extension
 
 import com.jamal_aliev.paginator.Paginator
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -27,7 +26,6 @@ import kotlinx.coroutines.CoroutineScope
  * @param enableCacheFlow Forwarded to navigation functions.
  * @param initProgressState Factory for [PageState.ProgressPage].
  * @param initSuccessState Factory for [PageState.SuccessPage].
- * @param initEmptyState Factory for [PageState.EmptyPage].
  * @param initErrorState Factory for [PageState.ErrorPage].
  * @param onPrefetchError Optional callback invoked when a prefetch fails.
  * @return A new [PaginatorPrefetchController] ready to receive [PaginatorPrefetchController.onScroll] calls.
@@ -42,7 +40,6 @@ fun <T> Paginator<T>.prefetchController(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
     initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-    initEmptyState: InitializerEmptyPage<T> = core.initializerEmptyPage,
     initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
     onPrefetchError: ((Exception) -> Unit)? = null,
 ): PaginatorPrefetchController<T> {
@@ -57,7 +54,6 @@ fun <T> Paginator<T>.prefetchController(
         enableCacheFlow = enableCacheFlow,
         initProgressState = initProgressState,
         initSuccessState = initSuccessState,
-        initEmptyState = initEmptyState,
         initErrorState = initErrorState,
         onPrefetchError = onPrefetchError,
     )

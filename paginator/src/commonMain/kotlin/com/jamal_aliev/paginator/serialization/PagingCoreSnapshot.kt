@@ -4,26 +4,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 /**
- * The type of a page state entry for serialization purposes.
- *
- * During save, [com.jamal_aliev.paginator.page.PageState.ErrorPage] and
- * [com.jamal_aliev.paginator.page.PageState.ProgressPage] are converted to either
- * [SUCCESS] or [EMPTY] (preserving their cached data). On restore,
- * those pages are marked dirty so they get re-fetched.
- */
-@Serializable
-enum class PageEntryType {
-    SUCCESS,
-    EMPTY
-}
-
-/**
  * A serializable representation of a single page's state.
  *
  * @param T The element type. Must be `@Serializable`.
  * @param page The page number (>= 1).
- * @param type Whether this is a success page with data or an empty page.
- * @param data The items on this page. For [PageEntryType.EMPTY] pages this is an empty list.
+ * @param data The items on this page; an empty list represents an "empty" page.
  * @param wasDirty `true` if this page was already dirty before saving,
  *   or if it was an ErrorPage/ProgressPage that was converted during save.
  * @param errorMessage The exception message from an [com.jamal_aliev.paginator.page.PageState.ErrorPage],
@@ -34,7 +19,6 @@ enum class PageEntryType {
 @Serializable
 data class PageEntry<T>(
     val page: Int,
-    val type: PageEntryType,
     val data: List<T>,
     val wasDirty: Boolean,
     val errorMessage: String? = null,

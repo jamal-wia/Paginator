@@ -2,7 +2,6 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.extension.prefetchController
 import com.jamal_aliev.paginator.load.LoadResult
-import com.jamal_aliev.paginator.page.PageState.EmptyPage
 import com.jamal_aliev.paginator.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.page.PageState.SuccessPage
@@ -186,11 +185,7 @@ class CoerceToCapacityTest {
     }
 
     @Test
-    fun `state - SuccessPage becomes EmptyPage when capacity trims all data`() {
-        // capacity=0 means unlimited, so we test with capacity=1 and empty outcome differently
-        // SuccessPage.copy returns EmptyPage when data becomes empty after trim
-        // This can't happen with take(n) where n>=1, so test the boundary:
-        // capacity=1 with 1 item stays SuccessPage
+    fun `state - SuccessPage trimmed at capacity boundary stays SuccessPage`() {
         val p1 = paginator(1)
         val state = SuccessPage(page = 1, data = listOf("a"))
         val result = p1.core.coerceToCapacity(state)
@@ -198,22 +193,14 @@ class CoerceToCapacityTest {
         assertEquals(listOf("a"), result.data)
     }
 
-    // ── EmptyPage ────────────────────────────────────────────────────────
+    // ── empty SuccessPage ────────────────────────────────────────────────
 
     @Test
-    fun `state - EmptyPage returned as-is`() {
+    fun `state - empty SuccessPage returned as-is`() {
         val p = paginator(3)
-        val state = EmptyPage<String>(page = 1, data = emptyList())
+        val state = SuccessPage<String>(page = 1, data = emptyList())
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
-    }
-
-    @Test
-    fun `state - EmptyPage with data exceeding capacity is trimmed`() {
-        val p = paginator(2)
-        val state = EmptyPage(page = 1, data = listOf("a", "b", "c"))
-        val result = p.core.coerceToCapacity(state)
-        assertEquals(2, result.data.size)
     }
 
     // ── ProgressPage ─────────────────────────────────────────────────────

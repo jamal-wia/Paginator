@@ -8,9 +8,9 @@ import com.jamal_aliev.paginator.page.PageState.SuccessPage
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
 
@@ -33,12 +33,12 @@ class SuccessPageStateTest {
         assertEquals(samplePageNumber, successPageState.page)
         assertEquals(sampleListOfData, successPageState.data)
 
-        assertFailsWith<Exception> {
+        assertNotNull(
             SuccessPage<String>(
                 page = 1,
                 data = emptyList()
             )
-        }
+        )
     }
 
     @Test

@@ -8,7 +8,6 @@ import com.jamal_aliev.paginator.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.cache.DefaultPagingCache
 import com.jamal_aliev.paginator.cache.PagingCache
 import com.jamal_aliev.paginator.cache.PersistentPagingCache
-import com.jamal_aliev.paginator.initializer.InitializerEmptyPage
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -75,7 +74,7 @@ inline fun <T> paginator(
  *     logger = PrintPaginatorLogger()
  *
  *     initializers {
- *         empty { page, _, _ -> MyEmptyPage(page) }
+ *         success { page, data, _ -> MySuccessPage(page, data) }
  *         error { e, page, data, _ -> MyErrorPage(e, page, data) }
  *     }
  * }
@@ -180,12 +179,12 @@ sealed class BasePaginatorBuilder<T> protected constructor(
     }
 
     /**
-     * Configures the four [PageState][com.jamal_aliev.paginator.page.PageState]
+     * Configures the [PageState][com.jamal_aliev.paginator.page.PageState]
      * factories used by the paginator. Any factory left unset retains its default.
      *
      * ```kotlin
      * initializers {
-     *     empty { page, data, meta -> MyEmptyPage(page, data, meta) }
+     *     success { page, data, meta -> MySuccessPage(page, data, meta) }
      *     error { e, page, data, meta -> MyErrorPage(e, page, data, meta) }
      * }
      * ```
@@ -280,7 +279,6 @@ class InitializersBuilder<T> @PublishedApi internal constructor() {
 
     private var progress: InitializerProgressPage<T>? = null
     private var success: InitializerSuccessPage<T>? = null
-    private var empty: InitializerEmptyPage<T>? = null
     private var error: InitializerErrorPage<T>? = null
 
     /** Override the [PageState.ProgressPage][com.jamal_aliev.paginator.page.PageState.ProgressPage] factory. */
@@ -288,14 +286,15 @@ class InitializersBuilder<T> @PublishedApi internal constructor() {
         progress = factory
     }
 
-    /** Override the [PageState.SuccessPage][com.jamal_aliev.paginator.page.PageState.SuccessPage] factory. */
+    /**
+     * Override the [PageState.SuccessPage][com.jamal_aliev.paginator.page.PageState.SuccessPage] factory.
+     *
+     * The same factory is used regardless of whether the source returned data — an
+     * "empty" page is just a [PageState.SuccessPage][com.jamal_aliev.paginator.page.PageState.SuccessPage]
+     * with an empty `data` list.
+     */
     fun success(factory: InitializerSuccessPage<T>) {
         success = factory
-    }
-
-    /** Override the [PageState.EmptyPage][com.jamal_aliev.paginator.page.PageState.EmptyPage] factory. */
-    fun empty(factory: InitializerEmptyPage<T>) {
-        empty = factory
     }
 
     /** Override the [PageState.ErrorPage][com.jamal_aliev.paginator.page.PageState.ErrorPage] factory. */
@@ -306,7 +305,6 @@ class InitializersBuilder<T> @PublishedApi internal constructor() {
     internal fun applyTo(core: PagingCore<T>) {
         progress?.let { core.initializerProgressPage = it }
         success?.let { core.initializerSuccessPage = it }
-        empty?.let { core.initializerEmptyPage = it }
         error?.let { core.initializerErrorPage = it }
     }
 }
