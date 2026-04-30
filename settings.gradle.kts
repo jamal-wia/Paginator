@@ -24,3 +24,4 @@ rootProject.name = "Paginator"
 include(":app")
 include(":paginator")
 include(":paginator-compose")
+include(":paginator-view")

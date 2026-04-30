@@ -31,22 +31,24 @@ Make sure the following **GitHub Secrets** are configured in the repository
 
 ## Step 1 — Update the Version
 
-The library publishes **two artifacts** that are released together and must share the same
-version: `paginator` and `paginator-compose`. Update the `version` property in **both** module
-`build.gradle.kts` files:
+The library publishes **three artifacts** that are released together and must share the same
+version: `paginator`, `paginator-compose`, and `paginator-view`. Update the `version` property
+in **all three** module `build.gradle.kts` files:
 
 - `paginator/build.gradle.kts`
 - `paginator-compose/build.gradle.kts`
+- `paginator-view/build.gradle.kts`
 
 ```kotlin
-version = "8.5.0" // ← new version (must match in both modules)
+version = "8.5.0" // ← new version (must match in all three modules)
 ```
 
 ## Step 2 — Update README Installation Examples
 
 Update the version in all `implementation(...)` snippets in the README
-(sections **KMP**, **Android-only**, **JVM**, and **Compose Multiplatform UI bindings**) so that
-both `paginator` and `paginator-compose` coordinates point at the new version.
+(sections **KMP**, **Android-only**, **JVM**, **Compose Multiplatform UI bindings**, and
+**Android View bindings**) so that `paginator`, `paginator-compose`, and `paginator-view`
+coordinates all point at the new version.
 
 ## Step 3 — Commit and Push
 

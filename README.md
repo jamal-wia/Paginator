@@ -120,7 +120,7 @@ dependencies {
 ### Compose Multiplatform UI bindings (optional)
 
 If you use Jetpack Compose / Compose Multiplatform, the optional `paginator-compose`
-artifact provides one-line scroll-driven prefetch for `LazyColumn` / `LazyRow` /
+artifact provides scroll-driven prefetch for `LazyColumn` / `LazyRow` /
 `LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and their horizontal counterparts) —
 no manual `LaunchedEffect` / `snapshotFlow` plumbing required. UI structure stays
 fully under your control; the artifact only feeds scroll signals to the
@@ -133,19 +133,66 @@ dependencies {
 }
 ```
 
+The recommended entry point is `rememberPaginated` + the `paginated { }` DSL — zero
+manual numbers (`dataItemCount` is read from `paginator.uiState`, header / footer counts
+are tallied by the DSL):
+
 ```kotlin
 val listState = rememberLazyListState()
-val prefetch = paginator.rememberPrefetchController(prefetchDistance = 10)
+val paged = paginator.rememberPaginated(state = listState)
 
-prefetch.BindToLazyList(
-  listState = listState,
-  dataItemCount = uiState.items.size,   // data-only count, no headers/footers
-)
-
-LazyColumn(state = listState) { /* render however you want */ }
+LazyColumn(state = listState) {
+    paginated(paged) {
+        header { StickyTitle() }
+        items(uiState.items, key = { it.id }) { Row(it) }
+        appendIndicator { AppendIndicator(uiState.appendState) }
+    }
+}
 ```
 
-See [docs/7. prefetch.md](docs/7.%20prefetch.md#jetpack-compose-paginator-compose) for details.
+A one-call `PrefetchOnScroll(state, dataItemCount, …)` and a low-level
+`rememberPrefetchController` + `BindToLazyList` are also available if you want to keep
+counts explicit or hold a reference to the controller. See
+[docs/7. prefetch.md](docs/7.%20prefetch.md#jetpack-compose-paginator-compose) for the full
+guide — including `PrefetchOptions`, reactive error handling via `PrefetchErrorChannel`,
+and advanced knobs (`restartKey`, `scrollSampleMillis`).
+
+### Android View bindings (optional)
+
+If you build classic Android UI on top of `RecyclerView`, the optional `paginator-view`
+artifact removes the `OnScrollListener` plumbing entirely and offers three layers of
+integration: `bindPaginated` (auto-tracks `dataItemCount` from `paginator.uiState`),
+`bindPrefetchToRecyclerView` (one-call factory + bind), and the low-level
+`controller.bindToRecyclerView` for `ViewModel`-scoped controllers. All three support
+`LinearLayoutManager`, `GridLayoutManager`, and `StaggeredGridLayoutManager`, install both
+`OnScrollListener` and `OnLayoutChangeListener` (so partial first pages don't stall
+pagination), and clean up on `ON_DESTROY`.
+
+```kotlin
+dependencies {
+  implementation("io.github.jamal-wia:paginator:8.5.0")
+  implementation("io.github.jamal-wia:paginator-view:8.5.0")
+}
+```
+
+```kotlin
+binding.recyclerView.adapter = ConcatAdapter(headerAdapter, dataAdapter, appendIndicatorAdapter)
+binding.recyclerView.layoutManager = LinearLayoutManager(context)
+
+val paged = paginator.bindPaginated(
+    recyclerView = binding.recyclerView,
+    lifecycleOwner = viewLifecycleOwner,
+    headerCount = { headerAdapter.itemCount },
+    footerCount = { appendIndicatorAdapter.itemCount },
+)
+// `paged.controller` for hot-update mutation; `paged.recalibrate()` after refresh().
+```
+
+Reactive prefetch errors via `PrefetchErrorChannel` (StateFlow), runtime knobs through
+`PrefetchOptions` (shared with `paginator-compose`), and stable `PageLoadGuard` /
+`CursorLoadGuard` are also available.
+
+See [docs/7. prefetch.md](docs/7.%20prefetch.md#android-recyclerview-paginator-view) for details.
 
 ---
 
