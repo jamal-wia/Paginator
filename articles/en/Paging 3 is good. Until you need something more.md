@@ -13,7 +13,9 @@ process death. Jumping to a specific page via deeplink.
 
 On Android there's Jetpack Paging 3, and it's the default choice. But as soon as you go beyond "load
 the next 20 items on scroll down" — things get interesting. And if your project is Kotlin
-Multiplatform, Paging 3 isn't your option at all: it's an Android library, it doesn't run on iOS.
+Multiplatform, Paging 3 is a hard sell: upstream sources have KMP targets, but the published
+artifacts and the surrounding ecosystem (Room, RecyclerView, Compose adapters) are still
+Android-first, so on iOS you're effectively on your own.
 
 I'll talk about the open-source library [Paginator](https://github.com/jamal-wia/Paginator), which
 I've been building for the past several years. It works identically on Android, JVM, and iOS from a

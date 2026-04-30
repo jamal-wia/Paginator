@@ -58,20 +58,22 @@ Paginator can be seamlessly used across all layers of an application
 
 ## Why Paginator? (vs Jetpack Paging 3)
 
-Most Android developers reach for **Jetpack Paging 3**, but it is Android-only, ViewModel/UI-coupled
-and intentionally opinionated. Paginator was built for the cases Paging 3 doesn't cover well:
+Most Android developers reach for **Jetpack Paging 3**, which is Android-centric in practice
+(KMP targets exist in upstream sources, but the published artifacts and ecosystem — Room,
+RecyclerView, Compose adapters — are Android-first), ViewModel/UI-coupled and intentionally
+opinionated. Paginator was built for the cases Paging 3 doesn't cover well:
 
-| Capability                              | Jetpack Paging 3            | **Paginator**                       |
-|-----------------------------------------|-----------------------------|-------------------------------------|
-| Targets                                 | Android only                | **Android · iOS · JVM · Desktop**   |
-| Layer                                   | UI / ViewModel              | **Data / Domain / Presentation**    |
-| Bidirectional scroll (chat / messenger) | Limited                     | **First-class**                     |
-| Cursor pagination (GraphQL, chat)       | Manual                      | **Built-in `CursorPaginator`**      |
-| Jump to arbitrary page / bookmarks      | No                          | **Yes (`jump`, `BookmarkInt`, …)**  |
-| Element-level CRUD inside pages         | No (immutable `PagingData`) | **Yes (`MutablePaginator`)**        |
-| Page caching strategies (LRU/FIFO/TTL)  | No                          | **Pluggable**                       |
-| State serialization (process death)     | No                          | **`kotlinx.serialization`**         |
-| Dependencies                            | AndroidX                    | **Pure Kotlin, zero platform deps** |
+| Capability                              | Jetpack Paging 3                                   | **Paginator**                                    |
+|-----------------------------------------|----------------------------------------------------|--------------------------------------------------|
+| Targets (published artifacts)           | Android-first (KMP in sources, ecosystem AndroidX) | **Android · iOS · JVM · Desktop**                |
+| Layer                                   | UI / ViewModel                                     | **Data / Domain / Presentation**                 |
+| Bidirectional scroll (chat / messenger) | Limited                                            | **First-class**                                  |
+| Cursor pagination (GraphQL, chat)       | Manual                                             | **Built-in `CursorPaginator`**                   |
+| Jump to arbitrary page / bookmarks      | No                                                 | **Yes (`jump`, `BookmarkInt`, …)**               |
+| Element-level CRUD inside pages         | No (immutable `PagingData`)                        | **Yes (`MutablePaginator`)**                     |
+| Page caching strategies                 | Fixed window around viewport (`maxSize`)           | **Pluggable: LRU / FIFO / TTL / sliding window** |
+| State serialization (process death)     | Last `PagingData` only via `cachedIn`              | **Full cache via `kotlinx.serialization`**       |
+| Dependencies                            | AndroidX                                           | **Pure Kotlin, zero platform deps**              |
 
 See the side-by-side
 write-up: [Paging 3 is good. Until you need something more.](articles/en/Paging%203%20is%20good.%20Until%20you%20need%20something%20more.md)
