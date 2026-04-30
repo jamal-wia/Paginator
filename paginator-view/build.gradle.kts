@@ -128,4 +128,5 @@ dependencies {
     api(project(":paginator"))
     api("androidx.recyclerview:recyclerview:1.4.0")
     api("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 }
