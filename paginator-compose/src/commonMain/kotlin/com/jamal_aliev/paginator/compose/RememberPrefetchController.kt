@@ -13,14 +13,17 @@ import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.prefetch.CursorPaginatorPrefetchController
 import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
 
+/** Default [PaginatorPrefetchController.prefetchDistance] used by composable helpers. */
+const val DefaultPrefetchDistance: Int = 6
+
 /**
  * Remembers a [PaginatorPrefetchController] whose lifecycle is bound to the calling composable.
  *
  * The controller is created once per [Paginator] instance via [rememberCoroutineScope]; in-flight
- * prefetch jobs are cancelled when the composable leaves composition (`controller.cancel()` is
- * called in [DisposableEffect]'s `onDispose`). This is the right helper when prefetch should
- * live as long as the screen — for view-model-scoped controllers, build the controller inside
- * the view-model and call `BindToLazyList(...)` directly without this wrapper.
+ * prefetch jobs are canceled when the composable leaves composition (`controller.cancel()` is
+ * called in [DisposableEffect]'s `onDispose`) — unless [cancelOnDispose] is `false`. Disable when
+ * the screen is briefly covered by an overlay (modal sheet, dialog) and you want the prefetched
+ * page to land on return instead of being thrown away.
  *
  * Runtime-mutable properties ([prefetchDistance], [enableBackwardPrefetch], [silentlyLoading],
  * [silentlyResult], [enabled], [onPrefetchError]) are kept in sync with the latest composition
@@ -37,17 +40,20 @@ import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
  * @param silentlyLoading Suppress `ProgressPage` snapshot emission during prefetch loading.
  * @param silentlyResult Suppress snapshot emission when the prefetched page arrives.
  * @param enabled Master switch — `false` makes [PaginatorPrefetchController.onScroll] a no-op.
+ * @param cancelOnDispose If `true` (default), [PaginatorPrefetchController.cancel] runs on
+ *   `onDispose`. Set to `false` to keep in-flight prefetch alive across short composition gaps.
  * @param enableCacheFlow Forwarded to the underlying navigation calls (initial value only).
  * @param loadGuard Guard callback forwarded to navigation functions (initial value only).
  * @param onPrefetchError Optional callback invoked when a prefetch fails.
  */
 @Composable
 fun <T> Paginator<T>.rememberPrefetchController(
-    prefetchDistance: Int,
+    prefetchDistance: Int = DefaultPrefetchDistance,
     enableBackwardPrefetch: Boolean = false,
     silentlyLoading: Boolean = true,
     silentlyResult: Boolean = false,
     enabled: Boolean = true,
+    cancelOnDispose: Boolean = true,
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
     onPrefetchError: ((Exception) -> Unit)? = null,
@@ -74,8 +80,8 @@ fun <T> Paginator<T>.rememberPrefetchController(
         controller.enabled = enabled
         controller.onPrefetchError = onPrefetchError
     }
-    DisposableEffect(controller) {
-        onDispose { controller.cancel() }
+    DisposableEffect(controller, cancelOnDispose) {
+        onDispose { if (cancelOnDispose) controller.cancel() }
     }
     return controller
 }
@@ -88,11 +94,12 @@ fun <T> Paginator<T>.rememberPrefetchController(
  */
 @Composable
 fun <T> CursorPaginator<T>.rememberPrefetchController(
-    prefetchDistance: Int,
+    prefetchDistance: Int = DefaultPrefetchDistance,
     enableBackwardPrefetch: Boolean = false,
     silentlyLoading: Boolean = true,
     silentlyResult: Boolean = false,
     enabled: Boolean = true,
+    cancelOnDispose: Boolean = true,
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
     onPrefetchError: ((Exception) -> Unit)? = null,
@@ -119,8 +126,8 @@ fun <T> CursorPaginator<T>.rememberPrefetchController(
         controller.enabled = enabled
         controller.onPrefetchError = onPrefetchError
     }
-    DisposableEffect(controller) {
-        onDispose { controller.cancel() }
+    DisposableEffect(controller, cancelOnDispose) {
+        onDispose { if (cancelOnDispose) controller.cancel() }
     }
     return controller
 }

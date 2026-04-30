@@ -76,12 +76,16 @@ fun PaginatorPrefetchController<*>.BindToLazyList(
     dataItemCount: Int,
     headerCount: Int = 0,
     footerCount: Int = 0,
+    restartKey: Any? = null,
+    scrollSampleMillis: Long = 0L,
 ) {
     @Suppress("UNUSED_EXPRESSION") footerCount
     val controller = this
     BindScrollInternal(
         controllerKey = controller,
         sourceKey = listState,
+        restartKey = restartKey,
+        scrollSampleMillis = scrollSampleMillis,
         dataItemCount = dataItemCount,
         headerCount = headerCount,
         onScroll = controller::onScroll,
@@ -100,12 +104,16 @@ fun CursorPaginatorPrefetchController<*>.BindToLazyList(
     dataItemCount: Int,
     headerCount: Int = 0,
     footerCount: Int = 0,
+    restartKey: Any? = null,
+    scrollSampleMillis: Long = 0L,
 ) {
     @Suppress("UNUSED_EXPRESSION") footerCount
     val controller = this
     BindScrollInternal(
         controllerKey = controller,
         sourceKey = listState,
+        restartKey = restartKey,
+        scrollSampleMillis = scrollSampleMillis,
         dataItemCount = dataItemCount,
         headerCount = headerCount,
         onScroll = controller::onScroll,

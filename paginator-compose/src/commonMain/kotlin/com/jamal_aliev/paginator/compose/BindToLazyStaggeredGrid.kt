@@ -9,9 +9,17 @@ import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
 
 private fun LazyStaggeredGridState.readScrollSignal(): ScrollSignal {
     val info = layoutInfo
+    val visible = info.visibleItemsInfo
+    var min = Int.MAX_VALUE
+    var max = -1
+    for (i in visible.indices) {
+        val idx = visible[i].index
+        if (idx < min) min = idx
+        if (idx > max) max = idx
+    }
     return ScrollSignal(
-        firstVisibleIndex = firstVisibleItemIndex,
-        lastVisibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: -1,
+        firstVisibleIndex = if (max < 0) -1 else min,
+        lastVisibleIndex = max,
         totalItemCount = info.totalItemsCount,
     )
 }
@@ -34,12 +42,16 @@ fun PaginatorPrefetchController<*>.BindToLazyStaggeredGrid(
     dataItemCount: Int,
     headerCount: Int = 0,
     footerCount: Int = 0,
+    restartKey: Any? = null,
+    scrollSampleMillis: Long = 0L,
 ) {
     @Suppress("UNUSED_EXPRESSION") footerCount
     val controller = this
     BindScrollInternal(
         controllerKey = controller,
         sourceKey = gridState,
+        restartKey = restartKey,
+        scrollSampleMillis = scrollSampleMillis,
         dataItemCount = dataItemCount,
         headerCount = headerCount,
         onScroll = controller::onScroll,
@@ -50,7 +62,7 @@ fun PaginatorPrefetchController<*>.BindToLazyStaggeredGrid(
 /**
  * Cursor-paginator counterpart of [PaginatorPrefetchController.BindToLazyStaggeredGrid].
  *
- * Behaviour, parameters, and constraints are identical — see the page-based overload's KDoc
+ * Behavior, parameters, and constraints are identical — see the page-based overload's KDoc
  * and [PaginatorPrefetchController.BindToLazyList] for the full contract.
  */
 @Composable
@@ -59,12 +71,16 @@ fun CursorPaginatorPrefetchController<*>.BindToLazyStaggeredGrid(
     dataItemCount: Int,
     headerCount: Int = 0,
     footerCount: Int = 0,
+    restartKey: Any? = null,
+    scrollSampleMillis: Long = 0L,
 ) {
     @Suppress("UNUSED_EXPRESSION") footerCount
     val controller = this
     BindScrollInternal(
         controllerKey = controller,
         sourceKey = gridState,
+        restartKey = restartKey,
+        scrollSampleMillis = scrollSampleMillis,
         dataItemCount = dataItemCount,
         headerCount = headerCount,
         onScroll = controller::onScroll,
