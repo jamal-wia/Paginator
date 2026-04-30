@@ -31,31 +31,37 @@ Make sure the following **GitHub Secrets** are configured in the repository
 
 ## Step 1 — Update the Version
 
-In `paginator/build.gradle.kts`, change the `version` property:
+The library publishes **two artifacts** that are released together and must share the same
+version: `paginator` and `paginator-compose`. Update the `version` property in **both** module
+`build.gradle.kts` files:
+
+- `paginator/build.gradle.kts`
+- `paginator-compose/build.gradle.kts`
 
 ```kotlin
-version = "8.4.0" // ← new version
+version = "8.5.0" // ← new version (must match in both modules)
 ```
 
 ## Step 2 — Update README Installation Examples
 
 Update the version in all `implementation(...)` snippets in the README
-(sections **KMP**, **Android-only**, and **JVM**) to match the new version.
+(sections **KMP**, **Android-only**, **JVM**, and **Compose Multiplatform UI bindings**) so that
+both `paginator` and `paginator-compose` coordinates point at the new version.
 
 ## Step 3 — Commit and Push
 
 ```bash
 git add -A
-git commit -m "Bump version to 8.4.0"
+git commit -m "Bump version to 8.5.0"
 git push origin master
 ```
 
 ## Step 4 — Create a GitHub Release
 
 1. Go to **[Releases → New release](https://github.com/jamal-wia/Paginator/releases/new)**
-2. Click **"Choose a tag"** and type the new version (e.g. `8.4.0`), then select **"Create new tag
+2. Click **"Choose a tag"** and type the new version (e.g. `8.5.0`), then select **"Create new tag
    on publish"**
-3. Set **Release title** (e.g. `8.4.0`)
+3. Set **Release title** (e.g. `8.5.0`)
 4. Describe the changes in the description
 5. Click **"Publish release"**
 
@@ -69,12 +75,14 @@ This triggers the **`Publish to Maven Central`** GitHub Actions workflow automat
 ## Step 6 — Verify on Maven Central
 
 1. Go to [Sonatype Central Portal](https://central.sonatype.com/) → **Deployments**
-2. The deployment should appear with status **PUBLISHING** → **PUBLISHED**
-3. Once **PUBLISHED**, the artifact is available at:
+2. **Two** deployments should appear (one per artifact), each transitioning
+   **PUBLISHING** → **PUBLISHED**
+3. Once **PUBLISHED**, the artifacts are available at:
    ```
    io.github.jamal-wia:paginator:<version>
+   io.github.jamal-wia:paginator-compose:<version>
    ```
-4. It may take **5–30 minutes** for the artifact to become resolvable via Gradle after status
+4. It may take **5–30 minutes** for the artifacts to become resolvable via Gradle after status
    changes to PUBLISHED
 
 ## Manual Publishing (without GitHub Actions)
@@ -90,9 +98,9 @@ If you need to publish from your local machine instead of CI:
    signing.secretKeyRingFile=<path-to-secring.gpg>
    ```
 
-2. Run:
+2. Run (publishes both artifacts in a single invocation):
    ```bash
-   ./gradlew :paginator:publishAndReleaseToMavenCentral --no-configuration-cache
+   ./gradlew :paginator:publishAndReleaseToMavenCentral :paginator-compose:publishAndReleaseToMavenCentral --no-configuration-cache
    ```
 
 3. The `automaticRelease = true` flag in `build.gradle.kts` ensures the deployment is

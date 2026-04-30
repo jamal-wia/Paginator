@@ -90,7 +90,7 @@ Add the dependency to `commonMain` in your module's `build.gradle.kts`:
 kotlin {
     sourceSets {
         commonMain.dependencies {
-          implementation("io.github.jamal-wia:paginator:8.4.0")
+          implementation("io.github.jamal-wia:paginator:8.5.0")
         }
     }
 }
@@ -103,7 +103,7 @@ from the KMP metadata.
 
 ```kotlin
 dependencies {
-  implementation("io.github.jamal-wia:paginator:8.4.0")
+  implementation("io.github.jamal-wia:paginator:8.5.0")
 }
 ```
 
@@ -111,7 +111,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-  implementation("io.github.jamal-wia:paginator-jvm:8.4.0")
+  implementation("io.github.jamal-wia:paginator-jvm:8.5.0")
 }
 ```
 
@@ -126,8 +126,8 @@ fully under your control; the artifact only feeds scroll signals to the
 
 ```kotlin
 dependencies {
-  implementation("io.github.jamal-wia:paginator:8.4.0")
-  implementation("io.github.jamal-wia:paginator-compose:8.4.0")
+  implementation("io.github.jamal-wia:paginator:8.5.0")
+  implementation("io.github.jamal-wia:paginator-compose:8.5.0")
 }
 ```
 

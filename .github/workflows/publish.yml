@@ -25,7 +25,7 @@ jobs:
           echo "${{ secrets.GPG_KEY }}" | base64 --decode | gpg --batch --import
 
       - name: Publish to Maven Central
-        run: ./gradlew :paginator:publishAndReleaseToMavenCentral --no-configuration-cache
+        run: ./gradlew :paginator:publishAndReleaseToMavenCentral :paginator-compose:publishAndReleaseToMavenCentral --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
