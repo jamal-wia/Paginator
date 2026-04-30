@@ -15,8 +15,11 @@ import com.jamal_aliev.paginator.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.compose.internal.rememberCursorPaginatorDataItemCount
 import com.jamal_aliev.paginator.compose.internal.rememberPaginatorDataItemCount
 import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.prefetch.CursorLoadGuard
 import com.jamal_aliev.paginator.prefetch.CursorPaginatorPrefetchController
+import com.jamal_aliev.paginator.prefetch.PageLoadGuard
 import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
+import com.jamal_aliev.paginator.prefetch.PrefetchOptions
 
 /**
  * Holder that owns the prefetch controller and live header/footer counts for a `LazyColumn`

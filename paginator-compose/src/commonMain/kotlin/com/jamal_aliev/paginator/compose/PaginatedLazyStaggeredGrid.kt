@@ -17,8 +17,11 @@ import com.jamal_aliev.paginator.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.compose.internal.rememberCursorPaginatorDataItemCount
 import com.jamal_aliev.paginator.compose.internal.rememberPaginatorDataItemCount
 import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.prefetch.CursorLoadGuard
 import com.jamal_aliev.paginator.prefetch.CursorPaginatorPrefetchController
+import com.jamal_aliev.paginator.prefetch.PageLoadGuard
 import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
+import com.jamal_aliev.paginator.prefetch.PrefetchOptions
 
 /** `LazyStaggeredGrid` analogue of [PaginatedLazyListHolder] — see that type for the contract. */
 class PaginatedLazyStaggeredGridHolder<C : Any> internal constructor(

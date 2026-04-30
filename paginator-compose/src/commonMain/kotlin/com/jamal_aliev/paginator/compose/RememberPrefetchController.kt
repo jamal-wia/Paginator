@@ -11,10 +11,8 @@ import com.jamal_aliev.paginator.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.extension.prefetchController
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.prefetch.CursorPaginatorPrefetchController
+import com.jamal_aliev.paginator.prefetch.DefaultPrefetchDistance
 import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
-
-/** Default [PaginatorPrefetchController.prefetchDistance] used by composable helpers. */
-const val DefaultPrefetchDistance: Int = 6
 
 /**
  * Remembers a [PaginatorPrefetchController] whose lifecycle is bound to the calling composable.

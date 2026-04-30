@@ -9,6 +9,7 @@ import com.jamal_aliev.paginator.Paginator
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.page.PageState
 import com.jamal_aliev.paginator.prefetch.CursorPaginatorPrefetchController
+import com.jamal_aliev.paginator.prefetch.DefaultPrefetchDistance
 import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
 
 /**
