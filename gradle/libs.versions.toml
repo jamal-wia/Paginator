@@ -55,6 +55,10 @@ androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling
 androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
 
+# Compose Multiplatform (versions track the org.jetbrains.compose plugin)
+compose-multiplatform-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
+compose-multiplatform-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
+
 # Third-party
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 

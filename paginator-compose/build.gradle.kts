@@ -118,8 +118,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":paginator"))
-            api(compose.runtime)
-            api(compose.foundation)
+            api(libs.compose.multiplatform.runtime)
+            api(libs.compose.multiplatform.foundation)
             implementation(libs.kotlinx.coroutines.core)
         }
         commonTest.dependencies {
