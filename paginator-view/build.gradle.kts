@@ -1,9 +1,9 @@
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 
 plugins {
-    id("com.android.library")
-    id("org.jetbrains.kotlin.android")
-    id("com.vanniktech.maven.publish")
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.maven.publish)
 }
 
 group = "io.github.jamal-wia"
@@ -126,7 +126,7 @@ android {
 
 dependencies {
     api(project(":paginator"))
-    api("androidx.recyclerview:recyclerview:1.4.0")
-    api("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    api(libs.androidx.recyclerview)
+    api(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.kotlinx.coroutines.android)
 }
