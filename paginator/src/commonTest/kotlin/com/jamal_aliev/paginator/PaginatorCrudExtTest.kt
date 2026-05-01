@@ -84,7 +84,7 @@ class PaginatorCrudExtTest {
     // =========================================================================
 
     @Test
-    fun `moveElement reorders within a single page (forward)`() = runTest {
+    fun `moveElement reorders within a single page forward`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3)
         paginator.moveElement(fromPage = 1, fromIndex = 0, toPage = 1, toIndex = 2, silently = true)
 
@@ -94,7 +94,7 @@ class PaginatorCrudExtTest {
     }
 
     @Test
-    fun `moveElement reorders within a single page (backward)`() = runTest {
+    fun `moveElement reorders within a single page backward`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3)
         paginator.moveElement(fromPage = 1, fromIndex = 2, toPage = 1, toIndex = 0, silently = true)
 

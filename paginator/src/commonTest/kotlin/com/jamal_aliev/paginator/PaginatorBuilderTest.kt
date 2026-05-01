@@ -48,7 +48,7 @@ class PaginatorBuilderTest {
     // =========================================================================
 
     @Test
-    fun `paginator return type is Paginator (not MutablePaginator)`() {
+    fun `paginator return type is Paginator not MutablePaginator`() {
         // Compile-time guarantee: this only compiles because paginator { } returns
         // Paginator<T>. If it returned MutablePaginator we could downcast freely
         // and lose the read-only contract at the call site.
@@ -109,7 +109,7 @@ class PaginatorBuilderTest {
     }
 
     @Test
-    fun `bookmarks(vararg) replaces the default bookmark list`() {
+    fun `bookmarks vararg replaces the default bookmark list`() {
         val p = paginator<String> {
             load { LoadResult(emptyList()) }
             bookmarks(2, 5, 9)
@@ -118,7 +118,7 @@ class PaginatorBuilderTest {
     }
 
     @Test
-    fun `bookmarks(list) replaces the default bookmark list`() {
+    fun `bookmarks list replaces the default bookmark list`() {
         val p = paginator<String> {
             load { LoadResult(emptyList()) }
             bookmarks(listOf(BookmarkInt(3), BookmarkInt(7)))

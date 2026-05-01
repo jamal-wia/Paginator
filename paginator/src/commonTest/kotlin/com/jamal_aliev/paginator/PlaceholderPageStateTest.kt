@@ -29,7 +29,7 @@ class PlaceholderPageStateTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `PlaceholderProgressPage - stores page, data, placeholders`() {
+    fun `PlaceholderProgressPage - stores page and data and placeholders`() {
         val state = PlaceholderProgressPage(
             page = 2,
             data = items,
@@ -101,7 +101,7 @@ class PlaceholderPageStateTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `PlaceholderSuccessPage - stores page, data, placeholders`() {
+    fun `PlaceholderSuccessPage - stores page and data and placeholders`() {
         val state = PlaceholderSuccessPage(
             page = 3,
             data = items,
@@ -153,7 +153,7 @@ class PlaceholderPageStateTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `PlaceholderErrorPage - stores exception, page, data, placeholders`() {
+    fun `PlaceholderErrorPage - stores exception and page and data and placeholders`() {
         val state = PlaceholderErrorPage(
             exception = exception,
             page = 5,

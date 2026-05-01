@@ -697,7 +697,8 @@ class PrefetchControllerTest {
     }
 
     @Test
-    fun `disabling during calibration phase - positions tracked, re-enable still needs calibration`() = runTest {
+    fun `disabling during calibration phase - positions tracked and re-enable still needs calibration`() =
+        runTest {
         val paginator = createPrefetchTestPaginator()
         val initialEndContext = paginator.cache.endContextPage
 
@@ -1271,7 +1272,7 @@ class PrefetchControllerTest {
     // =========================================================================
 
     @Test
-    fun `release clears paginator — controller reset needed, then prefetch works`() = runTest {
+    fun `release clears paginator — controller reset needed and then prefetch works`() = runTest {
         val paginator = createPrefetchTestPaginator(totalPages = 10, capacity = 10, loadedPages = 3)
 
         val controller = paginator.prefetchController(scope = this, prefetchDistance = 5)

@@ -189,7 +189,7 @@ class TransactionTest {
     }
 
     @Test
-    fun `nested transaction - inner fails, outer succeeds`() = runTest {
+    fun `nested transaction - inner fails and outer succeeds`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
 
         paginator.transaction {
