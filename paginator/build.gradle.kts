@@ -8,8 +8,8 @@ plugins {
     alias(libs.plugins.maven.publish)
 }
 
-group = "io.github.jamal-wia"
-version = "8.5.0"
+group = providers.gradleProperty("paginator.group").get()
+version = providers.gradleProperty("paginator.version").get()
 
 mavenPublishing {
     configure(KotlinMultiplatform(javadocJar = com.vanniktech.maven.publish.JavadocJar.Empty()))
