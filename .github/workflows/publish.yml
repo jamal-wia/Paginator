@@ -4,9 +4,14 @@ on:
   release:
     types: [created]
 
+concurrency:
+  group: maven-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: macos-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,8 +29,11 @@ jobs:
         run: |
           echo "${{ secrets.GPG_KEY }}" | base64 --decode | gpg --batch --import
 
+      - name: Verify build
+        run: ./gradlew :paginator:check :paginator-compose:check :paginator-view:check --no-configuration-cache
+
       - name: Publish to Maven Central
-        run: ./gradlew :paginator:publishAndReleaseToMavenCentral :paginator-compose:publishAndReleaseToMavenCentral --no-configuration-cache
+        run: ./gradlew :paginator:publishAndReleaseToMavenCentral :paginator-compose:publishAndReleaseToMavenCentral :paginator-view:publishAndReleaseToMavenCentral --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
