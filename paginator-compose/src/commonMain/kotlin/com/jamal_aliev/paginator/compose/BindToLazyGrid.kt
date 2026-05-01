@@ -2,16 +2,21 @@ package com.jamal_aliev.paginator.compose
 
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import com.jamal_aliev.paginator.compose.internal.BindScrollInternal
+import com.jamal_aliev.paginator.compose.internal.ScrollCallback
 import com.jamal_aliev.paginator.compose.internal.ScrollSignal
+import com.jamal_aliev.paginator.compose.internal.ScrollSignalReader
 import com.jamal_aliev.paginator.prefetch.CursorPaginatorPrefetchController
 import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
 
 private fun LazyGridState.readScrollSignal(): ScrollSignal {
     val info = layoutInfo
+    val visible = info.visibleItemsInfo
+    val lastIndex = if (visible.isEmpty()) -1 else visible[visible.size - 1].index
     return ScrollSignal(
         firstVisibleIndex = firstVisibleItemIndex,
-        lastVisibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: -1,
+        lastVisibleIndex = lastIndex,
         totalItemCount = info.totalItemsCount,
     )
 }
@@ -23,7 +28,7 @@ private fun LazyGridState.readScrollSignal(): ScrollSignal {
  * Behaviour, parameters, and constraints mirror the `LazyList` overload — see
  * [PaginatorPrefetchController.BindToLazyList] for the full contract. The only difference is
  * the source of the scroll signal: `LazyGridState.firstVisibleItemIndex` /
- * `layoutInfo.visibleItemsInfo.lastOrNull()?.index` / `layoutInfo.totalItemsCount` (which are
+ * `layoutInfo.visibleItemsInfo.last().index` / `layoutInfo.totalItemsCount` (which are
  * **item** indices, not row indices — exactly what the controller expects when [dataItemCount]
  * is also expressed in items).
  *
@@ -35,12 +40,15 @@ fun PaginatorPrefetchController<*>.BindToLazyGrid(
     gridState: LazyGridState,
     dataItemCount: Int,
     headerCount: Int = 0,
-    footerCount: Int = 0,
+    @Suppress("UNUSED_PARAMETER") footerCount: Int = 0,
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
 ) {
-    @Suppress("UNUSED_EXPRESSION") footerCount
     val controller = this
+    val reader = remember(gridState) { ScrollSignalReader { gridState.readScrollSignal() } }
+    val callback = remember(controller) {
+        ScrollCallback { f, l, t -> controller.onScroll(f, l, t) }
+    }
     BindScrollInternal(
         controllerKey = controller,
         sourceKey = gridState,
@@ -48,15 +56,15 @@ fun PaginatorPrefetchController<*>.BindToLazyGrid(
         scrollSampleMillis = scrollSampleMillis,
         dataItemCount = dataItemCount,
         headerCount = headerCount,
-        onScroll = controller::onScroll,
-        readSignal = gridState::readScrollSignal,
+        reader = reader,
+        callback = callback,
     )
 }
 
 /**
  * Cursor-paginator counterpart of [PaginatorPrefetchController.BindToLazyGrid].
  *
- * Behaviour, parameters, and constraints are identical — see the page-based overload's KDoc
+ * Behavior, parameters, and constraints are identical — see the page-based overload's KDoc
  * and [PaginatorPrefetchController.BindToLazyList] for the full contract.
  */
 @Composable
@@ -64,12 +72,15 @@ fun CursorPaginatorPrefetchController<*>.BindToLazyGrid(
     gridState: LazyGridState,
     dataItemCount: Int,
     headerCount: Int = 0,
-    footerCount: Int = 0,
+    @Suppress("UNUSED_PARAMETER") footerCount: Int = 0,
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
 ) {
-    @Suppress("UNUSED_EXPRESSION") footerCount
     val controller = this
+    val reader = remember(gridState) { ScrollSignalReader { gridState.readScrollSignal() } }
+    val callback = remember(controller) {
+        ScrollCallback { f, l, t -> controller.onScroll(f, l, t) }
+    }
     BindScrollInternal(
         controllerKey = controller,
         sourceKey = gridState,
@@ -77,7 +88,7 @@ fun CursorPaginatorPrefetchController<*>.BindToLazyGrid(
         scrollSampleMillis = scrollSampleMillis,
         dataItemCount = dataItemCount,
         headerCount = headerCount,
-        onScroll = controller::onScroll,
-        readSignal = gridState::readScrollSignal,
+        reader = reader,
+        callback = callback,
     )
 }

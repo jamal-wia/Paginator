@@ -2,16 +2,21 @@ package com.jamal_aliev.paginator.compose
 
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import com.jamal_aliev.paginator.compose.internal.BindScrollInternal
+import com.jamal_aliev.paginator.compose.internal.ScrollCallback
 import com.jamal_aliev.paginator.compose.internal.ScrollSignal
+import com.jamal_aliev.paginator.compose.internal.ScrollSignalReader
 import com.jamal_aliev.paginator.prefetch.CursorPaginatorPrefetchController
 import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
 
 private fun LazyListState.readScrollSignal(): ScrollSignal {
     val info = layoutInfo
+    val visible = info.visibleItemsInfo
+    val lastIndex = if (visible.isEmpty()) -1 else visible[visible.size - 1].index
     return ScrollSignal(
         firstVisibleIndex = firstVisibleItemIndex,
-        lastVisibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: -1,
+        lastVisibleIndex = lastIndex,
         totalItemCount = info.totalItemsCount,
     )
 }
@@ -65,22 +70,23 @@ private fun LazyListState.readScrollSignal(): ScrollSignal {
  *   for any non-`Content` state).
  * @param headerCount Number of non-data items rendered **before** the data range. Used to shift
  *   the visible-index window down to the data origin.
- * @param footerCount Number of non-data items rendered **after** the data range. Currently
- *   accepted for self-documentation (it makes the layout intent explicit at the call site);
- *   the math relies on [dataItemCount] and [headerCount], so changing [footerCount] alone has
- *   no behavioural effect.
+ * @param footerCount Reserved for self-documentation at the call site; the math relies on
+ *   [dataItemCount] and [headerCount] only.
  */
 @Composable
 fun PaginatorPrefetchController<*>.BindToLazyList(
     listState: LazyListState,
     dataItemCount: Int,
     headerCount: Int = 0,
-    footerCount: Int = 0,
+    @Suppress("UNUSED_PARAMETER") footerCount: Int = 0,
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
 ) {
-    @Suppress("UNUSED_EXPRESSION") footerCount
     val controller = this
+    val reader = remember(listState) { ScrollSignalReader { listState.readScrollSignal() } }
+    val callback = remember(controller) {
+        ScrollCallback { f, l, t -> controller.onScroll(f, l, t) }
+    }
     BindScrollInternal(
         controllerKey = controller,
         sourceKey = listState,
@@ -88,8 +94,8 @@ fun PaginatorPrefetchController<*>.BindToLazyList(
         scrollSampleMillis = scrollSampleMillis,
         dataItemCount = dataItemCount,
         headerCount = headerCount,
-        onScroll = controller::onScroll,
-        readSignal = listState::readScrollSignal,
+        reader = reader,
+        callback = callback,
     )
 }
 
@@ -103,12 +109,15 @@ fun CursorPaginatorPrefetchController<*>.BindToLazyList(
     listState: LazyListState,
     dataItemCount: Int,
     headerCount: Int = 0,
-    footerCount: Int = 0,
+    @Suppress("UNUSED_PARAMETER") footerCount: Int = 0,
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
 ) {
-    @Suppress("UNUSED_EXPRESSION") footerCount
     val controller = this
+    val reader = remember(listState) { ScrollSignalReader { listState.readScrollSignal() } }
+    val callback = remember(controller) {
+        ScrollCallback { f, l, t -> controller.onScroll(f, l, t) }
+    }
     BindScrollInternal(
         controllerKey = controller,
         sourceKey = listState,
@@ -116,7 +125,7 @@ fun CursorPaginatorPrefetchController<*>.BindToLazyList(
         scrollSampleMillis = scrollSampleMillis,
         dataItemCount = dataItemCount,
         headerCount = headerCount,
-        onScroll = controller::onScroll,
-        readSignal = listState::readScrollSignal,
+        reader = reader,
+        callback = callback,
     )
 }

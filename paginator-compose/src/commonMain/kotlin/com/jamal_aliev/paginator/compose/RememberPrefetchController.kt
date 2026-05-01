@@ -71,12 +71,27 @@ fun <T> Paginator<T>.rememberPrefetchController(
         )
     }
     SideEffect {
-        controller.prefetchDistance = prefetchDistance
-        controller.enableBackwardPrefetch = enableBackwardPrefetch
-        controller.silentlyLoading = silentlyLoading
-        controller.silentlyResult = silentlyResult
-        controller.enabled = enabled
-        controller.onPrefetchError = onPrefetchError
+        // Equality-guard each write — `prefetchDistance`'s setter runs `require(value > 0)`
+        // on assignment regardless of whether the value changed, and downstream observers of
+        // these vars would otherwise be invalidated on every recomposition.
+        if (controller.prefetchDistance != prefetchDistance) {
+            controller.prefetchDistance = prefetchDistance
+        }
+        if (controller.enableBackwardPrefetch != enableBackwardPrefetch) {
+            controller.enableBackwardPrefetch = enableBackwardPrefetch
+        }
+        if (controller.silentlyLoading != silentlyLoading) {
+            controller.silentlyLoading = silentlyLoading
+        }
+        if (controller.silentlyResult != silentlyResult) {
+            controller.silentlyResult = silentlyResult
+        }
+        if (controller.enabled != enabled) {
+            controller.enabled = enabled
+        }
+        if (controller.onPrefetchError !== onPrefetchError) {
+            controller.onPrefetchError = onPrefetchError
+        }
     }
     DisposableEffect(controller, cancelOnDispose) {
         onDispose { if (cancelOnDispose) controller.cancel() }
@@ -117,12 +132,27 @@ fun <T> CursorPaginator<T>.rememberPrefetchController(
         )
     }
     SideEffect {
-        controller.prefetchDistance = prefetchDistance
-        controller.enableBackwardPrefetch = enableBackwardPrefetch
-        controller.silentlyLoading = silentlyLoading
-        controller.silentlyResult = silentlyResult
-        controller.enabled = enabled
-        controller.onPrefetchError = onPrefetchError
+        // Equality-guard each write — `prefetchDistance`'s setter runs `require(value > 0)`
+        // on assignment regardless of whether the value changed, and downstream observers of
+        // these vars would otherwise be invalidated on every recomposition.
+        if (controller.prefetchDistance != prefetchDistance) {
+            controller.prefetchDistance = prefetchDistance
+        }
+        if (controller.enableBackwardPrefetch != enableBackwardPrefetch) {
+            controller.enableBackwardPrefetch = enableBackwardPrefetch
+        }
+        if (controller.silentlyLoading != silentlyLoading) {
+            controller.silentlyLoading = silentlyLoading
+        }
+        if (controller.silentlyResult != silentlyResult) {
+            controller.silentlyResult = silentlyResult
+        }
+        if (controller.enabled != enabled) {
+            controller.enabled = enabled
+        }
+        if (controller.onPrefetchError !== onPrefetchError) {
+            controller.onPrefetchError = onPrefetchError
+        }
     }
     DisposableEffect(controller, cancelOnDispose) {
         onDispose { if (cancelOnDispose) controller.cancel() }

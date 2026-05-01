@@ -5,8 +5,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableIntState
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import com.jamal_aliev.paginator.CursorPaginator
@@ -29,6 +28,7 @@ import com.jamal_aliev.paginator.prefetch.PrefetchOptions
  * not have to maintain `headerCount` / `footerCount` manually, so off-by-one bugs around the
  * append-loader item are eliminated.
  */
+@Stable
 class PaginatedLazyListHolder<C : Any> internal constructor(
     val controller: C,
 ) {
@@ -60,7 +60,7 @@ class PaginatedLazyListScope @PublishedApi internal constructor(
         contentType: Any? = null,
         content: @Composable LazyItemScope.() -> Unit,
     ) {
-        delegate.item(key = key, contentType = contentType) { content() }
+        delegate.item(key = key, contentType = contentType, content = content)
         headerCount++
     }
 
@@ -70,7 +70,7 @@ class PaginatedLazyListScope @PublishedApi internal constructor(
         contentType: Any? = null,
         content: @Composable LazyItemScope.() -> Unit,
     ) {
-        delegate.item(key = key, contentType = contentType) { content() }
+        delegate.item(key = key, contentType = contentType, content = content)
         footerCount++
     }
 }
@@ -110,9 +110,9 @@ fun LazyListScope.paginated(
 /**
  * Auto-everything entry point for `LazyColumn` pagination.
  *
- * - `dataItemCount` is derived from [Paginator.uiState] (only the items size from
- *   [PaginatorUiState.Content] is observed via [derivedStateOf] — the rest of the state object
- *   is **not** in the recomposition path).
+ * - `dataItemCount` is derived from [Paginator.uiState] — the items size is mapped on the flow
+ *   itself and held in a primitive [MutableIntState], so the rest of the state object is **not**
+ *   in the recomposition path.
  * - `headerCount` / `footerCount` are filled in by the [paginated] DSL block.
  * - Runtime-mutable controller settings come from [options]; pass a hoisted [PrefetchOptions]
  *   to share configuration between screens.
@@ -139,7 +139,7 @@ fun <T> Paginator<T>.rememberPaginated(
         onPrefetchError = onPrefetchError,
     )
     val holder = remember(controller) { PaginatedLazyListHolder(controller) }
-    val dataItemCount by rememberPaginatorDataItemCount(this)
+    val dataItemCount = rememberPaginatorDataItemCount(this).intValue
 
     controller.BindToLazyList(
         listState = state,
@@ -172,7 +172,7 @@ fun <T> CursorPaginator<T>.rememberPaginated(
         onPrefetchError = onPrefetchError,
     )
     val holder = remember(controller) { PaginatedLazyListHolder(controller) }
-    val dataItemCount by rememberCursorPaginatorDataItemCount(this)
+    val dataItemCount = rememberCursorPaginatorDataItemCount(this).intValue
 
     controller.BindToLazyList(
         listState = state,

@@ -9,7 +9,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableIntState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import com.jamal_aliev.paginator.CursorPaginator
@@ -25,6 +25,7 @@ import com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController
 import com.jamal_aliev.paginator.prefetch.PrefetchOptions
 
 /** `LazyGrid` analogue of [PaginatedLazyListHolder] — see that type for the contract. */
+@Stable
 class PaginatedLazyGridHolder<C : Any> internal constructor(
     val controller: C,
 ) {
@@ -163,7 +164,7 @@ fun <T> Paginator<T>.rememberPaginated(
         onPrefetchError = onPrefetchError,
     )
     val holder = remember(controller) { PaginatedLazyGridHolder(controller) }
-    val dataItemCount by rememberPaginatorDataItemCount(this)
+    val dataItemCount = rememberPaginatorDataItemCount(this).intValue
 
     controller.BindToLazyGrid(
         gridState = state,
@@ -196,7 +197,7 @@ fun <T> CursorPaginator<T>.rememberPaginated(
         onPrefetchError = onPrefetchError,
     )
     val holder = remember(controller) { PaginatedLazyGridHolder(controller) }
-    val dataItemCount by rememberCursorPaginatorDataItemCount(this)
+    val dataItemCount = rememberCursorPaginatorDataItemCount(this).intValue
 
     controller.BindToLazyGrid(
         gridState = state,
