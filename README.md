@@ -84,58 +84,42 @@ write-up: [Paging 3 is good. Until you need something more.](articles/en/Paging%
 
 The library is published to **Maven Central**. No additional repository configuration needed.
 
-### Kotlin Multiplatform (KMP)
-
-Add the dependency to `commonMain` in your module's `build.gradle.kts`:
-
-```kotlin
-kotlin {
-    sourceSets {
-        commonMain.dependencies {
-          implementation("io.github.jamal-wia:paginator:8.5.0")
-        }
-    }
-}
-```
-
-Gradle automatically resolves the correct platform artifact (`android`, `jvm`, `iosArm64`, etc.)
-from the KMP metadata.
-
-### Android-only project
+The recommended way is to import the **BOM** once and then declare the artifacts you
+need without versions — that way `paginator`, `paginator-compose`, and `paginator-view`
+cannot drift on your classpath:
 
 ```kotlin
 dependencies {
-  implementation("io.github.jamal-wia:paginator:8.5.0")
+  // Pin all Paginator artifacts together. Latest version: see the Maven Central badge above.
+  implementation(platform("io.github.jamal-wia:paginator-bom:8.6.0"))
+
+  // Core — required
+  implementation("io.github.jamal-wia:paginator")
+
+  // Optional UI bindings — pick what you actually use
+  implementation("io.github.jamal-wia:paginator-compose")  // Jetpack Compose / Compose Multiplatform
+  implementation("io.github.jamal-wia:paginator-view")     // Android Views / RecyclerView
 }
 ```
 
-### JVM (Desktop / Server)
+For **Kotlin Multiplatform**, place the BOM and `paginator` in `commonMain.dependencies { … }`;
+Gradle automatically resolves the correct platform artifact (`paginator-jvm`,
+`paginator-iosArm64`, etc.) from the KMP metadata. `paginator-compose` (KMP) goes in the
+shared Compose source set; `paginator-view` is Android-only and belongs in the Android
+source set.
 
-```kotlin
-dependencies {
-  implementation("io.github.jamal-wia:paginator-jvm:8.5.0")
-}
-```
+The BOM only pins *Paginator* artifacts; it does not constrain Compose, Kotlin, AndroidX,
+or anything else on your classpath.
 
-### Compose Multiplatform UI bindings (optional)
+**Supported targets:** Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64.
 
-If you use Jetpack Compose / Compose Multiplatform, the optional `paginator-compose`
-artifact provides scroll-driven prefetch for `LazyColumn` / `LazyRow` /
-`LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and their horizontal counterparts) —
-no manual `LaunchedEffect` / `snapshotFlow` plumbing required. UI structure stays
-fully under your control; the artifact only feeds scroll signals to the
-`PrefetchController`.
+### What each UI artifact does
 
-```kotlin
-dependencies {
-  implementation("io.github.jamal-wia:paginator:8.5.0")
-  implementation("io.github.jamal-wia:paginator-compose:8.5.0")
-}
-```
-
-The recommended entry point is `rememberPaginated` + the `paginated { }` DSL — zero
-manual numbers (`dataItemCount` is read from `paginator.uiState`, header / footer counts
-are tallied by the DSL):
+`paginator-compose` provides scroll-driven prefetch for `LazyColumn` / `LazyRow` /
+`LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal counterparts) — no manual
+`LaunchedEffect` / `snapshotFlow` plumbing. The recommended entry point is
+`rememberPaginated` + the `paginated { }` DSL — zero manual numbers (`dataItemCount` is
+read from `paginator.uiState`, header / footer counts are tallied by the DSL):
 
 ```kotlin
 val listState = rememberLazyListState()
@@ -157,23 +141,13 @@ counts explicit or hold a reference to the controller. See
 guide — including `PrefetchOptions`, reactive error handling via `PrefetchErrorChannel`,
 and advanced knobs (`restartKey`, `scrollSampleMillis`).
 
-### Android View bindings (optional)
-
-If you build classic Android UI on top of `RecyclerView`, the optional `paginator-view`
-artifact removes the `OnScrollListener` plumbing entirely and offers three layers of
-integration: `bindPaginated` (auto-tracks `dataItemCount` from `paginator.uiState`),
-`bindPrefetchToRecyclerView` (one-call factory + bind), and the low-level
-`controller.bindToRecyclerView` for `ViewModel`-scoped controllers. All three support
-`LinearLayoutManager`, `GridLayoutManager`, and `StaggeredGridLayoutManager`, install both
-`OnScrollListener` and `OnLayoutChangeListener` (so partial first pages don't stall
-pagination), and clean up on `ON_DESTROY`.
-
-```kotlin
-dependencies {
-  implementation("io.github.jamal-wia:paginator:8.5.0")
-  implementation("io.github.jamal-wia:paginator-view:8.5.0")
-}
-```
+`paginator-view` removes the `OnScrollListener` plumbing entirely and offers three
+layers of integration: `bindPaginated` (auto-tracks `dataItemCount` from
+`paginator.uiState`), `bindPrefetchToRecyclerView` (one-call factory + bind), and the
+low-level `controller.bindToRecyclerView` for `ViewModel`-scoped controllers. All three
+support `LinearLayoutManager`, `GridLayoutManager`, and `StaggeredGridLayoutManager`,
+install both `OnScrollListener` and `OnLayoutChangeListener` (so partial first pages
+don't stall pagination), and clean up on `ON_DESTROY`.
 
 ```kotlin
 binding.recyclerView.adapter = ConcatAdapter(headerAdapter, dataAdapter, appendIndicatorAdapter)
