@@ -180,7 +180,7 @@ The simplest way to create a `MutablePaginator` is via the DSL builder:
 import com.jamal_aliev.paginator.dsl.mutablePaginator
 import com.jamal_aliev.paginator.load.LoadResult
 
-class MyViewModel : ViewModel() {
+class FeedViewModel : ViewModel() {
 
     private val paginator = mutablePaginator<Item> {
         load { page -> LoadResult(repository.loadPage(page)) }
