@@ -93,7 +93,7 @@ Wrapper тем более не работает: обёртка вокруг `Fl
 paginator.goNextPage()
 paginator.goPreviousPage()
 paginator.jump(BookmarkInt(page = 42))
-paginator.jump(CursorBookmark(self = "msg_817"))
+paginator.jump(CursorBookmark(prev = null, self = "msg_817", next = null))
 ```
 
 Это маленькое решение, но оно меняет очень многое. Открыть переписку на сообщении из push —
@@ -119,8 +119,8 @@ appendState)` для типовых экранов.
 `MutablePaginator` — расширение, в котором появляются операции CRUD над элементами:
 
 ```kotlin
-mutablePaginator.replace(predicate = { it.id == 42 }, transform = { it.copy(liked = true) })
-mutablePaginator.removeWhere { it.deleted }
+mutablePaginator.updateWhere(predicate = { it.id == 42 }, transform = { it.copy(liked = true) })
+mutablePaginator.removeAll { it.deleted }
 mutablePaginator.insertAfter(target = anchor, element = newMessage)
 ```
 
@@ -144,9 +144,9 @@ Process death — старая беда Android. `cachedIn(viewModelScope)` в P
 можно было сериализовать:
 
 ```kotlin
-val saved: String = paginator.serializeToJson()
+val saved: String = paginator.saveStateToJson(Message.serializer())
 // ... process death ...
-paginator.restoreFromJson(saved)
+paginator.restoreStateFromJson(saved, Message.serializer())
 ```
 
 Сериализация работает через `kotlinx.serialization`, поэтому едет на любой KMP-таргет —
@@ -207,7 +207,7 @@ val messages = mutableCursorPaginator<Message> {
 
 ## Что есть сейчас
 
-На момент публикации статьи Paginator опубликован на Maven Central под версией 8.5.0.
+На момент публикации статьи Paginator опубликован на Maven Central под версией 8.6.0.
 Поддерживаемые таргеты — Android, JVM (Desktop / Server), iosX64, iosArm64, iosSimulatorArm64.
 Есть отдельный артефакт `paginator-compose` с биндингами для Jetpack Compose / Compose
 Multiplatform — он добавляет одну строку scroll-driven prefetch для `LazyColumn` / `LazyRow` /

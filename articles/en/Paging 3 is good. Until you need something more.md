@@ -200,7 +200,9 @@ KMP artifact:
 
 ```kotlin
 commonMain.dependencies {
-    implementation("io.github.jamal-wia:paginator:8.1.0")
+  // Pin all Paginator artifacts together via the BOM
+  implementation(platform("io.github.jamal-wia:paginator-bom:8.6.0"))
+  implementation("io.github.jamal-wia:paginator")
 }
 ```
 
@@ -216,12 +218,12 @@ page one, because the cache is gone.
 Paginator has built-in state serialization via `kotlinx.serialization`:
 
 ```kotlin
-// Save
-savedStateHandle["paginator"] = paginator.saveState()
+// Save (suspend; survives process death via SavedStateHandle)
+savedStateHandle["paginator"] = paginator.saveStateToJson(Item.serializer())
 
 // Restore
-savedStateHandle.get<PaginatorSnapshot<Item>>("paginator")
-    ?.let { paginator.restoreState(it) }
+savedStateHandle.get<String>("paginator")
+  ?.let { paginator.restoreStateFromJson(it, Item.serializer()) }
 ```
 
 ---
@@ -284,10 +286,10 @@ simple cases.
 
 If pagination is a regular part of your work, give it a try. The repository is active,
 on [Maven Central](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator), mature (
-current version 8.1.0), and covered with documentation. Feedback and stars help.
+current version 8.6.0), and covered with documentation. Feedback and stars help.
 
 - **GitHub:** [github.com/jamal-wia/Paginator](https://github.com/jamal-wia/Paginator)
-- **Maven Central:** `io.github.jamal-wia:paginator:8.1.0`
+- **Maven Central:** `io.github.jamal-wia:paginator:8.6.0` (or via the `paginator-bom`)
 - **Telegram community:** [t.me/+0eeAM-EJpqgwNGZi](https://t.me/+0eeAM-EJpqgwNGZi)
 - **Documentation:** by section in [docs/](https://github.com/jamal-wia/Paginator/tree/master/docs)
 

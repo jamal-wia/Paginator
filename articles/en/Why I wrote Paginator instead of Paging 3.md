@@ -96,7 +96,7 @@ cursor, or by a bookmark:
 paginator.goNextPage()
 paginator.goPreviousPage()
 paginator.jump(BookmarkInt(page = 42))
-paginator.jump(CursorBookmark(self = "msg_817"))
+paginator.jump(CursorBookmark(prev = null, self = "msg_817", next = null))
 ```
 
 It's a small decision, but it changes a lot. Opening a conversation on a message from a push —
@@ -122,8 +122,8 @@ the compiler guarantees that the place reading the data won't break a page.
 `MutablePaginator` is the extension that adds CRUD operations on individual elements:
 
 ```kotlin
-mutablePaginator.replace(predicate = { it.id == 42 }, transform = { it.copy(liked = true) })
-mutablePaginator.removeWhere { it.deleted }
+mutablePaginator.updateWhere(predicate = { it.id == 42 }, transform = { it.copy(liked = true) })
+mutablePaginator.removeAll { it.deleted }
 mutablePaginator.insertAfter(target = anchor, element = newMessage)
 ```
 
@@ -147,9 +147,9 @@ In Paginator the cache is an ordinary data structure, and from the start it was 
 serializable:
 
 ```kotlin
-val saved: String = paginator.serializeToJson()
+val saved: String = paginator.saveStateToJson(Message.serializer())
 // ... process death ...
-paginator.restoreFromJson(saved)
+paginator.restoreStateFromJson(saved, Message.serializer())
 ```
 
 Serialization runs through `kotlinx.serialization`, so it works on any KMP target — Android,
@@ -209,7 +209,7 @@ reinventing the wheel on top of `LoadParams`.
 
 ## Where it stands today
 
-At the time of writing, Paginator is published on Maven Central as version 8.5.0. Supported
+At the time of writing, Paginator is published on Maven Central as version 8.6.0. Supported
 targets are Android, JVM (Desktop / Server), iosX64, iosArm64, iosSimulatorArm64. There's a
 separate `paginator-compose` artifact with bindings for Jetpack Compose / Compose Multiplatform
 — it adds a single line of scroll-driven prefetch for `LazyColumn` / `LazyRow` /
