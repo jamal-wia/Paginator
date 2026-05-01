@@ -91,7 +91,7 @@ cannot drift on your classpath:
 ```kotlin
 dependencies {
   // Pin all Paginator artifacts together. Latest version: see the Maven Central badge above.
-  implementation(platform("io.github.jamal-wia:paginator-bom:8.6.0"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:8.6.1"))
 
   // Core — required
   implementation("io.github.jamal-wia:paginator")
