@@ -5,7 +5,7 @@ package com.jamal_aliev.paginator.prefetch
  * dividers) into the **data-only** indices that [PaginatorPrefetchController.onScroll] /
  * [CursorPaginatorPrefetchController.onScroll] expect.
  */
-public data class RemappedScroll(
+data class RemappedScroll(
     val firstVisibleIndex: Int,
     val lastVisibleIndex: Int,
     val totalItemCount: Int,
@@ -18,7 +18,7 @@ public data class RemappedScroll(
  * Both controllers document that `totalItemCount` "must reflect only data items" and any index
  * arithmetic must not include headers, footers, or dividers. This function performs that
  * translation in one place so that the official UI-binding artifacts (`paginator-compose`,
- * `paginator-view`) — and any third-party binding — share identical behaviour.
+ * `paginator-view`) — and any third-party binding — share identical behavior.
  *
  * Returns `null` when the signal carries no actionable information and no `onScroll` call should
  * be made:
