@@ -364,7 +364,17 @@ differs only in **how pages are addressed**. Read the full guide at
 - **Lock flags** -- prevent specific operations at runtime (`lockJump`, `lockGoNextPage`,
   `lockGoPreviousPage`, `lockRestart`, `lockRefresh`)
 - **Scroll-based prefetch** -- `PaginatorPrefetchController` monitors scroll position and
-  automatically loads the next/previous page before the user reaches the edge of content
+  automatically loads the next/previous page before the user reaches the edge of content,
+  configurable at runtime via `PrefetchOptions` (prefetch distance, backward prefetch,
+  scroll sampling, cancel-on-dispose, …) shared across all UI artifacts
+- **Reactive prefetch errors** -- `PrefetchErrorChannel` exposes prefetch failures as a
+  `StateFlow`, so silent background loads can still surface to the UI without coupling to
+  the controller
+- **Stable load guards** -- `PageLoadGuard` / `CursorLoadGuard` functional interfaces gate
+  prefetch on custom conditions (network state, quotas, rate limits) without subclassing
+- **Index remapping** -- `RemapIndices` translates UI scroll positions (with headers,
+  footers, dividers) into data-only coordinates, so prefetch math stays correct in mixed
+  `ConcatAdapter` / DSL layouts
 - **Parallel loading** -- preload multiple pages concurrently with `loadOrGetPageState`
 - **Pluggable logging** -- implement the `PaginatorLogger` interface to receive detailed logs about
   navigation, state changes, and element-level operations. No logging by default (`null`)
@@ -377,6 +387,25 @@ differs only in **how pages are addressed**. Read the full guide at
 - **Interweaving** -- opt-in `Flow<PaginatorUiState<T>>.interweave(weaver)` operator that inserts
   meta-rows (date headers, unread dividers, section labels, …) between data items without touching
   the paginator core, cache, CRUD, serialization, or DSL
+- **Bill of Materials (`paginator-bom`)** -- import the BOM once and declare `paginator`,
+  `paginator-compose`, `paginator-view` without versions; the BOM keeps the suite aligned on
+  your classpath and only constrains Paginator artifacts (no impact on Compose / Kotlin /
+  AndroidX versions)
+- **Compose Multiplatform bindings (`paginator-compose`)** -- `PaginatedLazyList`,
+  `PaginatedLazyGrid`, `PaginatedLazyStaggeredGrid` plus `rememberPaginated` + the
+  `paginated { }` DSL for zero-boilerplate prefetch on `LazyColumn` / `LazyRow` /
+  `LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal counterparts); a
+  one-call `PrefetchOnScroll(state, dataItemCount, …)` and a low-level
+  `rememberPrefetchController` + `BindToLazyList` / `BindToLazyGrid` /
+  `BindToLazyStaggeredGrid` are also available for explicit-count or controller-scoped
+  setups
+- **Android RecyclerView bindings (`paginator-view`)** -- three layers of integration:
+  `bindPaginated` (auto-tracks `dataItemCount` from `paginator.uiState`),
+  `bindPrefetchToRecyclerView` (one-call factory + bind), and a low-level
+  `controller.bindToRecyclerView` for `ViewModel`-scoped controllers; works with
+  `LinearLayoutManager`, `GridLayoutManager`, `StaggeredGridLayoutManager`, installs both
+  `OnScrollListener` and `OnLayoutChangeListener` (so partial first pages don't stall),
+  and cleans up on `ON_DESTROY`
 
 ---
 
@@ -392,6 +421,9 @@ implementation patterns:
 - [Messenger on Paginator. Real-world tasks.](articles/en/Messenger%20on%20Paginator.%20Real-world%20tasks.md) —
   building a production-grade messenger feed: bidirectional scroll, cursor pagination, CRUD,
   interweaving
+- [Why I wrote Paginator instead of Paging 3.](articles/en/Why%20I%20wrote%20Paginator%20instead%20of%20Paging%203.md) —
+  the author's perspective: which design decisions in Paging 3 hit a ceiling and how Paginator
+  is built to avoid them
 
 **Русский**
 
@@ -399,6 +431,9 @@ implementation patterns:
   сравнение Paginator и Paging 3 на реальном примере ленты
 - [Мессенджер на Paginator. Боевые задачи](articles/ru/Мессенджер%20на%20Paginator.%20Боевые%20задачи.md) —
   реализация мессенджера: двунаправленный скролл, курсорная пагинация, CRUD, interweaving
+- [Почему я написал Paginator вместо Paging 3.](articles/ru/Почему%20я%20написал%20Paginator%20вместо%20Paging%203.md) —
+  взгляд автора: где решения Paging 3 упираются в потолок и как Paginator устроен, чтобы это
+  обойти
 
 ---
 
