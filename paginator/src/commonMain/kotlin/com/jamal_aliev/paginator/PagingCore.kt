@@ -437,7 +437,7 @@ open class PagingCore<T>(
     fun coerceToCapacity(data: List<T>): List<T> {
         val capacity = capacity
         if (isCapacityUnlimited || data.size <= capacity) {
-            return data
+            return data as? MutableList<T> ?: ArrayList(data)
         }
         return if (data.size / 2 >= capacity) {
             ArrayList<T>(capacity).apply {
@@ -460,6 +460,7 @@ open class PagingCore<T>(
      * [PageState.copy] with the trimmed data.
      */
     fun coerceToCapacity(state: PageState<T>): PageState<T> {
+        if (isCapacityUnlimited || state.data.size <= capacity) return state
         val newData = coerceToCapacity(state.data)
         return if (newData === state.data) {
             state
