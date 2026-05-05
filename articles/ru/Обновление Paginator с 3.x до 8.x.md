@@ -50,9 +50,9 @@ dependencies {
 3.3.0 живёт в `paginator/src/main/java/...` — это **Android-only** библиотека.
 
 8.6.2 — **Kotlin Multiplatform**: исходники переехали в `commonMain`, опубликованные
-таргеты — **Android, JVM, iosX64, iosArm64, iosSimulatorArm64**. Если у вас KMP-проект,
-теперь можно класть `paginator` прямо в `commonMain.dependencies`, и Gradle сам подтянет
-нужный платформенный артефакт из KMP-метаданных.
+таргеты — **Android, JVM, iosX64, iosArm64, iosSimulatorArm64, js (IR), wasmJs**. Если у вас
+KMP-проект, теперь можно класть `paginator` прямо в `commonMain.dependencies`, и Gradle сам
+подтянет нужный платформенный артефакт из KMP-метаданных.
 
 ## 3. Номер страницы: `UInt` → `Int`
 

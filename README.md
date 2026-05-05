@@ -1,12 +1,15 @@
-# Paginator — KMP pagination library for Android, iOS & JVM
+# Paginator — KMP pagination library for Android, iOS, JVM & Web
 
-> Pagination / paging library for **Kotlin Multiplatform** (Android, iOS, JVM, Desktop, Server).
+> Pagination / paging library for **Kotlin Multiplatform** (Android, iOS, JVM, Desktop, Server, JS,
+> Wasm).
 > A pure-Kotlin alternative to **Jetpack Paging 3** with cursor pagination, bidirectional scroll,
 > bookmarks, page caching, element-level CRUD, infinite scroll, prefetch and Flow-based UI state.
 
 **Keywords:** Kotlin Multiplatform pagination · KMP paging · Android paging library · iOS paging ·
-cursor pagination · infinite scroll · endless list · load more · Jetpack Paging 3 alternative ·
-bidirectional pagination · chat / messenger feed · GraphQL connections · coroutines · Flow.
+Kotlin JS pagination · Kotlin Wasm pagination · web pagination · cursor pagination · infinite
+scroll ·
+endless list · load more · Jetpack Paging 3 alternative · bidirectional pagination ·
+chat / messenger feed · GraphQL connections · coroutines · Flow.
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jamal-wia/Paginator)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.jamal-wia/paginator)](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -14,11 +17,14 @@ bidirectional pagination · chat / messenger feed · GraphQL connections · coro
 ![Android](https://img.shields.io/badge/target-Android-green)
 ![JVM](https://img.shields.io/badge/target-JVM-blue)
 ![iOS](https://img.shields.io/badge/target-iOS-lightgrey)
+![JS](https://img.shields.io/badge/target-JS-f7df1e?logo=javascript&logoColor=black)
+![WasmJs](https://img.shields.io/badge/target-WasmJs-654ff0?logo=webassembly&logoColor=white)
 
 ## [**📲 Download Demo APK**](https://raw.githubusercontent.com/jamal-wia/Paginator/master/PaginatorDemo.apk)
 
 **Paginator** is a powerful, flexible **pagination library for Kotlin Multiplatform (KMP)** —
-Android, iOS, JVM and Desktop — that goes far beyond simple "load next page" patterns. It is a
+Android, iOS, JVM, Desktop, JS and Wasm — that goes far beyond simple "load next page" patterns. It
+is a
 production-ready alternative to **Jetpack Paging 3** / `Pager` / `AsyncPagingDataDiffer` with a
 full-featured page management system: jumping to arbitrary pages, bidirectional navigation,
 bookmarks, page caching, cursor-based pagination, element-level CRUD, incomplete page handling,
@@ -36,7 +42,7 @@ Built entirely with pure Kotlin and without platform-specific dependencies,
 Paginator can be seamlessly used across all layers of an application 
 — from data to domain to presentation — while preserving Clean Architecture principles and proper layer separation.
 
-**Supported targets:** Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64
+**Supported targets:** Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64 · js · wasmJs
 
 ---
 ## AI Docs - https://deepwiki.com/jamal-wia/Paginator
@@ -63,17 +69,17 @@ Most Android developers reach for **Jetpack Paging 3**, which is Android-centric
 RecyclerView, Compose adapters — are Android-first), ViewModel/UI-coupled and intentionally
 opinionated. Paginator was built for the cases Paging 3 doesn't cover well:
 
-| Capability                              | Jetpack Paging 3                                   | **Paginator**                                    |
-|-----------------------------------------|----------------------------------------------------|--------------------------------------------------|
-| Targets (published artifacts)           | Android-first (KMP in sources, ecosystem AndroidX) | **Android · iOS · JVM · Desktop**                |
-| Layer                                   | UI / ViewModel                                     | **Data / Domain / Presentation**                 |
-| Bidirectional scroll (chat / messenger) | Limited                                            | **First-class**                                  |
-| Cursor pagination (GraphQL, chat)       | Manual                                             | **Built-in `CursorPaginator`**                   |
-| Jump to arbitrary page / bookmarks      | No                                                 | **Yes (`jump`, `BookmarkInt`, …)**               |
-| Element-level CRUD inside pages         | No (immutable `PagingData`)                        | **Yes (`MutablePaginator`)**                     |
-| Page caching strategies                 | Fixed window around viewport (`maxSize`)           | **Pluggable: LRU / FIFO / TTL / sliding window** |
-| State serialization (process death)     | Last `PagingData` only via `cachedIn`              | **Full cache via `kotlinx.serialization`**       |
-| Dependencies                            | AndroidX                                           | **Pure Kotlin, zero platform deps**              |
+| Capability                              | Jetpack Paging 3                                   | **Paginator**                                                    |
+|-----------------------------------------|----------------------------------------------------|------------------------------------------------------------------|
+| Targets (published artifacts)           | Android-first (KMP in sources, ecosystem AndroidX) | **Android · iOS · JVM · Desktop · JS · WasmJs**                  |
+| Layer                                   | UI / ViewModel                                     | **Data / Domain / Presentation**                                 |
+| Bidirectional scroll (chat / messenger) | Limited                                            | **First-class**                                                  |
+| Cursor pagination (GraphQL, chat)       | Manual                                             | **Built-in `CursorPaginator`**                                   |
+| Jump to arbitrary page / bookmarks      | No                                                 | **Yes (`jump`, `BookmarkInt`, …)**                               |
+| Element-level CRUD inside pages         | No (immutable `PagingData`)                        | **Yes (`MutablePaginator`)**                                     |
+| Page caching strategies                 | Fixed window around viewport (`maxSize`)           | **Pluggable: MostRecent / Queued / TimeLimited / ContextWindow** |
+| State serialization (process death)     | Last `PagingData` only via `cachedIn`              | **Full cache via `kotlinx.serialization`**                       |
+| Dependencies                            | AndroidX                                           | **Pure Kotlin, zero platform deps**                              |
 
 See the side-by-side
 write-up: [Paging 3 is good. Until you need something more.](articles/en/Paging%203%20is%20good.%20Until%20you%20need%20something%20more.md)
@@ -103,7 +109,8 @@ dependencies {
 ```
 
 For **Kotlin Multiplatform**, Gradle automatically resolves the correct platform artifact
-(`paginator-jvm`, `paginator-iosArm64`, etc.) from the KMP metadata. `paginator-compose`
+(`paginator-jvm`, `paginator-iosArm64`, `paginator-js`, etc.) from the KMP metadata.
+`paginator-compose`
 (KMP) goes in the shared Compose source set; `paginator-view` is Android-only and belongs
 in the Android source set.
 
@@ -133,7 +140,7 @@ in the Android source set.
 The BOM only pins *Paginator* artifacts; it does not constrain Compose, Kotlin, AndroidX,
 or anything else on your classpath.
 
-**Supported targets:** Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64.
+**Supported targets:** Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64 · js · wasmJs.
 
 ### What each UI artifact does
 
@@ -356,7 +363,9 @@ differs only in **how pages are addressed**. Read the full guide at
   metadata), throwing `FinalPageExceededException` when exceeded
 - **Page caching** -- loaded pages are cached in a sorted map for instant access
 - **Cache eviction strategies** -- pluggable eviction via decorator subclasses of `PagingCore`:
-  LRU, FIFO, TTL, and Sliding Window (context-only). Eviction listener callback for reacting to
+  `MostRecentPagingCache` (LRU), `QueuedPagingCache` (FIFO), `TimeLimitedPagingCache` (TTL),
+  and `ContextWindowPagingCache` (evicts outside context). Eviction listener callback for reacting
+  to
   page removal
 - **Reactive state** -- observe page changes via `snapshot` Flow (visible pages) or `asFlow()` (
   entire cache)
@@ -474,7 +483,8 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
   `PageState` subclasses, `PlaceholderPageState`, metadata propagation
 5. [**State Serialization**](docs/5.%20serialization.md) — saving & restoring paginator state via
   `kotlinx.serialization`, surviving process death
-6. [**Caching**](docs/6.%20caching.md) — eviction strategies (LRU, FIFO, TTL, sliding window),
+6. [**Caching**](docs/6.%20caching.md) — eviction strategies (MostRecent, Queued, TimeLimited,
+   ContextWindow),
    composing
    strategies, persistent L2 cache
 7. [**Prefetch**](docs/7.%20prefetch.md) — auto-pagination on scroll with

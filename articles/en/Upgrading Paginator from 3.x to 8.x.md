@@ -50,9 +50,9 @@ all three artifacts stay aligned on the classpath.
 3.3.0 lives under `paginator/src/main/java/...` — it's an **Android-only** library.
 
 8.6.2 is **Kotlin Multiplatform**: sources moved to `commonMain`, and published targets are
-**Android, JVM, iosX64, iosArm64, iosSimulatorArm64**. If you have a KMP project, you can now put
-`paginator` directly into `commonMain.dependencies` and Gradle resolves the right platform
-artifact from KMP metadata.
+**Android, JVM, iosX64, iosArm64, iosSimulatorArm64, js (IR), wasmJs**. If you have a KMP project,
+you can now put `paginator` directly into `commonMain.dependencies` and Gradle resolves the right
+platform artifact from KMP metadata.
 
 ## 3. Page numbers: `UInt` → `Int`
 
