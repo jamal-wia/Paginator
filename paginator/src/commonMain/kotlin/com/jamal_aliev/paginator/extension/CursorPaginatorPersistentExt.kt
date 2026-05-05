@@ -15,7 +15,7 @@ import com.jamal_aliev.paginator.page.PageState
  * offset-based `Paginator`. Every persisted `(cursor, state)` pair is inserted into L1 so
  * the doubly-linked chain is reconstructed before the first navigation call.
  *
- * ### Behaviour
+ * ### Behavior
  *
  * - Reads every entry via [CursorPersistentPagingCache.loadAll] and writes each pair into L1
  *   silently (no intermediate snapshot emissions).

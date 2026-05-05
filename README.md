@@ -102,11 +102,33 @@ dependencies {
 }
 ```
 
-For **Kotlin Multiplatform**, place the BOM and `paginator` in `commonMain.dependencies { … }`;
-Gradle automatically resolves the correct platform artifact (`paginator-jvm`,
-`paginator-iosArm64`, etc.) from the KMP metadata. `paginator-compose` (KMP) goes in the
-shared Compose source set; `paginator-view` is Android-only and belongs in the Android
-source set.
+For **Kotlin Multiplatform**, Gradle automatically resolves the correct platform artifact
+(`paginator-jvm`, `paginator-iosArm64`, etc.) from the KMP metadata. `paginator-compose`
+(KMP) goes in the shared Compose source set; `paginator-view` is Android-only and belongs
+in the Android source set.
+
+> **Kotlin 2.3+ / KMP note:** calling `platform()` inside
+`kotlin { sourceSets { commonMain.dependencies { } } }`
+> is deprecated ([KT-58759](https://youtrack.jetbrains.com/issue/KT-58759)) and scheduled for
+> removal.
+> Declare the BOM in the **top-level** `dependencies {}` block using `commonMainImplementation`:
+>
+> ```kotlin
+> // top-level dependencies {} block — NOT inside kotlin { sourceSets { } }
+> dependencies {
+>     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:8.6.2"))
+> }
+>
+> // inside kotlin { sourceSets { commonMain.dependencies { } } } — no version needed
+> kotlin {
+>     sourceSets {
+>         commonMain.dependencies {
+>             implementation("io.github.jamal-wia:paginator")
+>             implementation("io.github.jamal-wia:paginator-compose")
+>         }
+>     }
+> }
+> ```
 
 The BOM only pins *Paginator* artifacts; it does not constrain Compose, Kotlin, AndroidX,
 or anything else on your classpath.

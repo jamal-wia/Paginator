@@ -558,8 +558,7 @@ class RoomMessagesCache(
     override suspend fun load(page: Int): PageState<Message>? {
         val entity = dao.get(chatId, page) ?: return null
         val data = Json.decodeFromString(serializer, entity.dataJson)
-        return if (entity.isEmpty) EmptyPage(page, data)
-        else SuccessPage(page, data.toMutableList())
+        return SuccessPage(page, data)
     }
 
     override suspend fun loadAll(): List<PageState<Message>> =
@@ -681,8 +680,8 @@ kilobytes of JSON, fits without issue.
 
 On restore:
 
-- `ErrorPage` and `ProgressPage` are converted to `SuccessPage` / `EmptyPage` and marked dirty — so
-  the paginator updates them on the next approach.
+- `ErrorPage` and `ProgressPage` are converted to `SuccessPage` and marked dirty — so
+  the paginator updates them on the next approach (a page with empty data is detectable via `isEmptyState()`).
 - Context window, bookmarks, lock flags, `finalPage` — restored as-is.
 
 After `restoreStateFromJson` the paginator looks as if process death never happened — same scroll,

@@ -557,8 +557,7 @@ class RoomMessagesCache(
     override suspend fun load(page: Int): PageState<Message>? {
         val entity = dao.get(chatId, page) ?: return null
         val data = Json.decodeFromString(serializer, entity.dataJson)
-        return if (entity.isEmpty) EmptyPage(page, data)
-        else SuccessPage(page, data.toMutableList())
+        return SuccessPage(page, data)
     }
 
     override suspend fun loadAll(): List<PageState<Message>> =
@@ -681,8 +680,9 @@ class ChatViewModel(
 
 При восстановлении:
 
-- `ErrorPage` и `ProgressPage` конвертируются в `SuccessPage` / `EmptyPage` и помечаются dirty —
-  чтобы при первом же подходе к ним пагинатор их обновил.
+- `ErrorPage` и `ProgressPage` конвертируются в `SuccessPage` и помечаются dirty —
+  чтобы при первом же подходе к ним пагинатор их обновил (страница с пустыми данными определяется
+  через `isEmptyState()`).
 - Контекст-окно, bookmarks, lock-флаги, `finalPage` — восстанавливаются как есть.
 
 После `restoreStateFromJson` пагинатор выглядит так, как будто process death не было — тот же
