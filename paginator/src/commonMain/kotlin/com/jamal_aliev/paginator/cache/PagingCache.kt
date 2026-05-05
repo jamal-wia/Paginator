@@ -7,15 +7,15 @@ import com.jamal_aliev.paginator.page.PageState
 /**
  * A minimal interface exposing only the cache operations needed by eviction strategies.
  *
- * [DefaultPagingCache] provides the standard sorted-list implementation.
+ * [InMemoryPagingCache] provides the standard sorted-list implementation.
  * Each eviction strategy also implements this interface via Kotlin `by` delegation,
  * enabling arbitrary composition:
  *
  * ```kotlin
  * val paginator = MutablePaginator(
  *     pagingCore = PagingCore(
- *         cache = LruPagingCache(
- *             delegate = TtlPagingCache(ttl = 5.minutes),
+ *         cache = MostRecentPagingCache(
+ *             delegate = TimeLimitedPagingCache(ttl = 5.minutes),
  *             maxSize = 50
  *         )
  *     ),

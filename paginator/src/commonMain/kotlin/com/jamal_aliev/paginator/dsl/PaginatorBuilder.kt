@@ -5,9 +5,9 @@ import com.jamal_aliev.paginator.Paginator
 import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.bookmark.BookmarkInt
-import com.jamal_aliev.paginator.cache.DefaultPagingCache
+import com.jamal_aliev.paginator.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.cache.PagingCache
-import com.jamal_aliev.paginator.cache.PersistentPagingCache
+import com.jamal_aliev.paginator.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -65,7 +65,7 @@ inline fun <T> paginator(
  * val users: MutablePaginator<User> = mutablePaginator(capacity = 20) {
  *     load { page -> api.getUsers(page) }
  *
- *     cache = LruPagingCache(maxSize = 50) + TtlPagingCache(ttl = 5.minutes)
+ *     cache = MostRecentPagingCache(maxSize = 50) + TimeLimitedPagingCache(ttl = 5.minutes)
  *     persistentCache = roomPagingCache
  *
  *     finalPage = 100
@@ -117,11 +117,11 @@ sealed class BasePaginatorBuilder<T> protected constructor(
      * In-memory cache (L1) used by the paginator.
      *
      * Compose eviction strategies with the `+` operator, e.g.
-     * `LruPagingCache(maxSize = 50) + TtlPagingCache(ttl = 5.minutes)`.
+     * `MostRecentPagingCache(maxSize = 50) + TimeLimitedPagingCache(ttl = 5.minutes)`.
      *
-     * Defaults to [DefaultPagingCache] (no eviction).
+     * Defaults to [InMemoryPagingCache] (no eviction).
      */
-    var cache: PagingCache<T> = DefaultPagingCache()
+    var cache: PagingCache<T> = InMemoryPagingCache()
 
     /**
      * Optional persistent (L2) cache. Defaults to `null` (no persistence).

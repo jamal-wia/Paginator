@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator.extension
 
 import com.jamal_aliev.paginator.Paginator
-import com.jamal_aliev.paginator.cache.PersistentPagingCache
+import com.jamal_aliev.paginator.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.page.PageState
 
 /**
@@ -29,11 +29,11 @@ import com.jamal_aliev.paginator.page.PageState
  * Warming up bypasses the normal "load → cache → strategy" flow by pushing states straight
  * into the cache via its public [setState][com.jamal_aliev.paginator.cache.PagingCache.setState]
  * entry point. If L2 contains more pages than the strategy is willing to hold (e.g.
- * `LruPagingCache(maxSize = 20)` + 100 persisted pages) the strategy will evict on each
+ * `MostRecentPagingCache(maxSize = 20)` + 100 persisted pages) the strategy will evict on each
  * insert and the final L1 size will match the strategy's capacity, not L2's size.
- * [SlidingWindowPagingCache][com.jamal_aliev.paginator.cache.SlidingWindowPagingCache] with
+ * [ContextWindowPagingCache][com.jamal_aliev.paginator.cache.ContextWindowPagingCache] with
  * no established context window will effectively discard every inserted page — prefer
- * `LruPagingCache` or pair the warm-up with a subsequent `jump(...)` to establish context.
+ * `MostRecentPagingCache` or pair the warm-up with a subsequent `jump(...)` to establish context.
  *
  * ### Concurrency
  *

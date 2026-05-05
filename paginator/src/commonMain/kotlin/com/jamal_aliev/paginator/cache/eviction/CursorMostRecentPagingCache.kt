@@ -1,6 +1,8 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
 
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cache.CursorInMemoryPagingCache
+import com.jamal_aliev.paginator.cache.CursorPagingCache
 import com.jamal_aliev.paginator.extension.withLeaf
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.debug
@@ -18,15 +20,15 @@ import com.jamal_aliev.paginator.page.PageState
  * [endContextCursor] (walking `next`) are protected from eviction when
  * [protectContextWindow] is `true`.
  */
-class LruCursorPagingCache<T>(
-    private val cache: CursorPagingCache<T> = DefaultCursorPagingCache(),
+class CursorMostRecentPagingCache<T>(
+    private val cache: CursorPagingCache<T> = CursorInMemoryPagingCache(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : CursorPagingCache<T> by cache, CursorWrappablePagingCache<T> {
+) : CursorPagingCache<T> by cache, CursorChainablePagingCache<T> {
 
-    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): LruCursorPagingCache<T> =
-        LruCursorPagingCache(
+    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): CursorMostRecentPagingCache<T> =
+        CursorMostRecentPagingCache(
             cache = cache.withLeaf(newLeaf),
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
@@ -94,7 +96,7 @@ class LruCursorPagingCache<T>(
             accessOrder.remove(victim)
             if (evicted != null) {
                 cache.logger.debug(LogComponent.CACHE) {
-                    "LruCursorPagingCache evict: self=$victim"
+                    "CursorMostRecentPagingCache evict: self=$victim"
                 }
                 evictionListener?.onEvicted(evicted)
             }

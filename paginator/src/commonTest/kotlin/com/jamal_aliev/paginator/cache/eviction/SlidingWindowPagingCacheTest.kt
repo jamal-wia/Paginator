@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
 
 import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.PagingCore
@@ -13,9 +13,12 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class SlidingWindowPagingCacheTest {
+class ContextWindowPagingCacheTest {
 
-    private fun successPage(page: Int, data: List<String> = listOf("item_$page")): PageState.SuccessPage<String> {
+    private fun successPage(
+        page: Int,
+        data: List<String> = listOf("item_$page")
+    ): PageState.SuccessPage<String> {
         return PageState.SuccessPage(page = page, data = data)
     }
 
@@ -23,7 +26,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `evicts pages outside context window`() {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
@@ -46,7 +49,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `margin extends the keep range`() {
-        val core = SlidingWindowPagingCache<String>(margin = 1)
+        val core = ContextWindowPagingCache<String>(margin = 1)
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
@@ -69,7 +72,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `no eviction when paginator not started`() {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
 
         // Not started (startContextPage = 0, endContextPage = 0)
         core.setState(successPage(1), silently = true)
@@ -82,7 +85,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `evictionListener called for evicted pages`() {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
         val evicted = mutableListOf<Int>()
         core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
 
@@ -102,7 +105,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `clear works correctly`() {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
         core.setState(successPage(1), silently = true)
         core.clear()
         assertEquals(0, core.size)
@@ -110,7 +113,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `release works correctly`() {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
         core.setState(successPage(1), silently = true)
         core.release(silently = true)
         assertEquals(0, core.size)
@@ -118,7 +121,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `margin 0 keeps only context window pages`() {
-        val core = SlidingWindowPagingCache<String>(margin = 0)
+        val core = ContextWindowPagingCache<String>(margin = 0)
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
@@ -137,7 +140,7 @@ class SlidingWindowPagingCacheTest {
     @Test
     fun `negative margin throws`() {
         assertFailsWith<IllegalArgumentException> {
-            SlidingWindowPagingCache<String>(margin = -1)
+            ContextWindowPagingCache<String>(margin = -1)
         }
     }
 
@@ -145,7 +148,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `jump evicts pages from previous location`() = runTest {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
@@ -171,7 +174,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `goNextPage keeps context window pages`() = runTest {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
@@ -190,7 +193,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `margin keeps extra pages after jump`() = runTest {
-        val core = SlidingWindowPagingCache<String>(margin = 1)
+        val core = ContextWindowPagingCache<String>(margin = 1)
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
@@ -216,7 +219,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `release works after sliding window navigation`() = runTest {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
@@ -234,7 +237,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `serialization roundtrip works`() = runTest {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)
         ) { page: Int ->
@@ -253,7 +256,7 @@ class SlidingWindowPagingCacheTest {
 
     @Test
     fun `evictionListener called on jump eviction`() = runTest {
-        val core = SlidingWindowPagingCache<String>()
+        val core = ContextWindowPagingCache<String>()
         val evicted = mutableListOf<Int>()
         core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
 

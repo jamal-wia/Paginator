@@ -1,8 +1,10 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.persistent
 
 import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.bookmark.BookmarkInt
+import com.jamal_aliev.paginator.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.cache.eviction.MostRecentPagingCache
 import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState
 import kotlinx.coroutines.test.runTest
@@ -49,7 +51,7 @@ class PersistentPagingCacheTest {
     ): Pair<MutablePaginator<String>, InMemoryPersistentCache<String>> {
         val paginator = MutablePaginator(
             core = PagingCore(
-                cache = DefaultPagingCache(),
+                cache = InMemoryPagingCache(),
                 persistentCache = persistentCache,
                 initialCapacity = capacity,
             )
@@ -254,7 +256,7 @@ class PersistentPagingCacheTest {
         val persistent = InMemoryPersistentCache<String>()
         val paginator = MutablePaginator(
             core = PagingCore(
-                cache = DefaultPagingCache(),
+                cache = InMemoryPagingCache(),
                 persistentCache = persistent,
                 initialCapacity = capacity,
             )
@@ -400,7 +402,7 @@ class PersistentPagingCacheTest {
         // LRU cache with maxSize=3
         val paginator = MutablePaginator(
             core = PagingCore(
-                cache = LruPagingCache(
+                cache = MostRecentPagingCache(
                     maxSize = 3,
                     protectContextWindow = false
                 ),
@@ -437,7 +439,10 @@ class PersistentPagingCacheTest {
 
         assertTrue(state is PageState.SuccessPage)
         assertEquals(1, state.page)
-        assertTrue(sourceCalls.isEmpty(), "Source should NOT be called — data restored from persistent")
+        assertTrue(
+            sourceCalls.isEmpty(),
+            "Source should NOT be called — data restored from persistent"
+        )
     }
 
     // =========================================================================
@@ -516,7 +521,7 @@ class PersistentPagingCacheTest {
         val persistent = InMemoryPersistentCache<String>()
         val paginator = MutablePaginator(
             core = PagingCore(
-                cache = DefaultPagingCache(),
+                cache = InMemoryPagingCache(),
                 persistentCache = persistent,
                 initialCapacity = 1, // capacity=1 so single removal empties the page
             )

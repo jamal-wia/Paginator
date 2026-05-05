@@ -2,7 +2,7 @@ package com.jamal_aliev.paginator.extension
 
 import com.jamal_aliev.paginator.CursorPaginator
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.cache.CursorPersistentPagingCache
+import com.jamal_aliev.paginator.cache.persistent.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.page.PageState
 
 /**

@@ -1,4 +1,7 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
+
+import com.jamal_aliev.paginator.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.cache.PagingCache
 
 import com.jamal_aliev.paginator.extension.withLeaf
 import com.jamal_aliev.paginator.logger.LogComponent
@@ -21,27 +24,31 @@ import com.jamal_aliev.paginator.page.PageState
  * ```kotlin
  * val paginator = MutablePaginator(
  *     pagingCore = PagingCore(
- *         cache = SlidingWindowPagingCache(margin = 1),
+ *         cache = ContextWindowPagingCache(margin = 1),
  *         initialCapacity = 20
  *     ),
  *     load = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param cache The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
+ * @param cache The inner [PagingCache] to delegate to. Defaults to [InMemoryPagingCache].
  * @param margin Number of pages to keep beyond each edge of the context window.
  *   Default is `0` (strict window). For example, `margin = 2` keeps pages in
  *   `(startContextPage - 2)..(endContextPage + 2)`.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
-class SlidingWindowPagingCache<T>(
-    private val cache: PagingCache<T> = DefaultPagingCache(),
+class ContextWindowPagingCache<T>(
+    private val cache: PagingCache<T> = InMemoryPagingCache(),
     val margin: Int = 0,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCache<T> by cache, WrappablePagingCache<T> {
+) : PagingCache<T> by cache, ChainablePagingCache<T> {
 
-    override fun replaceLeaf(newLeaf: PagingCache<T>): SlidingWindowPagingCache<T> =
-        SlidingWindowPagingCache(cache = cache.withLeaf(newLeaf), margin = margin, evictionListener = evictionListener)
+    override fun replaceLeaf(newLeaf: PagingCache<T>): ContextWindowPagingCache<T> =
+        ContextWindowPagingCache(
+            cache = cache.withLeaf(newLeaf),
+            margin = margin,
+            evictionListener = evictionListener
+        )
 
     init {
         require(margin >= 0) { "margin must be >= 0, was $margin" }
@@ -72,7 +79,7 @@ class SlidingWindowPagingCache<T>(
         for (page in pagesToEvict) {
             val evicted = cache.removeFromCache(page)
             if (evicted != null) {
-                cache.logger.debug(LogComponent.CACHE) { "SlidingWindowPagingCache evict: page=${evicted.page}" }
+                cache.logger.debug(LogComponent.CACHE) { "ContextWindowPagingCache evict: page=${evicted.page}" }
                 evictionListener?.onEvicted(evicted)
             }
         }

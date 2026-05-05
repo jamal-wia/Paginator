@@ -2,9 +2,9 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.PagingCore.Companion.UNLIMITED_CAPACITY
-import com.jamal_aliev.paginator.cache.DefaultPagingCache
+import com.jamal_aliev.paginator.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.cache.PagingCache
-import com.jamal_aliev.paginator.cache.PersistentPagingCache
+import com.jamal_aliev.paginator.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.extension.gap
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
@@ -34,7 +34,7 @@ import kotlin.contracts.contract
  *
  * This class orchestrates all cache-related state and operations, delegating
  * raw storage to [cache] (a [PagingCache] implementation, typically
- * [DefaultPagingCache] or a chain of eviction strategies).
+ * [InMemoryPagingCache] or a chain of eviction strategies).
  *
  * Navigation logic lives in [Paginator]; this class is connected to it via composition.
  *
@@ -56,7 +56,7 @@ import kotlin.contracts.contract
  * @param T The type of elements contained in each page.
  */
 open class PagingCore<T>(
-    val cache: PagingCache<T> = DefaultPagingCache(),
+    val cache: PagingCache<T> = InMemoryPagingCache(),
     val persistentCache: PersistentPagingCache<T>? = null,
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {

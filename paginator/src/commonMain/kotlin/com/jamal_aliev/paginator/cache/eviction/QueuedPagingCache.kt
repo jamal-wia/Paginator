@@ -1,4 +1,7 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
+
+import com.jamal_aliev.paginator.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.cache.PagingCache
 
 import com.jamal_aliev.paginator.extension.withLeaf
 import com.jamal_aliev.paginator.logger.LogComponent
@@ -9,7 +12,7 @@ import com.jamal_aliev.paginator.page.PageState
  * A [PagingCache] decorator that enforces a **FIFO (First In, First Out)** eviction policy.
  *
  * When the number of cached pages exceeds [maxSize], the oldest page (first inserted)
- * is evicted. Unlike [LruPagingCache], reading a page does **not** change its eviction priority —
+ * is evicted. Unlike [MostRecentPagingCache], reading a page does **not** change its eviction priority —
  * only the original insertion order matters.
  *
  * Pages within the current context window can optionally be protected from eviction
@@ -19,29 +22,31 @@ import com.jamal_aliev.paginator.page.PageState
  * ```kotlin
  * val paginator = MutablePaginator(
  *     pagingCore = PagingCore(
- *         cache = FifoPagingCache(maxSize = 30),
+ *         cache = QueuedPagingCache(maxSize = 30),
  *         initialCapacity = 20
  *     ),
  *     load = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param cache The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
+ * @param cache The inner [PagingCache] to delegate to. Defaults to [InMemoryPagingCache].
  * @param maxSize Maximum number of pages to keep in cache. Must be > 0.
  * @param protectContextWindow If `true` (default), pages within the visible context window
  *   are never evicted.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
-class FifoPagingCache<T>(
-    private val cache: PagingCache<T> = DefaultPagingCache(),
+class QueuedPagingCache<T>(
+    private val cache: PagingCache<T> = InMemoryPagingCache(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCache<T> by cache, WrappablePagingCache<T> {
+) : PagingCache<T> by cache, ChainablePagingCache<T> {
 
-    override fun replaceLeaf(newLeaf: PagingCache<T>): FifoPagingCache<T> =
-        FifoPagingCache(cache = cache.withLeaf(newLeaf), maxSize = maxSize,
-            protectContextWindow = protectContextWindow, evictionListener = evictionListener)
+    override fun replaceLeaf(newLeaf: PagingCache<T>): QueuedPagingCache<T> =
+        QueuedPagingCache(
+            cache = cache.withLeaf(newLeaf), maxSize = maxSize,
+            protectContextWindow = protectContextWindow, evictionListener = evictionListener
+        )
 
     init {
         require(maxSize > 0) { "maxSize must be greater than 0, was $maxSize" }
@@ -88,14 +93,14 @@ class FifoPagingCache<T>(
 
             val victim = insertionOrder.firstOrNull { page ->
                 page != justAddedPage &&
-                    cache.getStateOf(page) != null &&
-                    (protectedRange == null || page !in protectedRange)
+                        cache.getStateOf(page) != null &&
+                        (protectedRange == null || page !in protectedRange)
             } ?: break
 
             val evicted = cache.removeFromCache(victim)
             insertionOrder.remove(victim)
             if (evicted != null) {
-                cache.logger.debug(LogComponent.CACHE) { "FifoPagingCache evict: page=${evicted.page}" }
+                cache.logger.debug(LogComponent.CACHE) { "QueuedPagingCache evict: page=${evicted.page}" }
                 evictionListener?.onEvicted(evicted)
             }
         }

@@ -1,6 +1,8 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
 
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cache.CursorInMemoryPagingCache
+import com.jamal_aliev.paginator.cache.CursorPagingCache
 import com.jamal_aliev.paginator.extension.withLeaf
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.debug
@@ -10,18 +12,18 @@ import com.jamal_aliev.paginator.page.PageState
  * A [CursorPagingCache] decorator enforcing **FIFO (First In, First Out)** eviction.
  *
  * When the number of cached pages exceeds [maxSize], the page that was added
- * first is evicted. Unlike [LruCursorPagingCache], reads do not affect the
+ * first is evicted. Unlike [CursorMostRecentPagingCache], reads do not affect the
  * eviction priority.
  */
-class FifoCursorPagingCache<T>(
-    private val cache: CursorPagingCache<T> = DefaultCursorPagingCache(),
+class CursorQueuedPagingCache<T>(
+    private val cache: CursorPagingCache<T> = CursorInMemoryPagingCache(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : CursorPagingCache<T> by cache, CursorWrappablePagingCache<T> {
+) : CursorPagingCache<T> by cache, CursorChainablePagingCache<T> {
 
-    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): FifoCursorPagingCache<T> =
-        FifoCursorPagingCache(
+    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): CursorQueuedPagingCache<T> =
+        CursorQueuedPagingCache(
             cache = cache.withLeaf(newLeaf),
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
@@ -72,7 +74,7 @@ class FifoCursorPagingCache<T>(
             insertionOrder.remove(victim)
             if (evicted != null) {
                 cache.logger.debug(LogComponent.CACHE) {
-                    "FifoCursorPagingCache evict: self=$victim"
+                    "CursorQueuedPagingCache evict: self=$victim"
                 }
                 evictionListener?.onEvicted(evicted)
             }

@@ -8,21 +8,21 @@ import com.jamal_aliev.paginator.page.PageState
  * page storage with no eviction logic.
  *
  * This is the leaf node of any cache strategy chain. Eviction strategies
- * ([FifoPagingCache], [LruPagingCache], [TtlPagingCache], [SlidingWindowPagingCache])
- * delegate to this class (or to each other, with [DefaultPagingCache] at the bottom).
+ * ([QueuedPagingCache], [MostRecentPagingCache], [TimeLimitedPagingCache], [ContextWindowPagingCache])
+ * delegate to this class (or to each other, with [InMemoryPagingCache] at the bottom).
  *
  * ## Usage
  * ```kotlin
  * // Standalone (no eviction)
  * val paginator = MutablePaginator(
- *     pagingCore = PagingCore(cache = DefaultPagingCache()),
+ *     pagingCore = PagingCore(cache = InMemoryPagingCache()),
  *     load = { page -> api.loadPage(page) }
  * )
  *
  * // With eviction strategy
  * val paginator = MutablePaginator(
  *     pagingCore = PagingCore(
- *         cache = LruPagingCache(delegate = DefaultPagingCache(), maxSize = 50)
+ *         cache = MostRecentPagingCache(delegate = InMemoryPagingCache(), maxSize = 50)
  *     ),
  *     load = { page -> api.loadPage(page) }
  * )
@@ -30,7 +30,7 @@ import com.jamal_aliev.paginator.page.PageState
  *
  * @param T The type of elements contained in each page.
  */
-class DefaultPagingCache<T> : PagingCache<T> {
+class InMemoryPagingCache<T> : PagingCache<T> {
 
     override var logger: PaginatorLogger? = null
 
@@ -91,7 +91,7 @@ class DefaultPagingCache<T> : PagingCache<T> {
         endContextPage = 0
     }
 
-    override fun toString(): String = "DefaultPagingCache(pages=$cache)"
+    override fun toString(): String = "InMemoryPagingCache(pages=$cache)"
 
     override fun equals(other: Any?): Boolean = this === other
 

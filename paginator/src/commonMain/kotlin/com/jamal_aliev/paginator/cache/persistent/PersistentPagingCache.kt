@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.persistent
 
 import com.jamal_aliev.paginator.page.PageState
 
@@ -25,7 +25,7 @@ import com.jamal_aliev.paginator.page.PageState
  * ```kotlin
  * val paginator = MutablePaginator(
  *     pagingCore = PagingCore(
- *         cache = LruPagingCache(maxSize = 50),
+ *         cache = MostRecentPagingCache(maxSize = 50),
  *         persistentCache = MyRoomPagingCache(dao)
  *     ),
  *     load = { page -> api.loadPage(page) }

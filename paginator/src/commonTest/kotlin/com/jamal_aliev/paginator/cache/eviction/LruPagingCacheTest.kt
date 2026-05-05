@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
 
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.test.Test
@@ -8,16 +8,22 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class LruPagingCacheTest {
+class MostRecentPagingCacheTest {
 
-    private fun createCore(maxSize: Int = 3, protectContextWindow: Boolean = true): LruPagingCache<String> {
-        return LruPagingCache(
+    private fun createCore(
+        maxSize: Int = 3,
+        protectContextWindow: Boolean = true
+    ): MostRecentPagingCache<String> {
+        return MostRecentPagingCache(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
         )
     }
 
-    private fun successPage(page: Int, data: List<String> = listOf("item_$page")): PageState.SuccessPage<String> {
+    private fun successPage(
+        page: Int,
+        data: List<String> = listOf("item_$page")
+    ): PageState.SuccessPage<String> {
         return PageState.SuccessPage(page = page, data = data)
     }
 
@@ -275,14 +281,14 @@ class LruPagingCacheTest {
     @Test
     fun `maxSize 0 throws`() {
         assertFailsWith<IllegalArgumentException> {
-            LruPagingCache<String>(maxSize = 0)
+            MostRecentPagingCache<String>(maxSize = 0)
         }
     }
 
     @Test
     fun `negative maxSize throws`() {
         assertFailsWith<IllegalArgumentException> {
-            LruPagingCache<String>(maxSize = -1)
+            MostRecentPagingCache<String>(maxSize = -1)
         }
     }
 

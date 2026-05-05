@@ -1,8 +1,11 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.persistent
 
 import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.PagingCore
 import com.jamal_aliev.paginator.bookmark.BookmarkInt
+import com.jamal_aliev.paginator.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.cache.PagingCache
+import com.jamal_aliev.paginator.cache.eviction.MostRecentPagingCache
 import com.jamal_aliev.paginator.extension.warmUpFromPersistent
 import com.jamal_aliev.paginator.load.LoadResult
 import com.jamal_aliev.paginator.page.PageState
@@ -44,7 +47,7 @@ class PaginatorPersistentExtTest {
 
     private fun paginator(
         persistent: PersistentPagingCache<String>? = InMemoryPersistentCache(),
-        cache: PagingCache<String> = DefaultPagingCache(),
+        cache: PagingCache<String> = InMemoryPagingCache(),
         capacity: Int = 3,
         sourceCallTracker: MutableList<Int>? = null,
     ): MutablePaginator<String> = MutablePaginator(
@@ -292,7 +295,7 @@ class PaginatorPersistentExtTest {
             persistent.save(PageState.SuccessPage(page, mutableListOf("p$page")))
         }
 
-        val lru = LruPagingCache<String>(maxSize = 3, protectContextWindow = false)
+        val lru = MostRecentPagingCache<String>(maxSize = 3, protectContextWindow = false)
         val p = paginator(persistent = persistent, cache = lru)
 
         val inserted = p.warmUpFromPersistent()

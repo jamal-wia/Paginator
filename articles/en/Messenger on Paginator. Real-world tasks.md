@@ -578,7 +578,7 @@ private val paginator = mutablePaginator<Message>(capacity = 50) {
         this.finalPage = response.totalPages
         LoadResult(response.items)
     }
-    cache = LruPagingCache(maxSize = 20)        // L1: keep 20 pages in memory
+    cache = MostRecentPagingCache(maxSize = 20)        // L1: keep 20 pages in memory
     persistentCache = RoomMessagesCache(dao, chatId)  // L2: everything
 }
 ```
@@ -616,7 +616,8 @@ init {
 `warmUpFromPersistent` returns the number of inserted pages and silently (without emitting a
 snapshot) places them in L1. The next `jump/goNextPage` hits L1 directly, with no network request.
 
-Nuance: if we have `LruPagingCache(maxSize = 20)` but Room holds 100 pages — only 20 make it into
+Nuance: if we have `MostRecentPagingCache(maxSize = 20)` but Room holds 100 pages — only 20 make it
+into
 L1 (the most recent ones, because warm-up goes through the normal `setState`). The other 80 stay in
 L2 and are pulled in as the user scrolls.
 

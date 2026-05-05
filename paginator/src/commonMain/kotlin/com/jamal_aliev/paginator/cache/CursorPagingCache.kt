@@ -15,8 +15,8 @@ import com.jamal_aliev.paginator.page.PageState
  * obtained by walking `next`/`prev` links rather than by numeric comparison.
  *
  * @param T The type of elements contained in each page.
- * @see CursorWrappablePagingCache
- * @see DefaultCursorPagingCache
+ * @see CursorChainablePagingCache
+ * @see CursorInMemoryPagingCache
  */
 interface CursorPagingCache<T> {
 

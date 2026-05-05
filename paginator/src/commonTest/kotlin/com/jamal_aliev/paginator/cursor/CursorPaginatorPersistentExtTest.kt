@@ -3,9 +3,9 @@ package com.jamal_aliev.paginator.cursor
 import com.jamal_aliev.paginator.CursorPagingCore
 import com.jamal_aliev.paginator.MutableCursorPaginator
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.cache.CursorPersistentPagingCache
-import com.jamal_aliev.paginator.cache.DefaultCursorPagingCache
-import com.jamal_aliev.paginator.cache.LruCursorPagingCache
+import com.jamal_aliev.paginator.cache.CursorInMemoryPagingCache
+import com.jamal_aliev.paginator.cache.eviction.CursorMostRecentPagingCache
+import com.jamal_aliev.paginator.cache.persistent.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.extension.warmUpFromPersistent
 import com.jamal_aliev.paginator.page.PageState
 import kotlinx.coroutines.flow.first
@@ -51,7 +51,7 @@ class CursorPaginatorPersistentExtTest {
     private fun mutablePaginator(
         persistent: CursorPersistentPagingCache<String>? = InMemoryCursorPersistentCache(),
         cache: com.jamal_aliev.paginator.cache.CursorPagingCache<String> =
-            DefaultCursorPagingCache(),
+            CursorInMemoryPagingCache(),
         backend: FakeCursorBackend = FakeCursorBackend(backendPages()),
         capacity: Int = 3,
     ): MutableCursorPaginator<String> = MutableCursorPaginator(
@@ -297,7 +297,7 @@ class CursorPaginatorPersistentExtTest {
         val persistent = InMemoryCursorPersistentCache<String>()
         seed(persistent, count = 5)
 
-        val lru = LruCursorPagingCache<String>(maxSize = 3, protectContextWindow = false)
+        val lru = CursorMostRecentPagingCache<String>(maxSize = 3, protectContextWindow = false)
         val p = mutablePaginator(persistent = persistent, cache = lru)
 
         val inserted = p.warmUpFromPersistent()

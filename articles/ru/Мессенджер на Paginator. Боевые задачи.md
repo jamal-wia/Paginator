@@ -577,7 +577,7 @@ private val paginator = mutablePaginator<Message>(capacity = 50) {
         this.finalPage = response.totalPages
         LoadResult(response.items)
     }
-    cache = LruPagingCache(maxSize = 20)   // L1: держим в памяти 20 страниц
+    cache = MostRecentPagingCache(maxSize = 20)   // L1: держим в памяти 20 страниц
     persistentCache = RoomMessagesCache(dao, chatId)  // L2: всё
 }
 ```
@@ -616,7 +616,8 @@ init {
 `warmUpFromPersistent` вернёт количество вставленных страниц и тихо (без эмита snapshot) разложит их
 по L1. Следующий `jump/goNextPage` попадёт сразу в L1, без сетевого запроса.
 
-Нюанс: если у нас `LruPagingCache(maxSize = 20)`, а в Room лежит 100 страниц — в L1 попадут только
+Нюанс: если у нас `MostRecentPagingCache(maxSize = 20)`, а в Room лежит 100 страниц — в L1 попадут
+только
 20 (последние, потому что прогрев идёт через обычный `setState`). Остальные 80 останутся в L2 и
 подтянутся по мере скролла.
 

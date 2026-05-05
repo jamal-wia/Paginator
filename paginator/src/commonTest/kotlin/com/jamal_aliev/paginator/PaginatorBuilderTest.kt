@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.bookmark.BookmarkInt
-import com.jamal_aliev.paginator.cache.LruPagingCache
-import com.jamal_aliev.paginator.cache.PersistentPagingCache
+import com.jamal_aliev.paginator.cache.eviction.MostRecentPagingCache
+import com.jamal_aliev.paginator.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.dsl.mutablePaginator
 import com.jamal_aliev.paginator.dsl.paginator
 import com.jamal_aliev.paginator.extension.plus
@@ -128,7 +128,7 @@ class PaginatorBuilderTest {
 
     @Test
     fun `cache property is honored and reachable through core`() {
-        val customCache = LruPagingCache<String>(maxSize = 5)
+        val customCache = MostRecentPagingCache<String>(maxSize = 5)
         val p = paginator<String> {
             load { LoadResult(emptyList()) }
             cache = customCache
@@ -139,8 +139,8 @@ class PaginatorBuilderTest {
 
     @Test
     fun `cache composition with plus operator survives the build`() {
-        val composed = LruPagingCache<String>(maxSize = 5) +
-                LruPagingCache<String>(maxSize = 10)
+        val composed = MostRecentPagingCache<String>(maxSize = 5) +
+                MostRecentPagingCache<String>(maxSize = 10)
         val p = paginator<String> {
             load { LoadResult(emptyList()) }
             cache = composed

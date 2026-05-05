@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.persistent
 
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.page.PageState

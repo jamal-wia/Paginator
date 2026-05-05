@@ -1,4 +1,7 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
+
+import com.jamal_aliev.paginator.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.cache.PagingCache
 
 import com.jamal_aliev.paginator.extension.withLeaf
 import com.jamal_aliev.paginator.logger.LogComponent
@@ -22,14 +25,14 @@ import kotlin.time.TimeSource
  * ```kotlin
  * val paginator = MutablePaginator(
  *     pagingCore = PagingCore(
- *         cache = TtlPagingCache(ttl = 5.minutes),
+ *         cache = TimeLimitedPagingCache(ttl = 5.minutes),
  *         initialCapacity = 20
  *     ),
  *     load = { page -> api.loadPage(page) }
  * )
  * ```
  *
- * @param cache The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
+ * @param cache The inner [PagingCache] to delegate to. Defaults to [InMemoryPagingCache].
  * @param ttl Maximum time a page can remain in cache before being eligible for eviction.
  * @param refreshOnAccess If `true`, reading a page via [getStateOf] or [getElement]
  *   resets its TTL timer. Default is `false`.
@@ -39,19 +42,21 @@ import kotlin.time.TimeSource
  *   or a test implementation for deterministic testing.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
-class TtlPagingCache<T>(
-    private val cache: PagingCache<T> = DefaultPagingCache(),
+class TimeLimitedPagingCache<T>(
+    private val cache: PagingCache<T> = InMemoryPagingCache(),
     val ttl: Duration,
     val refreshOnAccess: Boolean = false,
     val protectContextWindow: Boolean = true,
     val timeSource: TimeSource = TimeSource.Monotonic,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCache<T> by cache, WrappablePagingCache<T> {
+) : PagingCache<T> by cache, ChainablePagingCache<T> {
 
-    override fun replaceLeaf(newLeaf: PagingCache<T>): TtlPagingCache<T> =
-        TtlPagingCache(cache = cache.withLeaf(newLeaf), ttl = ttl, refreshOnAccess = refreshOnAccess,
+    override fun replaceLeaf(newLeaf: PagingCache<T>): TimeLimitedPagingCache<T> =
+        TimeLimitedPagingCache(
+            cache = cache.withLeaf(newLeaf), ttl = ttl, refreshOnAccess = refreshOnAccess,
             protectContextWindow = protectContextWindow, timeSource = timeSource,
-            evictionListener = evictionListener)
+            evictionListener = evictionListener
+        )
 
     init {
         require(ttl.isPositive()) { "ttl must be positive, was $ttl" }
@@ -111,14 +116,14 @@ class TtlPagingCache<T>(
             .map { (page, _) -> page }
             .filter { page ->
                 cache.getStateOf(page) != null &&
-                    (protectedRange == null || page !in protectedRange)
+                        (protectedRange == null || page !in protectedRange)
             }
 
         for (page in expired) {
             val evicted = cache.removeFromCache(page)
             timestamps.remove(page)
             if (evicted != null) {
-                cache.logger.debug(LogComponent.CACHE) { "TtlPagingCache evict: page=${evicted.page} (ttl expired)" }
+                cache.logger.debug(LogComponent.CACHE) { "TimeLimitedPagingCache evict: page=${evicted.page} (ttl expired)" }
                 evictionListener?.onEvicted(evicted)
             }
         }

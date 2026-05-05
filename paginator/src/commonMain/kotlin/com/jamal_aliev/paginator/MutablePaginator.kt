@@ -1,6 +1,6 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.cache.PersistentPagingCache
+import com.jamal_aliev.paginator.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.extension.far
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.extension.smartForEach

@@ -2,9 +2,9 @@ package com.jamal_aliev.paginator
 
 import com.jamal_aliev.paginator.CursorPagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cache.CursorPagingCache
-import com.jamal_aliev.paginator.cache.CursorPersistentPagingCache
-import com.jamal_aliev.paginator.cache.DefaultCursorPagingCache
+import com.jamal_aliev.paginator.cache.persistent.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isProgressState
 import com.jamal_aliev.paginator.extension.isSuccessState
@@ -32,7 +32,7 @@ import kotlin.contracts.contract
  *
  * Manages the page cache, context window, dirty-page tracking, snapshot emission
  * and capacity for a [CursorPaginator]. Cache storage is delegated to [cache]
- * (a [CursorPagingCache] implementation, typically [DefaultCursorPagingCache]
+ * (a [CursorPagingCache] implementation, typically [CursorInMemoryPagingCache]
  * or a chain of eviction strategies).
  *
  * **Doubly-linked, not indexed.** Pages are identified by their
@@ -52,7 +52,7 @@ import kotlin.contracts.contract
  * - **Dirty cursors**: page keys marked for refresh on the next navigation.
  */
 open class CursorPagingCore<T>(
-    val cache: CursorPagingCache<T> = DefaultCursorPagingCache(),
+    val cache: CursorPagingCache<T> = CursorInMemoryPagingCache(),
     val persistentCache: CursorPersistentPagingCache<T>? = null,
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {

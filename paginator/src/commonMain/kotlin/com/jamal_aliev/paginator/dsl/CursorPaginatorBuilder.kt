@@ -5,9 +5,9 @@ import com.jamal_aliev.paginator.CursorPagingCore
 import com.jamal_aliev.paginator.CursorPagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.MutableCursorPaginator
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cache.CursorPagingCache
-import com.jamal_aliev.paginator.cache.CursorPersistentPagingCache
-import com.jamal_aliev.paginator.cache.DefaultCursorPagingCache
+import com.jamal_aliev.paginator.cache.persistent.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.initializer.InitializerSuccessPage
@@ -59,7 +59,7 @@ sealed class BaseCursorPaginatorBuilder<T> protected constructor(
     @PublishedApi internal val capacity: Int,
 ) {
 
-    var cache: CursorPagingCache<T> = DefaultCursorPagingCache()
+    var cache: CursorPagingCache<T> = CursorInMemoryPagingCache()
     var persistentCache: CursorPersistentPagingCache<T>? = null
     var logger: PaginatorLogger? = null
     var recyclingBookmark: Boolean = false

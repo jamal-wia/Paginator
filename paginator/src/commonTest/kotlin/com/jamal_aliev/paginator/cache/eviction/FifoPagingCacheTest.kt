@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
 
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.test.Test
@@ -8,16 +8,22 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class FifoPagingCacheTest {
+class QueuedPagingCacheTest {
 
-    private fun createCore(maxSize: Int = 3, protectContextWindow: Boolean = true): FifoPagingCache<String> {
-        return FifoPagingCache(
+    private fun createCore(
+        maxSize: Int = 3,
+        protectContextWindow: Boolean = true
+    ): QueuedPagingCache<String> {
+        return QueuedPagingCache(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
         )
     }
 
-    private fun successPage(page: Int, data: List<String> = listOf("item_$page")): PageState.SuccessPage<String> {
+    private fun successPage(
+        page: Int,
+        data: List<String> = listOf("item_$page")
+    ): PageState.SuccessPage<String> {
         return PageState.SuccessPage(page = page, data = data)
     }
 
@@ -182,7 +188,7 @@ class FifoPagingCacheTest {
     @Test
     fun `maxSize 0 throws`() {
         assertFailsWith<IllegalArgumentException> {
-            FifoPagingCache<String>(maxSize = 0)
+            QueuedPagingCache<String>(maxSize = 0)
         }
     }
 

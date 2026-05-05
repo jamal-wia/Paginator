@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
 
 import com.jamal_aliev.paginator.MutablePaginator
 import com.jamal_aliev.paginator.PagingCore
@@ -21,7 +21,7 @@ class CacheEvictionIntegrationTest {
         totalPages: Int = 20,
         protectContextWindow: Boolean = true,
     ): MutablePaginator<String> {
-        val eviction = LruPagingCache<String>(
+        val eviction = MostRecentPagingCache<String>(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
         )
@@ -42,7 +42,7 @@ class CacheEvictionIntegrationTest {
         totalPages: Int = 20,
         protectContextWindow: Boolean = true,
     ): MutablePaginator<String> {
-        val eviction = FifoPagingCache<String>(
+        val eviction = QueuedPagingCache<String>(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
         )
@@ -63,7 +63,7 @@ class CacheEvictionIntegrationTest {
         totalPages: Int = 20,
         timeSource: TestTimeSource = TestTimeSource(),
     ): Pair<MutablePaginator<String>, TestTimeSource> {
-        val eviction = TtlPagingCache<String>(
+        val eviction = TimeLimitedPagingCache<String>(
             ttl = ttlMs.milliseconds,
             timeSource = timeSource,
         )
@@ -186,7 +186,7 @@ class CacheEvictionIntegrationTest {
 
     @Test
     fun `restoreState rebuilds LRU tracking correctly`() = runTest {
-        val eviction = LruPagingCache<String>(maxSize = 10)
+        val eviction = MostRecentPagingCache<String>(maxSize = 10)
         val paginator = MutablePaginator(
             core = PagingCore(cache = eviction, initialCapacity = 3)
         ) { page: Int ->
@@ -210,7 +210,7 @@ class CacheEvictionIntegrationTest {
 
     @Test
     fun `resize clears and rebuilds LRU tracking`() = runTest {
-        val eviction = LruPagingCache<String>(maxSize = 10)
+        val eviction = MostRecentPagingCache<String>(maxSize = 10)
         val paginator = MutablePaginator(
             core = PagingCore(cache = eviction, initialCapacity = 3)
         ) { page: Int ->
@@ -245,7 +245,7 @@ class CacheEvictionIntegrationTest {
 
     @Test
     fun `evictionListener called when pages evicted during navigation`() = runTest {
-        val eviction = LruPagingCache<String>(maxSize = 3)
+        val eviction = MostRecentPagingCache<String>(maxSize = 3)
         val evicted = mutableListOf<Int>()
         eviction.evictionListener = CacheEvictionListener { evicted.add(it.page) }
 
@@ -308,7 +308,7 @@ class CacheEvictionIntegrationTest {
 
     @Test
     fun `serialization roundtrip works with LRU core`() = runTest {
-        val eviction = LruPagingCache<String>(maxSize = 10)
+        val eviction = MostRecentPagingCache<String>(maxSize = 10)
         val paginator = MutablePaginator(
             core = PagingCore(cache = eviction, initialCapacity = 3)
         ) { page: Int ->

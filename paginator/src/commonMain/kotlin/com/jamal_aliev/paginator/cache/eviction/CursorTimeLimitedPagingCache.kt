@@ -1,6 +1,8 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
 
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cache.CursorInMemoryPagingCache
+import com.jamal_aliev.paginator.cache.CursorPagingCache
 import com.jamal_aliev.paginator.extension.withLeaf
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.debug
@@ -15,17 +17,17 @@ import kotlin.time.TimeSource
  * Each page records a timestamp when added to the cache. When a new page is added
  * via [setState], any pages older than [ttl] are evicted.
  */
-class TtlCursorPagingCache<T>(
-    private val cache: CursorPagingCache<T> = DefaultCursorPagingCache(),
+class CursorTimeLimitedPagingCache<T>(
+    private val cache: CursorPagingCache<T> = CursorInMemoryPagingCache(),
     val ttl: Duration,
     val refreshOnAccess: Boolean = false,
     val protectContextWindow: Boolean = true,
     val timeSource: TimeSource = TimeSource.Monotonic,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : CursorPagingCache<T> by cache, CursorWrappablePagingCache<T> {
+) : CursorPagingCache<T> by cache, CursorChainablePagingCache<T> {
 
-    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): TtlCursorPagingCache<T> =
-        TtlCursorPagingCache(
+    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): CursorTimeLimitedPagingCache<T> =
+        CursorTimeLimitedPagingCache(
             cache = cache.withLeaf(newLeaf),
             ttl = ttl,
             refreshOnAccess = refreshOnAccess,
@@ -91,7 +93,7 @@ class TtlCursorPagingCache<T>(
             timestamps.remove(self)
             if (evicted != null) {
                 cache.logger.debug(LogComponent.CACHE) {
-                    "TtlCursorPagingCache evict: self=$self (ttl expired)"
+                    "CursorTimeLimitedPagingCache evict: self=$self (ttl expired)"
                 }
                 evictionListener?.onEvicted(evicted)
             }

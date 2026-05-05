@@ -1,4 +1,7 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
+
+import com.jamal_aliev.paginator.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.cache.PagingCache
 
 import com.jamal_aliev.paginator.extension.withLeaf
 import com.jamal_aliev.paginator.logger.LogComponent
@@ -18,7 +21,7 @@ import com.jamal_aliev.paginator.page.PageState
  * ```kotlin
  * val paginator = MutablePaginator(
  *     pagingCore = PagingCore(
- *         cache = LruPagingCache(maxSize = 50),
+ *         cache = MostRecentPagingCache(maxSize = 50),
  *         initialCapacity = 20
  *     ),
  *     load = { page -> api.loadPage(page) }
@@ -29,8 +32,8 @@ import com.jamal_aliev.paginator.page.PageState
  * ```kotlin
  * val paginator = MutablePaginator(
  *     pagingCore = PagingCore(
- *         cache = LruPagingCache(
- *             delegate = TtlPagingCache(ttl = 5.minutes),
+ *         cache = MostRecentPagingCache(
+ *             delegate = TimeLimitedPagingCache(ttl = 5.minutes),
  *             maxSize = 50
  *         )
  *     ),
@@ -38,22 +41,24 @@ import com.jamal_aliev.paginator.page.PageState
  * )
  * ```
  *
- * @param cache The inner [PagingCache] to delegate to. Defaults to [DefaultPagingCache].
+ * @param cache The inner [PagingCache] to delegate to. Defaults to [InMemoryPagingCache].
  * @param maxSize Maximum number of pages to keep in cache. Must be > 0.
  * @param protectContextWindow If `true` (default), pages within the visible context window
  *   are never evicted, even if they are the least recently used.
  * @param evictionListener Optional listener notified when a page is evicted.
  */
-class LruPagingCache<T>(
-    private val cache: PagingCache<T> = DefaultPagingCache(),
+class MostRecentPagingCache<T>(
+    private val cache: PagingCache<T> = InMemoryPagingCache(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : PagingCache<T> by cache, WrappablePagingCache<T> {
+) : PagingCache<T> by cache, ChainablePagingCache<T> {
 
-    override fun replaceLeaf(newLeaf: PagingCache<T>): LruPagingCache<T> =
-        LruPagingCache(cache = cache.withLeaf(newLeaf), maxSize = maxSize,
-            protectContextWindow = protectContextWindow, evictionListener = evictionListener)
+    override fun replaceLeaf(newLeaf: PagingCache<T>): MostRecentPagingCache<T> =
+        MostRecentPagingCache(
+            cache = cache.withLeaf(newLeaf), maxSize = maxSize,
+            protectContextWindow = protectContextWindow, evictionListener = evictionListener
+        )
 
     init {
         require(maxSize > 0) { "maxSize must be greater than 0, was $maxSize" }
@@ -116,14 +121,14 @@ class LruPagingCache<T>(
 
             val victim = accessOrder.firstOrNull { page ->
                 page != justAddedPage &&
-                    cache.getStateOf(page) != null &&
-                    (protectedRange == null || page !in protectedRange)
+                        cache.getStateOf(page) != null &&
+                        (protectedRange == null || page !in protectedRange)
             } ?: break // all pages are protected — cannot evict
 
             val evicted = cache.removeFromCache(victim)
             accessOrder.remove(victim)
             if (evicted != null) {
-                cache.logger.debug(LogComponent.CACHE) { "LruPagingCache evict: page=${evicted.page}" }
+                cache.logger.debug(LogComponent.CACHE) { "MostRecentPagingCache evict: page=${evicted.page}" }
                 evictionListener?.onEvicted(evicted)
             }
         }

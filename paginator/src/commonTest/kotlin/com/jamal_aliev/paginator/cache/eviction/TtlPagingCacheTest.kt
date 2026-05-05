@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
 
 import com.jamal_aliev.paginator.page.PageState
 import kotlin.test.Test
@@ -10,10 +10,10 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 
-class TtlPagingCacheTest {
+class TimeLimitedPagingCacheTest {
 
     private data class CorePair<T>(
-        val core: TtlPagingCache<T>,
+        val core: TimeLimitedPagingCache<T>,
         val timeSource: TestTimeSource,
     )
 
@@ -23,7 +23,7 @@ class TtlPagingCacheTest {
         protectContextWindow: Boolean = true,
         timeSource: TestTimeSource = TestTimeSource(),
     ): CorePair<String> {
-        val core = TtlPagingCache<String>(
+        val core = TimeLimitedPagingCache<String>(
             ttl = ttlMs.milliseconds,
             refreshOnAccess = refreshOnAccess,
             protectContextWindow = protectContextWindow,
@@ -32,7 +32,10 @@ class TtlPagingCacheTest {
         return CorePair(core, timeSource)
     }
 
-    private fun successPage(page: Int, data: List<String> = listOf("item_$page")): PageState.SuccessPage<String> {
+    private fun successPage(
+        page: Int,
+        data: List<String> = listOf("item_$page")
+    ): PageState.SuccessPage<String> {
         return PageState.SuccessPage(page = page, data = data)
     }
 
@@ -266,7 +269,7 @@ class TtlPagingCacheTest {
     @Test
     fun `negative TTL throws`() {
         assertFailsWith<IllegalArgumentException> {
-            TtlPagingCache<String>(ttl = (-1).seconds)
+            TimeLimitedPagingCache<String>(ttl = (-1).seconds)
         }
     }
 

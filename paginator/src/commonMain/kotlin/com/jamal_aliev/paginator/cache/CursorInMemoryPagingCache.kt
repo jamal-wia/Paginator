@@ -9,13 +9,13 @@ import com.jamal_aliev.paginator.page.PageState
  * with no eviction logic. Backed by two `HashMap`s (states and bookmarks).
  *
  * This is the leaf node of any cursor cache strategy chain. Eviction strategies
- * ([FifoCursorPagingCache], [LruCursorPagingCache], [TtlCursorPagingCache],
- * [SlidingWindowCursorPagingCache]) delegate to this class (or to each other,
- * with [DefaultCursorPagingCache] at the bottom).
+ * ([CursorQueuedPagingCache], [CursorMostRecentPagingCache], [CursorTimeLimitedPagingCache],
+ * [CursorContextWindowPagingCache]) delegate to this class (or to each other,
+ * with [CursorInMemoryPagingCache] at the bottom).
  *
  * @param T The type of elements contained in each page.
  */
-class DefaultCursorPagingCache<T> : CursorPagingCache<T> {
+class CursorInMemoryPagingCache<T> : CursorPagingCache<T> {
 
     override var logger: PaginatorLogger? = null
 
@@ -118,7 +118,7 @@ class DefaultCursorPagingCache<T> : CursorPagingCache<T> {
         return bookmarks[prevSelf]
     }
 
-    override fun toString(): String = "DefaultCursorPagingCache(size=$size)"
+    override fun toString(): String = "CursorInMemoryPagingCache(size=$size)"
 
     override fun equals(other: Any?): Boolean = this === other
 

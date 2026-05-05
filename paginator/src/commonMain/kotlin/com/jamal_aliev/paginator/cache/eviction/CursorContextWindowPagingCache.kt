@@ -1,6 +1,8 @@
-package com.jamal_aliev.paginator.cache
+package com.jamal_aliev.paginator.cache.eviction
 
 import com.jamal_aliev.paginator.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cache.CursorInMemoryPagingCache
+import com.jamal_aliev.paginator.cache.CursorPagingCache
 import com.jamal_aliev.paginator.extension.withLeaf
 import com.jamal_aliev.paginator.logger.LogComponent
 import com.jamal_aliev.paginator.logger.debug
@@ -16,14 +18,14 @@ import com.jamal_aliev.paginator.page.PageState
  * @param margin Number of linked pages to keep beyond each edge of the context
  *   window. Default is `0` (strict window).
  */
-class SlidingWindowCursorPagingCache<T>(
-    private val cache: CursorPagingCache<T> = DefaultCursorPagingCache(),
+class CursorContextWindowPagingCache<T>(
+    private val cache: CursorPagingCache<T> = CursorInMemoryPagingCache(),
     val margin: Int = 0,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : CursorPagingCache<T> by cache, CursorWrappablePagingCache<T> {
+) : CursorPagingCache<T> by cache, CursorChainablePagingCache<T> {
 
-    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): SlidingWindowCursorPagingCache<T> =
-        SlidingWindowCursorPagingCache(
+    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): CursorContextWindowPagingCache<T> =
+        CursorContextWindowPagingCache(
             cache = cache.withLeaf(newLeaf),
             margin = margin,
             evictionListener = evictionListener,
@@ -52,7 +54,7 @@ class SlidingWindowCursorPagingCache<T>(
             val evicted = cache.removeFromCache(self)
             if (evicted != null) {
                 cache.logger.debug(LogComponent.CACHE) {
-                    "SlidingWindowCursorPagingCache evict: self=$self"
+                    "CursorContextWindowPagingCache evict: self=$self"
                 }
                 evictionListener?.onEvicted(evicted)
             }
