@@ -26,10 +26,10 @@ mavenPublishing {
     coordinates(group.toString(), "paginator", version.toString())
 
     pom {
-        name.set("Paginator — KMP pagination library for Android, iOS & JVM")
+        name.set("Paginator — KMP pagination library for Android, iOS, JVM & Web")
         description.set(
             "Paginator is a pagination / paging library for Kotlin Multiplatform (Android, iOS, " +
-                    "JVM, Desktop). A pure-Kotlin alternative to Jetpack Paging 3 with cursor-based " +
+                    "JVM, Desktop, JS, Wasm). A pure-Kotlin alternative to Jetpack Paging 3 with cursor-based " +
                     "pagination, bidirectional scroll (chat / messenger feeds), jump-to-page, " +
                     "bookmarks, pluggable page caching (LRU / FIFO / TTL), element-level CRUD, " +
                     "infinite scroll, prefetch, state serialization via kotlinx.serialization, and " +
@@ -82,6 +82,9 @@ mavenPublishing {
                     "android",
                     "ios",
                     "jvm",
+                    "js",
+                    "wasm",
+                    "web",
                     "pagination",
                     "paging",
                     "paginator",
@@ -118,6 +121,14 @@ kotlin {
     iosX64()
     iosArm64()
     iosSimulatorArm64()
+
+    js(IR) {
+        nodejs()
+    }
+
+    wasmJs {
+        nodejs()
+    }
 
     sourceSets {
         commonMain.dependencies {

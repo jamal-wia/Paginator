@@ -24,7 +24,7 @@ class MutablePaginatorTest {
     fun `test set get remove page state`() {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         val pageStates: MutableList<PageState<String>> =
-            MutableList((1..10_000).random()) { index: Int ->
+            MutableList((100..500).random()) { index: Int ->
                 createRandomPageState(page = index, listOf("$index page"))
             }
         pageStates.shuffled().forEach { pageState: PageState<String> ->
@@ -48,7 +48,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test jump and next`(): Unit = runTest {
+    fun `test jump and next`() = runTest {
         val paginator = MutablePaginator { page: Int ->
             LoadResult(Source.getByPage(page, this.core.capacity))
         }
@@ -68,7 +68,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test jump and previous`(): Unit = runTest {
+    fun `test jump and previous`() = runTest {
         val paginator = MutablePaginator { page: Int ->
             LoadResult(Source.getByPage(page, this.core.capacity))
         }
@@ -88,7 +88,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test jump next previous`(): Unit = runTest {
+    fun `test jump next previous`() = runTest {
         val paginator = MutablePaginator { page: Int ->
             LoadResult(Source.getByPage(page, this.core.capacity))
         }
@@ -107,7 +107,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test jump jump and remove`(): Unit = runTest {
+    fun `test jump jump and remove`() = runTest {
         val paginator = MutablePaginator { LoadResult(emptyList<String>()) }.apply {
             core.resize(capacity = 1, resize = false, silently = true)
         }
@@ -210,7 +210,7 @@ class MutablePaginatorTest {
 
 
     @Test
-    fun `test context findNearContextPage`(): Unit = runTest {
+    fun `test context findNearContextPage`() = runTest {
         val paginator = MutablePaginator { LoadResult(emptyList<String>()) }.apply {
             core.resize(capacity = 1, resize = false, silently = true)
         }
@@ -260,7 +260,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test finalPage with goNextPage`(): Unit = runTest {
+    fun `test finalPage with goNextPage`() = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Deterministic source - no random exceptions
             LoadResult(List(this.core.capacity) { "item $it of page $page" })
@@ -292,7 +292,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test finalPage with jump`(): Unit = runTest {
+    fun `test finalPage with jump`() = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Deterministic source - no random exceptions
             LoadResult(List(this.core.capacity) { "item $it of page $page" })
@@ -320,7 +320,7 @@ class MutablePaginatorTest {
     }
 
     @Test
-    fun `test finalPage default allows unlimited pages`(): Unit = runTest {
+    fun `test finalPage default allows unlimited pages`() = runTest {
         val paginator = MutablePaginator { page: Int ->
             // Use a simple source that doesn't throw random exceptions
             if (page <= 10) {

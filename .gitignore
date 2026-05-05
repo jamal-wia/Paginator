@@ -27,3 +27,4 @@ local.properties
 misc.xml
 output.json
 render.experimental.xml
+/kotlin-js-store/yarn.lock

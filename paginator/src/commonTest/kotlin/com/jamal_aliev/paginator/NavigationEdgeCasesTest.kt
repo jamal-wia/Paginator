@@ -5,12 +5,11 @@ import com.jamal_aliev.paginator.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.extension.isErrorState
 import com.jamal_aliev.paginator.extension.isSuccessState
 import com.jamal_aliev.paginator.load.LoadResult
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class NavigationEdgeCasesTest {
@@ -28,26 +27,29 @@ class NavigationEdgeCasesTest {
     }
 
     @Test
-    fun `goPreviousPage without jump throws IllegalStateException`() {
+    fun `goPreviousPage without jump throws IllegalStateException`() = runTest {
         val paginator = createDeterministicPaginator()
-        assertFailsWith<IllegalStateException> {
-            runTest {
-                paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
-            }
+        var caught: IllegalStateException? = null
+        try {
+            paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
+        } catch (e: IllegalStateException) {
+            caught = e
         }
+        assertNotNull(caught)
     }
 
     @Test
-    fun `goPreviousPage at page 1 throws IllegalStateException`(): Unit = runTest {
+    fun `goPreviousPage at page 1 throws IllegalStateException`() = runTest {
         val paginator = createDeterministicPaginator(capacity = 5)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
-        assertFailsWith<IllegalStateException> {
-            runTest {
-                paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
-            }
+        var caught: IllegalStateException? = null
+        try {
+            paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
+        } catch (e: IllegalStateException) {
+            caught = e
         }
-        Unit
+        assertNotNull(caught)
     }
 
     @Test
@@ -95,28 +97,31 @@ class NavigationEdgeCasesTest {
 
     @Test
     fun `jump with page 0 throws IllegalArgumentException`() {
-        assertFailsWith<IllegalArgumentException> {
-            // BookmarkInt requires page >= 1, this should throw in BookmarkInt constructor
+        var caught: IllegalArgumentException? = null
+        try {
             BookmarkInt(0)
+        } catch (e: IllegalArgumentException) {
+            caught = e
         }
+        assertNotNull(caught)
     }
 
     @Test
-    fun `goNextPage throws FinalPageExceededException at boundary`(): Unit = runTest {
+    fun `goNextPage throws FinalPageExceededException at boundary`() = runTest {
         val paginator = createDeterministicPaginator(capacity = 5, totalItems = 100)
         paginator.finalPage = 3
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true) // page 2
-        paginator.goNextPage(silentlyLoading = true, silentlyResult = true) // page 3 (filled)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true) // page 3
 
-        // Page 4 exceeds finalPage=3
-        assertFailsWith<FinalPageExceededException> {
-            runBlocking {
-                paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-            }
+        var caught: FinalPageExceededException? = null
+        try {
+            paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        } catch (e: FinalPageExceededException) {
+            caught = e
         }
-        Unit
+        assertNotNull(caught)
     }
 
     @Test
@@ -145,7 +150,6 @@ class NavigationEdgeCasesTest {
 
     @Test
     fun `isFilledSuccessState with unlimited capacity`() = runTest {
-        // Use a custom source that returns data regardless of capacity
         val paginator = MutablePaginator<String> { page ->
             LoadResult(MutableList(10) { "item_$it" })
         }
