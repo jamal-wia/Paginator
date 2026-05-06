@@ -10,12 +10,11 @@ import androidx.recyclerview.widget.StaggeredGridLayoutManager
  *
  * Mirrors the shape of the indices the [com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController]
  * accepts, but in **full-list** coordinates (headers + footers included). The remapping into
- * data-only indices is done by [com.jamal_aliev.paginator.prefetch.remapIndices] at the call site.
+ * data-only indices is done by [com.jamal_aliev.paginator.prefetch.VisibleDataRange.Companion.from] at the call site.
  */
 internal data class ScrollSignal(
     val firstVisibleIndex: Int,
     val lastVisibleIndex: Int,
-    val totalItemCount: Int,
 )
 
 /**
@@ -32,13 +31,12 @@ internal data class ScrollSignal(
  *
  * Returns a signal with `firstVisibleIndex = -1` / `lastVisibleIndex = -1` if the layout has not
  * positioned anything yet (e.g., before first measure pass) — the controller's negative-index
- * guard rejects this naturally, and `remapIndices` returns `null`.
+ * guard rejects this naturally, and `VisibleDataRange.from` returns `VisibleDataRange.NONE`.
  *
  * @throws IllegalStateException if the [RecyclerView] has no [RecyclerView.LayoutManager], or one
  *   that this binding does not support.
  */
 internal fun RecyclerView.readScrollSignal(): ScrollSignal {
-    val total = adapter?.itemCount ?: 0
     return when (val lm = layoutManager) {
         null -> error(
             "PaginatorPrefetchController.bindToRecyclerView requires a LayoutManager to be set " +
@@ -48,7 +46,6 @@ internal fun RecyclerView.readScrollSignal(): ScrollSignal {
         is LinearLayoutManager -> ScrollSignal(
             firstVisibleIndex = lm.findFirstVisibleItemPosition(),
             lastVisibleIndex = lm.findLastVisibleItemPosition(),
-            totalItemCount = total,
         )
 
         is StaggeredGridLayoutManager -> {
@@ -67,7 +64,6 @@ internal fun RecyclerView.readScrollSignal(): ScrollSignal {
             ScrollSignal(
                 firstVisibleIndex = if (max < 0) -1 else min,
                 lastVisibleIndex = max,
-                totalItemCount = total,
             )
         }
 

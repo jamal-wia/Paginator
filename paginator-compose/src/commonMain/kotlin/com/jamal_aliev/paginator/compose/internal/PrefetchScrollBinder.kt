@@ -6,12 +6,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
-import com.jamal_aliev.paginator.prefetch.RemappedScroll
-import com.jamal_aliev.paginator.prefetch.remapIndices
+import com.jamal_aliev.paginator.prefetch.VisibleDataRange
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.sample
 
 /**
@@ -25,13 +24,12 @@ import kotlinx.coroutines.flow.sample
 internal data class ScrollSignal(
     val firstVisibleIndex: Int,
     val lastVisibleIndex: Int,
-    val totalItemCount: Int,
 )
 
 /**
  * Stable reader that produces a [ScrollSignal] on every layout-snapshot read.
  *
- * Modelled as a `fun interface` so the call-site SAM-converted lambda can be cached via
+ * Modeled as a `fun interface` so the call-site SAM-converted lambda can be cached via
  * `remember(state)` — that turns "one bound-reference allocation per recomposition" into
  * "one allocation per `state` instance change", which matters because every recomposition of
  * a paginated container would otherwise invalidate the controller's reader reference.
@@ -42,7 +40,7 @@ internal fun interface ScrollSignalReader {
 }
 
 /**
- * Stable callback the binder calls with already-remapped, data-only indices. Same allocation
+ * Stable callback the binder calls with data-only indices. Same allocation
  * argument as [ScrollSignalReader] — `remember(controller)` at the call site keeps the SAM
  * instance pinned across recompositions of the binder's container.
  */
@@ -66,9 +64,9 @@ internal fun interface ScrollCallback {
  * coroutine. That keeps the controller's calibration state intact across page loads while
  * still reacting to header/footer changes mid-flight.
  *
- * The remap runs inside the snapshot, returning a nullable [RemappedScroll]; emissions where
- * the viewport sits entirely outside the data range are filtered out and never reach
- * [distinctUntilChanged], so the dedupe windows is purely "actionable scroll states".
+ * The remap runs inside the snapshot; [VisibleDataRange.NONE] emissions (viewport outside the
+ * data range) are filtered out and never reach [distinctUntilChanged], so the dedupe window
+ * covers only actionable scroll states.
  *
  * @param restartKey Pass any value (e.g. a refresh counter) to restart from scratch — useful
  *   after a manual `paginator.refresh()` when you want the controller to recalibrate from the
@@ -95,26 +93,25 @@ internal fun BindScrollInternal(
     val callbackState = rememberUpdatedState(callback)
 
     LaunchedEffect(controllerKey, sourceKey, restartKey, scrollSampleMillis) {
-        val raw: Flow<RemappedScroll?> = snapshotFlow {
+        val raw: Flow<VisibleDataRange> = snapshotFlow {
             val signal = readerState.value.read()
-            remapIndices(
+            VisibleDataRange.from(
                 firstVisibleIndex = signal.firstVisibleIndex,
                 lastVisibleIndex = signal.lastVisibleIndex,
-                totalItemCount = signal.totalItemCount,
                 dataItemCount = dataItemCountState.value,
-                headerCount = headerCountState.value,
+                dataOffset = headerCountState.value,
             )
         }
-        val source: Flow<RemappedScroll?> =
+        val source: Flow<VisibleDataRange> =
             if (scrollSampleMillis > 0L) raw.sample(scrollSampleMillis) else raw
 
-        source.filterNotNull()
+        source.filter { !it.isNone }
             .distinctUntilChanged()
-            .collect { remapped ->
+            .collect { range ->
                 callbackState.value.onScroll(
-                    remapped.firstVisibleIndex,
-                    remapped.lastVisibleIndex,
-                    remapped.totalItemCount,
+                    range.firstVisibleIndex,
+                    range.lastVisibleIndex,
+                    dataItemCountState.value,
                 )
             }
     }

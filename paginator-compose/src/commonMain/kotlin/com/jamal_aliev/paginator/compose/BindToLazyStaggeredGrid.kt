@@ -18,7 +18,6 @@ private fun LazyStaggeredGridState.readScrollSignal(): ScrollSignal {
         return ScrollSignal(
             firstVisibleIndex = -1,
             lastVisibleIndex = -1,
-            totalItemCount = info.totalItemsCount,
         )
     }
     var min = Int.MAX_VALUE
@@ -33,7 +32,6 @@ private fun LazyStaggeredGridState.readScrollSignal(): ScrollSignal {
     return ScrollSignal(
         firstVisibleIndex = min,
         lastVisibleIndex = max,
-        totalItemCount = info.totalItemsCount,
     )
 }
 

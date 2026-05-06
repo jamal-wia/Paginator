@@ -6,7 +6,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
-import com.jamal_aliev.paginator.prefetch.remapIndices
+import com.jamal_aliev.paginator.prefetch.VisibleDataRange
 import com.jamal_aliev.paginator.view.ScrollBinding
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.FlowPreview
@@ -86,19 +86,18 @@ internal class ScrollDispatcher(
         if (recyclerView.layoutManager == null) return
         val signal = recyclerView.readScrollSignal()
         if (signal == lastEmitted) return
-        val remapped = remapIndices(
+        val range = VisibleDataRange.from(
             firstVisibleIndex = signal.firstVisibleIndex,
             lastVisibleIndex = signal.lastVisibleIndex,
-            totalItemCount = signal.totalItemCount,
             dataItemCount = dataItemCount(),
-            headerCount = headerCount(),
+            dataOffset = headerCount(),
         )
         lastEmitted = signal
-        if (remapped != null) {
+        if (!range.isNone) {
             onScroll(
-                remapped.firstVisibleIndex,
-                remapped.lastVisibleIndex,
-                remapped.totalItemCount,
+                range.firstVisibleIndex,
+                range.lastVisibleIndex,
+                dataItemCount(),
             )
         }
     }

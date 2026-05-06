@@ -17,7 +17,6 @@ private fun LazyGridState.readScrollSignal(): ScrollSignal {
     return ScrollSignal(
         firstVisibleIndex = firstVisibleItemIndex,
         lastVisibleIndex = lastIndex,
-        totalItemCount = info.totalItemsCount,
     )
 }
 

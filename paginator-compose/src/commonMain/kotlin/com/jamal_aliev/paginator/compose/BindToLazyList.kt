@@ -17,7 +17,6 @@ private fun LazyListState.readScrollSignal(): ScrollSignal {
     return ScrollSignal(
         firstVisibleIndex = firstVisibleItemIndex,
         lastVisibleIndex = lastIndex,
-        totalItemCount = info.totalItemsCount,
     )
 }
 
@@ -29,9 +28,8 @@ private fun LazyListState.readScrollSignal(): ScrollSignal {
  * The binding observes [listState] through `snapshotFlow` and calls
  * [PaginatorPrefetchController.onScroll] with **data-only** indices: any [headerCount] is
  * subtracted from the visible-index range, the last index is clamped to `dataItemCount - 1`,
- * and `totalItemCount` is replaced with [dataItemCount]. This is what the controller's contract
- * requires (see the warning in `docs/7. prefetch.md`: *"`totalItemCount` must reflect only data
- * items"*) and getting it wrong is a common source of misfires.
+ * and `totalItemCount` forwarded to the controller equals [dataItemCount]. This is what the
+ * controller's contract requires and getting it wrong is a common source of misfires.
  *
  * If the visible viewport sits entirely inside headers (the user hasn't scrolled into data yet)
  * or entirely inside footers, the binding skips the call. The controller's first real call
