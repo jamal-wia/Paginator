@@ -4,6 +4,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
+import com.jamal_aliev.paginator.view.internal.ScrollSignal.Companion.NONE
 
 /**
  * Snapshot of the data we read from a [RecyclerView] on every scroll / data-change pass.
@@ -11,11 +12,25 @@ import androidx.recyclerview.widget.StaggeredGridLayoutManager
  * Mirrors the shape of the indices the [com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController]
  * accepts, but in **full-list** coordinates (headers + footers included). The remapping into
  * data-only indices is done by [com.jamal_aliev.paginator.prefetch.ScrollWindow.Companion.from] at the call site.
+ *
+ * Packs [firstVisibleIndex] and [lastVisibleIndex] into a single [Long] — zero heap allocation on
+ * every scroll/layout pass. Equality (used by the dispatcher to dedup repeated signals) is just a
+ * [Long] comparison. [NONE] is the sentinel for "no previous signal recorded yet" — used to seed
+ * [com.jamal_aliev.paginator.view.internal.ScrollDispatcher.lastEmitted] without nullable boxing.
  */
-internal data class ScrollSignal(
-    val firstVisibleIndex: Int,
-    val lastVisibleIndex: Int,
-)
+@JvmInline
+internal value class ScrollSignal(val packed: Long) {
+
+    val firstVisibleIndex: Int get() = (packed ushr 32).toInt()
+    val lastVisibleIndex: Int get() = (packed and 0xFFFFFFFFL).toInt()
+
+    companion object {
+        val NONE = ScrollSignal(Long.MIN_VALUE)
+    }
+}
+
+internal fun ScrollSignal(firstVisibleIndex: Int, lastVisibleIndex: Int): ScrollSignal =
+    ScrollSignal((firstVisibleIndex.toLong() shl 32) or (lastVisibleIndex.toLong() and 0xFFFFFFFFL))
 
 /**
  * Reads the current visible-index window and total item count from a [RecyclerView] by dispatching

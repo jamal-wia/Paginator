@@ -31,7 +31,7 @@ internal class ScrollDispatcher(
     private val onScroll: (firstVisibleIndex: Int, lastVisibleIndex: Int, totalItemCount: Int) -> Unit,
 ) : ScrollBinding {
 
-    private var lastEmitted: ScrollSignal? = null
+    private var lastEmitted: ScrollSignal = ScrollSignal.NONE
     private var disposed: Boolean = false
 
     private val signals = MutableSharedFlow<Unit>(
@@ -104,7 +104,7 @@ internal class ScrollDispatcher(
 
     override fun recalibrate() {
         if (disposed) return
-        lastEmitted = null
+        lastEmitted = ScrollSignal.NONE
         tick()
     }
 
