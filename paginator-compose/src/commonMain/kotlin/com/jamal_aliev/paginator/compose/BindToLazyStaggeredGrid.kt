@@ -39,7 +39,7 @@ private fun LazyStaggeredGridState.readScrollSignal(): ScrollSignal {
  * Binds this [PaginatorPrefetchController] to a [LazyStaggeredGridState] so that scroll-driven
  * prefetch happens automatically.
  *
- * Behaviour, parameters, and constraints mirror the `LazyList` overload — see
+ * Behavior, parameters, and constraints mirror the `LazyList` overload — see
  * [PaginatorPrefetchController.BindToLazyList] for the full contract.
  *
  * Staggered grids reorder items across lanes for visual balance, so

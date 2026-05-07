@@ -6,25 +6,35 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
-import com.jamal_aliev.paginator.prefetch.VisibleDataRange
+import androidx.compose.ui.util.packInts
+import androidx.compose.ui.util.unpackInt1
+import androidx.compose.ui.util.unpackInt2
+import com.jamal_aliev.paginator.prefetch.ScrollWindow
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.sample
+import kotlin.jvm.JvmInline
 
 /**
  * Snapshot of the data we read from a lazy-container state on every layout pass.
  *
- * Marked [Immutable] for the Compose compiler — the type is also used to feed `snapshotFlow` and
- * value-equality is required for the upstream `distinctUntilChanged` to collapse pixel-level
- * scrolls that don't shift the visible-index range.
+ * Packs [firstVisibleIndex] and [lastVisibleIndex] into a single [Long] via Compose's
+ * [packInts] — zero heap allocation on every layout-snapshot read. The same scheme backs
+ * `IntOffset` / `IntSize`. Value-equality (required for upstream `distinctUntilChanged` to
+ * collapse pixel-level scrolls that don't shift the visible-index range) is just a [Long]
+ * comparison.
  */
 @Immutable
-internal data class ScrollSignal(
-    val firstVisibleIndex: Int,
-    val lastVisibleIndex: Int,
-)
+@JvmInline
+internal value class ScrollSignal(val packed: Long) {
+    val firstVisibleIndex: Int get() = unpackInt1(packed)
+    val lastVisibleIndex: Int get() = unpackInt2(packed)
+}
+
+internal fun ScrollSignal(firstVisibleIndex: Int, lastVisibleIndex: Int): ScrollSignal =
+    ScrollSignal(packInts(firstVisibleIndex, lastVisibleIndex))
 
 /**
  * Stable reader that produces a [ScrollSignal] on every layout-snapshot read.
@@ -64,7 +74,7 @@ internal fun interface ScrollCallback {
  * coroutine. That keeps the controller's calibration state intact across page loads while
  * still reacting to header/footer changes mid-flight.
  *
- * The remap runs inside the snapshot; [VisibleDataRange.NONE] emissions (viewport outside the
+ * The remap runs inside the snapshot; [ScrollWindow.NONE] emissions (viewport outside the
  * data range) are filtered out and never reach [distinctUntilChanged], so the dedupe window
  * covers only actionable scroll states.
  *
@@ -93,19 +103,19 @@ internal fun BindScrollInternal(
     val callbackState = rememberUpdatedState(callback)
 
     LaunchedEffect(controllerKey, sourceKey, restartKey, scrollSampleMillis) {
-        val raw: Flow<VisibleDataRange> = snapshotFlow {
+        snapshotFlow {
             val signal = readerState.value.read()
-            VisibleDataRange.from(
+            ScrollWindow.from(
                 firstVisibleIndex = signal.firstVisibleIndex,
                 lastVisibleIndex = signal.lastVisibleIndex,
                 dataItemCount = dataItemCountState.value,
                 dataOffset = headerCountState.value,
             )
-        }
-        val source: Flow<VisibleDataRange> =
-            if (scrollSampleMillis > 0L) raw.sample(scrollSampleMillis) else raw
-
-        source.filter { !it.isNone }
+        }.let { flow: Flow<ScrollWindow> ->
+            if (scrollSampleMillis > 0L) {
+                flow.sample(scrollSampleMillis)
+            } else flow
+        }.filter { !it.isNone }
             .distinctUntilChanged()
             .collect { range ->
                 callbackState.value.onScroll(

@@ -100,7 +100,7 @@ fun PaginatorPrefetchController<*>.BindToLazyList(
 /**
  * Cursor-paginator counterpart of [PaginatorPrefetchController.BindToLazyList].
  *
- * Behaviour, parameters, and constraints are identical — see the page-based overload's KDoc.
+ * Behavior, parameters, and constraints are identical — see the page-based overload's KDoc.
  */
 @Composable
 fun CursorPaginatorPrefetchController<*>.BindToLazyList(

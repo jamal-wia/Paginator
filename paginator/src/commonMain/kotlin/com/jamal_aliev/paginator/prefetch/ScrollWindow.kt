@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator.prefetch
 
-import com.jamal_aliev.paginator.prefetch.VisibleDataRange.Companion.NONE
-import com.jamal_aliev.paginator.prefetch.VisibleDataRange.Companion.from
+import com.jamal_aliev.paginator.prefetch.ScrollWindow.Companion.NONE
+import com.jamal_aliev.paginator.prefetch.ScrollWindow.Companion.from
 import kotlin.jvm.JvmInline
 
 /**
@@ -13,7 +13,7 @@ import kotlin.jvm.JvmInline
  * signal is not actionable.
  */
 @JvmInline
-value class VisibleDataRange(val packed: Long) {
+value class ScrollWindow(val packed: Long) {
 
     val firstVisibleIndex: Int get() = (packed ushr 32).toInt()
     val lastVisibleIndex: Int get() = (packed and 0xFFFFFFFFL).toInt()
@@ -27,7 +27,7 @@ value class VisibleDataRange(val packed: Long) {
          * Packed as [Long.MIN_VALUE] — unambiguously outside the valid index range (valid packed
          * values always have a non-negative high 32 bits).
          */
-        val NONE = VisibleDataRange(Long.MIN_VALUE)
+        val NONE = ScrollWindow(Long.MIN_VALUE)
 
         /**
          * Translates a UI lazy-container scroll observation into the data-only indices required
@@ -62,14 +62,14 @@ value class VisibleDataRange(val packed: Long) {
             lastVisibleIndex: Int,
             dataItemCount: Int,
             dataOffset: Int,
-        ): VisibleDataRange {
+        ): ScrollWindow {
             if (dataItemCount <= 0) return NONE
             if (firstVisibleIndex < 0 || lastVisibleIndex < 0) return NONE
             if (firstVisibleIndex > lastVisibleIndex) return NONE
             if (firstVisibleIndex >= dataOffset + dataItemCount) return NONE
             if (lastVisibleIndex < dataOffset) return NONE
 
-            return VisibleDataRange(
+            return ScrollWindow(
                 firstVisibleIndex = (firstVisibleIndex - dataOffset).coerceAtLeast(0),
                 lastVisibleIndex = (lastVisibleIndex - dataOffset).coerceAtMost(dataItemCount - 1),
             )
@@ -77,6 +77,6 @@ value class VisibleDataRange(val packed: Long) {
     }
 }
 
-/** Packs a (first, last) index pair into a [VisibleDataRange]. */
-fun VisibleDataRange(firstVisibleIndex: Int, lastVisibleIndex: Int): VisibleDataRange =
-    VisibleDataRange((firstVisibleIndex.toLong() shl 32) or (lastVisibleIndex.toLong() and 0xFFFFFFFFL))
+/** Packs a (first, last) index pair into a [ScrollWindow]. */
+fun ScrollWindow(firstVisibleIndex: Int, lastVisibleIndex: Int): ScrollWindow =
+    ScrollWindow((firstVisibleIndex.toLong() shl 32) or (lastVisibleIndex.toLong() and 0xFFFFFFFFL))

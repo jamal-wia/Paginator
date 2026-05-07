@@ -10,7 +10,7 @@ import androidx.recyclerview.widget.StaggeredGridLayoutManager
  *
  * Mirrors the shape of the indices the [com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController]
  * accepts, but in **full-list** coordinates (headers + footers included). The remapping into
- * data-only indices is done by [com.jamal_aliev.paginator.prefetch.VisibleDataRange.Companion.from] at the call site.
+ * data-only indices is done by [com.jamal_aliev.paginator.prefetch.ScrollWindow.Companion.from] at the call site.
  */
 internal data class ScrollSignal(
     val firstVisibleIndex: Int,
@@ -31,7 +31,7 @@ internal data class ScrollSignal(
  *
  * Returns a signal with `firstVisibleIndex = -1` / `lastVisibleIndex = -1` if the layout has not
  * positioned anything yet (e.g., before first measure pass) — the controller's negative-index
- * guard rejects this naturally, and `VisibleDataRange.from` returns `VisibleDataRange.NONE`.
+ * guard rejects this naturally, and `ScrollWindow.from` returns `ScrollWindow.NONE`.
  *
  * @throws IllegalStateException if the [RecyclerView] has no [RecyclerView.LayoutManager], or one
  *   that this binding does not support.
