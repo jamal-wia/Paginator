@@ -97,7 +97,7 @@ cannot drift on your classpath:
 ```kotlin
 dependencies {
   // Pin all Paginator artifacts together. Latest version: see the Maven Central badge above.
-  implementation(platform("io.github.jamal-wia:paginator-bom:8.6.2"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:8.7.0"))
 
   // Core — required
   implementation("io.github.jamal-wia:paginator")
@@ -123,7 +123,7 @@ in the Android source set.
 > ```kotlin
 > // top-level dependencies {} block — NOT inside kotlin { sourceSets { } }
 > dependencies {
->     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:8.6.2"))
+>     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:8.7.0"))
 > }
 >
 > // inside kotlin { sourceSets { commonMain.dependencies { } } } — no version needed
