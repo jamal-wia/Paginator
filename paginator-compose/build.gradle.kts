@@ -34,7 +34,7 @@ mavenPublishing {
                     "LazyListState / LazyGridState / LazyStaggeredGridState — auto-pagination on " +
                     "scroll without manual snapshotFlow wiring. UI structure is left fully to the " +
                     "user; this artifact only feeds scroll signals to the controller. Targets " +
-                    "Android, iOS and JVM (Desktop)."
+                    "Android, iOS, JVM (Desktop), JS and Wasm (Web)."
         )
         url.set("https://github.com/jamal-wia/Paginator")
         inceptionYear.set("2026")
@@ -83,6 +83,9 @@ mavenPublishing {
                     "android",
                     "ios",
                     "jvm",
+                    "js",
+                    "wasm",
+                    "web",
                     "pagination",
                     "paging",
                     "paginator",
@@ -114,6 +117,14 @@ kotlin {
     iosX64()
     iosArm64()
     iosSimulatorArm64()
+
+    js(IR) {
+        nodejs()
+    }
+
+    wasmJs {
+        nodejs()
+    }
 
     sourceSets {
         commonMain.dependencies {
