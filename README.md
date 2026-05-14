@@ -97,7 +97,7 @@ cannot drift on your classpath:
 ```kotlin
 dependencies {
   // Pin all Paginator artifacts together. Latest version: see the Maven Central badge above.
-  implementation(platform("io.github.jamal-wia:paginator-bom:8.7.0"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:8.7.1"))
 
   // Core — required
   implementation("io.github.jamal-wia:paginator")
@@ -123,7 +123,7 @@ in the Android source set.
 > ```kotlin
 > // top-level dependencies {} block — NOT inside kotlin { sourceSets { } }
 > dependencies {
->     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:8.7.0"))
+>     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:8.7.1"))
 > }
 >
 > // inside kotlin { sourceSets { commonMain.dependencies { } } } — no version needed
@@ -465,6 +465,9 @@ implementation patterns:
 - [Почему я написал Paginator вместо Paging 3.](articles/ru/Почему%20я%20написал%20Paginator%20вместо%20Paging%203.md) —
   взгляд автора: где решения Paging 3 упираются в потолок и как Paginator устроен, чтобы это
   обойти
+- [Как мигрировать с Paging 3 на Paginator.](articles/ru/Как%20мигрировать%20с%20Paging%203%20на%20Paginator.md) —
+  пошаговое руководство по переезду: карта соответствий API, замена `PagingSource` / `Pager` /
+  `PagingDataAdapter` / `LazyPagingItems` / `RemoteMediator`, чек-лист и типичные грабли
 
 ---
 

@@ -209,7 +209,7 @@ reinventing the wheel on top of `LoadParams`.
 
 ## Where it stands today
 
-At the time of writing, Paginator is published on Maven Central as version 8.7.0. Supported
+At the time of writing, Paginator is published on Maven Central as version 8.7.1. Supported
 targets are Android, JVM (Desktop / Server), iosX64, iosArm64, iosSimulatorArm64. There's a
 separate `paginator-compose` artifact with bindings for Jetpack Compose / Compose Multiplatform
 — it adds a single line of scroll-driven prefetch for `LazyColumn` / `LazyRow` /

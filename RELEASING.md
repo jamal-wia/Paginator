@@ -40,7 +40,7 @@ in **all three** module `build.gradle.kts` files:
 - `paginator-view/build.gradle.kts`
 
 ```kotlin
-version = "8.7.0" // ← new version (must match in all three modules)
+version = "8.7.1" // ← new version (must match in all three modules)
 ```
 
 ## Step 2 — Update README Installation Examples
@@ -54,16 +54,16 @@ coordinates all point at the new version.
 
 ```bash
 git add -A
-git commit -m "Bump version to 8.7.0"
+git commit -m "Bump version to 8.7.1"
 git push origin master
 ```
 
 ## Step 4 — Create a GitHub Release
 
 1. Go to **[Releases → New release](https://github.com/jamal-wia/Paginator/releases/new)**
-2. Click **"Choose a tag"** and type the new version (e.g. `8.7.0`), then select **"Create new tag
+2. Click **"Choose a tag"** and type the new version (e.g. `8.7.1`), then select **"Create new tag
    on publish"**
-3. Set **Release title** (e.g. `8.7.0`)
+3. Set **Release title** (e.g. `8.7.1`)
 4. Describe the changes in the description
 5. Click **"Publish release"**
 

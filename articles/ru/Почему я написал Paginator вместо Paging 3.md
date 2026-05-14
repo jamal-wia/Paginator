@@ -207,7 +207,7 @@ val messages = mutableCursorPaginator<Message> {
 
 ## Что есть сейчас
 
-На момент публикации статьи Paginator опубликован на Maven Central под версией 8.7.0.
+На момент публикации статьи Paginator опубликован на Maven Central под версией 8.7.1.
 Поддерживаемые таргеты — Android, JVM (Desktop / Server), iosX64, iosArm64, iosSimulatorArm64.
 Есть отдельный артефакт `paginator-compose` с биндингами для Jetpack Compose / Compose
 Multiplatform — он добавляет одну строку scroll-driven prefetch для `LazyColumn` / `LazyRow` /
