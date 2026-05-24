@@ -5,7 +5,7 @@ import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 
 /**
  * Result of a single cursor-based load for
- * [com.jamal_aliev.paginator.CursorPaginator].
+ * [com.jamal_aliev.paginator.cursor.CursorPaginator].
  *
  * Alongside [data] and [metadata] this result carries the [bookmark] returned by
  * the source. The bookmark's `prev`/`next` fields tell the paginator how the
@@ -27,7 +27,7 @@ import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
  * ```
  *
  * @param data Items for the requested page, in order. If
- *   [com.jamal_aliev.paginator.CursorPagingCore.capacity] is set, excess items are
+ *   [com.jamal_aliev.paginator.cursor.CursorPagingCore.capacity] is set, excess items are
  *   trimmed automatically.
  * @param metadata Arbitrary metadata attached to this load result, or `null` if none.
  * @param bookmark The [CursorBookmark] describing the loaded page's links. Must be

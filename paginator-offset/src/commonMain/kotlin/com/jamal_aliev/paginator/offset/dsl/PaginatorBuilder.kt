@@ -1,19 +1,19 @@
 package com.jamal_aliev.paginator.offset.dsl
 
+import com.jamal_aliev.paginator.core.cache.PagingCache
+import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.core.dsl.PaginatorDsl
+import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
+import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
+import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.Paginator
 import com.jamal_aliev.paginator.offset.PagingCore
 import com.jamal_aliev.paginator.offset.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
-import com.jamal_aliev.paginator.core.cache.PagingCache
-import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 
 /**
  * Marker that scopes lambdas inside the paginator-builder DSL so that nested
@@ -177,7 +177,7 @@ sealed class BasePaginatorBuilder<T> protected constructor(
     }
 
     /**
-     * Configures the [PageState][com.jamal_aliev.paginator.page.PageState]
+     * Configures the [PageState][com.jamal_aliev.paginator.core.page.PageState]
      * factories used by the paginator. Any factory left unset retains its default.
      *
      * ```kotlin
@@ -267,7 +267,7 @@ class MutablePaginatorBuilder<T> @PublishedApi internal constructor(
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Sub-builder for overriding the default [PageState][com.jamal_aliev.paginator.page.PageState]
+ * Sub-builder for overriding the default [PageState][com.jamal_aliev.paginator.core.page.PageState]
  * factories on the underlying [PagingCore].
  *
  * Each setter is independent — any factory you do not call keeps its default.
@@ -279,23 +279,23 @@ class InitializersBuilder<T> @PublishedApi internal constructor() {
     private var success: InitializerSuccessPage<T>? = null
     private var error: InitializerErrorPage<T>? = null
 
-    /** Override the [PageState.ProgressPage][com.jamal_aliev.paginator.page.PageState.ProgressPage] factory. */
+    /** Override the [PageState.ProgressPage][com.jamal_aliev.paginator.core.page.PageState.ProgressPage] factory. */
     fun progress(factory: InitializerProgressPage<T>) {
         progress = factory
     }
 
     /**
-     * Override the [PageState.SuccessPage][com.jamal_aliev.paginator.page.PageState.SuccessPage] factory.
+     * Override the [PageState.SuccessPage][com.jamal_aliev.paginator.core.page.PageState.SuccessPage] factory.
      *
      * The same factory is used regardless of whether the source returned data — an
-     * "empty" page is just a [PageState.SuccessPage][com.jamal_aliev.paginator.page.PageState.SuccessPage]
+     * "empty" page is just a [PageState.SuccessPage][com.jamal_aliev.paginator.core.page.PageState.SuccessPage]
      * with an empty `data` list.
      */
     fun success(factory: InitializerSuccessPage<T>) {
         success = factory
     }
 
-    /** Override the [PageState.ErrorPage][com.jamal_aliev.paginator.page.PageState.ErrorPage] factory. */
+    /** Override the [PageState.ErrorPage][com.jamal_aliev.paginator.core.page.PageState.ErrorPage] factory. */
     fun error(factory: InitializerErrorPage<T>) {
         error = factory
     }

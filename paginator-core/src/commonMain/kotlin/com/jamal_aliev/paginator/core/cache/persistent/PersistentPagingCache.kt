@@ -3,7 +3,7 @@ package com.jamal_aliev.paginator.core.cache.persistent
 import com.jamal_aliev.paginator.core.page.PageState
 
 /**
- * An optional second-level (L2) persistent cache for [com.jamal_aliev.paginator.Paginator].
+ * An optional second-level (L2) persistent cache for [com.jamal_aliev.paginator.offset.Paginator].
  *
  * While [PagingCache] keeps pages in memory (L1), a [PersistentPagingCache] allows
  * pages to survive process death by storing them in a durable backend (Room, SQLite,
@@ -17,8 +17,8 @@ import com.jamal_aliev.paginator.core.page.PageState
  * **Write path:** After every successful source load, the resulting [PageState.SuccessPage]
  * (including pages that came back empty) is automatically saved to L2 via [save].
  *
- * **Lifecycle:** L2 is **not** cleared by [com.jamal_aliev.paginator.Paginator.restart],
- * [com.jamal_aliev.paginator.Paginator.release], or transaction rollback. It is the
+ * **Lifecycle:** L2 is **not** cleared by [com.jamal_aliev.paginator.offset.Paginator.restart],
+ * [com.jamal_aliev.paginator.offset.Paginator.release], or transaction rollback. It is the
  * consumer's responsibility to manage L2 lifecycle (e.g., clearing stale data on logout).
  *
  * ## Usage
@@ -34,7 +34,7 @@ import com.jamal_aliev.paginator.core.page.PageState
  *
  * @param T The type of elements contained in each page.
  * @see PagingCache
- * @see com.jamal_aliev.paginator.PagingCore
+ * @see com.jamal_aliev.paginator.offset.PagingCore
  */
 interface PersistentPagingCache<T> {
 

@@ -1,10 +1,9 @@
 package com.jamal_aliev.paginator.cursor
 
-import com.jamal_aliev.paginator.cursor.CursorPagingCore
-import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -117,7 +116,7 @@ class CursorPagingCoreTest {
         val p4 = bookmarkAt(4, 5)
         core.cache.setState(
             p0,
-            com.jamal_aliev.paginator.page.PageState.SuccessPage<String>(1, emptyList()),
+            com.jamal_aliev.paginator.core.page.PageState.SuccessPage<String>(1, emptyList()),
             silently = true,
         )
         (1..3).forEach {
@@ -125,7 +124,7 @@ class CursorPagingCoreTest {
         }
         core.cache.setState(
             p4,
-            com.jamal_aliev.paginator.page.PageState.ProgressPage<String>(5, mutableListOf()),
+            com.jamal_aliev.paginator.core.page.PageState.ProgressPage<String>(5, mutableListOf()),
             silently = true,
         )
         core.startContextCursor = core.cache.getCursorOf("p1")

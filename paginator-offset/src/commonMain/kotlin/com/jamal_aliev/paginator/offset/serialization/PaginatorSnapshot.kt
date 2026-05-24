@@ -2,7 +2,7 @@ package com.jamal_aliev.paginator.offset.serialization
 import kotlinx.serialization.Serializable
 
 /**
- * A serializable snapshot of [com.jamal_aliev.paginator.Paginator] state.
+ * A serializable snapshot of [com.jamal_aliev.paginator.offset.Paginator] state.
  *
  * Extends [PagingCoreSnapshot] with Paginator-level concerns: final page,
  * bookmarks, bookmark position, recycling mode, and lock flags.
@@ -13,11 +13,11 @@ import kotlinx.serialization.Serializable
  * @param bookmarkPages The list of bookmark page numbers.
  * @param bookmarkIndex The current position within the bookmarks list.
  * @param recyclingBookmark Whether bookmark navigation wraps around.
- * @param lockJump Whether [com.jamal_aliev.paginator.Paginator.jump] is blocked.
- * @param lockGoNextPage Whether [com.jamal_aliev.paginator.Paginator.goNextPage] is blocked.
- * @param lockGoPreviousPage Whether [com.jamal_aliev.paginator.Paginator.goPreviousPage] is blocked.
- * @param lockRestart Whether [com.jamal_aliev.paginator.Paginator.restart] is blocked.
- * @param lockRefresh Whether [com.jamal_aliev.paginator.Paginator.refresh] is blocked.
+ * @param lockJump Whether [com.jamal_aliev.paginator.offset.Paginator.jump] is blocked.
+ * @param lockGoNextPage Whether [com.jamal_aliev.paginator.offset.Paginator.goNextPage] is blocked.
+ * @param lockGoPreviousPage Whether [com.jamal_aliev.paginator.offset.Paginator.goPreviousPage] is blocked.
+ * @param lockRestart Whether [com.jamal_aliev.paginator.offset.Paginator.restart] is blocked.
+ * @param lockRefresh Whether [com.jamal_aliev.paginator.offset.Paginator.refresh] is blocked.
  */
 @Serializable
 data class PaginatorSnapshot<T>(

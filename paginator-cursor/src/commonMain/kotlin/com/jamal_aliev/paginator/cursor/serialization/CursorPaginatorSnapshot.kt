@@ -3,7 +3,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 /**
- * Serializable snapshot of [com.jamal_aliev.paginator.CursorPaginator] state.
+ * Serializable snapshot of [com.jamal_aliev.paginator.cursor.CursorPaginator] state.
  *
  * Extends [CursorPagingCoreSnapshot] with paginator-level fields: bookmarks,
  * bookmark position, recycling flag, initial anchor cursor, and lock flags.

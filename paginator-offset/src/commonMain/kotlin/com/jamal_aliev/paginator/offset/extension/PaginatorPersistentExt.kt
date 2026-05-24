@@ -1,12 +1,12 @@
 package com.jamal_aliev.paginator.offset.extension
 
-import com.jamal_aliev.paginator.offset.Paginator
 import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.Paginator
 
 /**
- * Eagerly restores L1 from the [persistent cache][com.jamal_aliev.paginator.PagingCore.persistentCache]
- * (L2) — reverse of [com.jamal_aliev.paginator.MutablePaginator.flush].
+ * Eagerly restores L1 from the [persistent cache][com.jamal_aliev.paginator.offset.PagingCore.persistentCache]
+ * (L2) — reverse of [com.jamal_aliev.paginator.offset.MutablePaginator.flush].
  *
  * On cold start the in-memory cache is empty and pages are lazily hydrated from L2 only
  * when navigation asks for them. For UIs that want the full feed available before the user
@@ -18,16 +18,16 @@ import com.jamal_aliev.paginator.core.page.PageState
  * - Reads every entry via [PersistentPagingCache.loadAll] and writes each state into L1
  *   silently (no intermediate snapshot emissions).
  * - Pages that are **already present** in L1 are left untouched — the in-memory copy wins.
- * - A single [snapshot][com.jamal_aliev.paginator.PagingCore.snapshot] is emitted at the end
+ * - A single [snapshot][com.jamal_aliev.paginator.offset.PagingCore.snapshot] is emitted at the end
  *   **only** if a [pageRange] is provided. Without a range the context window is still
  *   `null`/`0`, so there is nothing observable to emit until the caller [jumps]
- *   [com.jamal_aliev.paginator.Paginator.jump] into a page.
- * - No-op when [com.jamal_aliev.paginator.PagingCore.persistentCache] is `null`.
+ *   [com.jamal_aliev.paginator.offset.Paginator.jump] into a page.
+ * - No-op when [com.jamal_aliev.paginator.offset.PagingCore.persistentCache] is `null`.
  *
  * ### Interaction with eviction strategies
  *
  * Warming up bypasses the normal "load → cache → strategy" flow by pushing states straight
- * into the cache via its public [setState][com.jamal_aliev.paginator.cache.PagingCache.setState]
+ * into the cache via its public [setState][com.jamal_aliev.paginator.core.cache.PagingCache.setState]
  * entry point. If L2 contains more pages than the strategy is willing to hold (e.g.
  * `MostRecentPagingCache(maxSize = 20)` + 100 persisted pages) the strategy will evict on each
  * insert and the final L1 size will match the strategy's capacity, not L2's size.
@@ -43,7 +43,7 @@ import com.jamal_aliev.paginator.core.page.PageState
  * strictly ordered.
  *
  * @param pageRange Optional range to pass through to
- *   [snapshot][com.jamal_aliev.paginator.PagingCore.snapshot] so a newly-warmed range becomes
+ *   [snapshot][com.jamal_aliev.paginator.offset.PagingCore.snapshot] so a newly-warmed range becomes
  *   visible without a jump. When `null` no snapshot is emitted.
  * @return The number of pages actually inserted into L1 (skipped duplicates are not counted).
  */

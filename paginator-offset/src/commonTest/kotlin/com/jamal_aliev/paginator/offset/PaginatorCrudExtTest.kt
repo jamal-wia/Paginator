@@ -260,6 +260,6 @@ class PaginatorCrudExtTest {
     // Helpers
     // =========================================================================
 
-    private fun <T> LoadResultEmpty(): com.jamal_aliev.paginator.load.LoadResult<T> =
-        com.jamal_aliev.paginator.load.LoadResult(emptyList())
+    private fun <T> LoadResultEmpty(): com.jamal_aliev.paginator.offset.load.LoadResult<T> =
+        com.jamal_aliev.paginator.offset.load.LoadResult(emptyList())
 }

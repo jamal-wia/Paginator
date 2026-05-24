@@ -1,5 +1,6 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
+import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.PagingCore
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt

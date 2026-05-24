@@ -3,7 +3,7 @@ package com.jamal_aliev.paginator.offset.load
 import com.jamal_aliev.paginator.core.load.Metadata
 /**
  * Bundles the page [data] and optional [metadata] returned by the
- * [load][com.jamal_aliev.paginator.Paginator.load] lambda.
+ * [load][com.jamal_aliev.paginator.offset.Paginator.load] lambda.
  *
  * For simple sources with no metadata:
  * ```kotlin
@@ -21,15 +21,15 @@ import com.jamal_aliev.paginator.core.load.Metadata
  * }
  * ```
  *
- * The [metadata] is forwarded to [PageState.result][com.jamal_aliev.paginator.page.PageState.metadata]
+ * The [metadata] is forwarded to [PageState.result][com.jamal_aliev.paginator.core.page.PageState.metadata]
  * of the resulting page state.
  *
  * @param data Items for the requested page, in order. If
- *   [PagingCore.capacity][com.jamal_aliev.paginator.PagingCore.capacity] is set,
+ *   [PagingCore.capacity][com.jamal_aliev.paginator.offset.PagingCore.capacity] is set,
  *   excess items are trimmed automatically.
  * @param metadata Arbitrary metadata attached to this load result, or `null` if none.
  * @see Metadata
- * @see com.jamal_aliev.paginator.page.PageState
+ * @see com.jamal_aliev.paginator.core.page.PageState
  */
 open class LoadResult<T>(
     open val data: List<T>,

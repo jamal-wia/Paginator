@@ -4,8 +4,8 @@ import com.jamal_aliev.paginator.core.logger.PaginatorLogger.Companion.global
 
 
 /**
- * Logging interface for [com.jamal_aliev.paginator.Paginator] and
- * [com.jamal_aliev.paginator.MutablePaginator] operations.
+ * Logging interface for [com.jamal_aliev.paginator.offset.Paginator] and
+ * [com.jamal_aliev.paginator.offset.MutablePaginator] operations.
  *
  * Supports two levels of configuration:
  *
@@ -37,7 +37,7 @@ interface PaginatorLogger {
     companion object {
         /**
          * Global logger applied to all paginator instances that don't have
-         * their own [com.jamal_aliev.paginator.Paginator.logger] set.
+         * their own [com.jamal_aliev.paginator.offset.Paginator.logger] set.
          *
          * Typically configured once during application initialization.
          */

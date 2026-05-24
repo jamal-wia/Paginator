@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator.offset
 
+import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -66,7 +66,8 @@ class SnapshotAndFlowTest {
         runTest {
             val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
 
-            val received = mutableListOf<List<com.jamal_aliev.paginator.page.PageState<String>>>()
+            val received =
+                mutableListOf<List<com.jamal_aliev.paginator.core.page.PageState<String>>>()
             val job = paginator.core.snapshot
                 .onEach { received += it }
                 .launchIn(this)
@@ -130,7 +131,7 @@ class SnapshotAndFlowTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
         paginator.core.snapshot(1..3)
 
-        val received = mutableListOf<List<com.jamal_aliev.paginator.page.PageState<String>>>()
+        val received = mutableListOf<List<com.jamal_aliev.paginator.core.page.PageState<String>>>()
         val job = paginator.core.snapshot
             .onEach { received += it }
             .launchIn(this)

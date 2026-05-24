@@ -41,8 +41,8 @@ enum class InitialSyncPolicy {
  * is not present in any cached page.
  *
  * The common cause is that the affected item lives outside the paginator's
- * currently loaded window — either above [com.jamal_aliev.paginator.cache.PagingCache.startContextPage]
- * or below [com.jamal_aliev.paginator.cache.PagingCache.endContextPage], or
+ * currently loaded window — either above [com.jamal_aliev.paginator.core.cache.PagingCache.startContextPage]
+ * or below [com.jamal_aliev.paginator.core.cache.PagingCache.endContextPage], or
  * on a page that has been evicted.
  */
 enum class UnknownItemPolicy {

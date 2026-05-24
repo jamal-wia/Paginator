@@ -13,7 +13,7 @@ package com.jamal_aliev.paginator.core.logger
  * @param loggers The list of loggers to delegate to.
  */
 class CompositePaginatorLogger(
-    internal val loggers: List<PaginatorLogger>
+    val loggers: List<PaginatorLogger>
 ) : PaginatorLogger {
 
     override val minLevel: LogLevel

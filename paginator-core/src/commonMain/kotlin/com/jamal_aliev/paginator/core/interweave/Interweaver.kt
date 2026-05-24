@@ -9,7 +9,7 @@ package com.jamal_aliev.paginator.core.interweave
  * leading / trailing edges) and decides whether a meta-element should be
  * inserted there.
  *
- * Typical flow: attach the strategy via [com.jamal_aliev.paginator.interweave.interweave]
+ * Typical flow: attach the strategy via [com.jamal_aliev.paginator.core.interweave.interweave]
  * to a `Flow<PaginatorUiState<T>>` so the stream emits
  * `PaginatorUiState<WovenEntry<T, I>>`.
  *

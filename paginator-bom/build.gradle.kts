@@ -14,9 +14,13 @@ version = providers.gradleProperty("paginator.version").get()
 // constraint in lockstep.
 dependencies {
     constraints {
-        api("${project.group}:paginator:${project.version}")
-        api("${project.group}:paginator-compose:${project.version}")
-        api("${project.group}:paginator-view:${project.version}")
+        api("${project.group}:paginator-core:${project.version}")
+        api("${project.group}:paginator-offset:${project.version}")
+        api("${project.group}:paginator-cursor:${project.version}")
+        api("${project.group}:paginator-view-offset:${project.version}")
+        api("${project.group}:paginator-view-cursor:${project.version}")
+        api("${project.group}:paginator-compose-offset:${project.version}")
+        api("${project.group}:paginator-compose-cursor:${project.version}")
     }
 }
 
@@ -39,9 +43,11 @@ mavenPublishing {
         description.set(
             "Bill of Materials (BOM) for the Paginator pagination library. Importing this " +
                     "platform via `implementation(platform(\"io.github.jamal-wia:paginator-bom:<version>\"))` " +
-                    "lets consumers declare paginator, paginator-compose, and paginator-view without " +
-                    "specifying versions individually — the BOM keeps them aligned and prevents the " +
-                    "classpath from ending up with a mix of versions across artifacts."
+                    "lets consumers declare any of paginator-core, paginator-offset, paginator-cursor, " +
+                    "paginator-view-offset, paginator-view-cursor, paginator-compose-offset, and " +
+                    "paginator-compose-cursor without specifying versions individually — the BOM keeps " +
+                    "them aligned and prevents the classpath from ending up with a mix of versions " +
+                    "across artifacts."
         )
         url.set("https://github.com/jamal-wia/Paginator")
         inceptionYear.set("2026")

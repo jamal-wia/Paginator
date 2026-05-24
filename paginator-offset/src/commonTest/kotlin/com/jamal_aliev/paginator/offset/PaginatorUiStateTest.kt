@@ -1,15 +1,15 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
-import com.jamal_aliev.paginator.offset.extension.asUiState
-import com.jamal_aliev.paginator.offset.extension.toUiState
-import com.jamal_aliev.paginator.offset.extension.uiState
-import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.core.extension.asUiState
+import com.jamal_aliev.paginator.core.extension.toUiState
 import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
 import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
+import com.jamal_aliev.paginator.offset.extension.uiState
+import com.jamal_aliev.paginator.offset.load.LoadResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest

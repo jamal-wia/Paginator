@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.offset.extension
 
-import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.core.cache.reactive.InitialSyncPolicy
 import com.jamal_aliev.paginator.core.cache.reactive.InsertPosition
 import com.jamal_aliev.paginator.core.cache.reactive.PaginatorReactiveCache
@@ -8,6 +7,7 @@ import com.jamal_aliev.paginator.core.cache.reactive.ReactiveEvent
 import com.jamal_aliev.paginator.core.cache.reactive.UnknownItemPolicy
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.warn
+import com.jamal_aliev.paginator.offset.MutablePaginator
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
@@ -70,7 +70,7 @@ import kotlinx.coroutines.launch
  *
  * ## Persistent cache warning
  *
- * If the paginator has a [com.jamal_aliev.paginator.cache.persistent.PersistentPagingCache]
+ * If the paginator has a [com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache]
  * (L2) attached, this function logs a warning — the reactive source is
  * almost certainly the same database that L2 would cache, so L2 becomes
  * redundant overhead. Remove L2 in this configuration.
@@ -84,7 +84,7 @@ import kotlinx.coroutines.launch
  *   the cache. Defaults to [UnknownItemPolicy.Drop].
  * @param onError Invoked for non-cancellation errors that escape during
  *   event application. The default logs at warn level via the paginator's
- *   [com.jamal_aliev.paginator.Paginator.logger].
+ *   [com.jamal_aliev.paginator.offset.Paginator.logger].
  * @return The Job that owns the subscription. Cancel it to stop observing.
  * @throws IllegalStateException if another observe() Job is still active on
  *   this paginator.

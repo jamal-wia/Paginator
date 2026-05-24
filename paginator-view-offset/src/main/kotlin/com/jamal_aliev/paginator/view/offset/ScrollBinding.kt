@@ -30,7 +30,7 @@ public interface ScrollBinding {
      * useful when the binding's lifetime is shorter than its `LifecycleOwner`'s (e.g., a tab
      * inside a long-lived host).
      *
-     * Idempotent. The underlying [com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController]
+     * Idempotent. The underlying [com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController]
      * is **not** cancelled here; if you also want to cancel in-flight prefetches, call
      * `controller.cancel()` separately, or rely on the lifecycle-aware controller factory.
      */

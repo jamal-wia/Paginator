@@ -1,10 +1,10 @@
 package com.jamal_aliev.paginator.core.load
 /**
  * Base class for metadata returned alongside page data by the
- * [load][com.jamal_aliev.paginator.Paginator.load] lambda.
+ * [load][com.jamal_aliev.paginator.offset.Paginator.load] lambda.
  *
  * Subclass to propagate API-level details (total count, cursor, ETag, etc.) into
- * [PageState.result][com.jamal_aliev.paginator.page.PageState.metadata]
+ * [PageState.result][com.jamal_aliev.paginator.core.page.PageState.metadata]
  * without coupling [LoadResult] to a concrete response type.
  *
  * ```kotlin
@@ -12,6 +12,6 @@ package com.jamal_aliev.paginator.core.load
  * ```
  *
  * @see LoadResult
- * @see com.jamal_aliev.paginator.page.PageState.metadata
+ * @see com.jamal_aliev.paginator.core.page.PageState.metadata
  */
 open class Metadata

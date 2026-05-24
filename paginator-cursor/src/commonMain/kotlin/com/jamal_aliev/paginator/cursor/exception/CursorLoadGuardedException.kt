@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator.cursor.exception
 
-import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.core.exception.LoadGuardedBaseException
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 
 /**
  * Cursor-flavoured counterpart of [LoadGuardedException] thrown by
- * [com.jamal_aliev.paginator.CursorPaginator] when its `loadGuard` rejects a load.
+ * [com.jamal_aliev.paginator.cursor.CursorPaginator] when its `loadGuard` rejects a load.
  *
  * The full [CursorBookmark] that was about to be loaded is preserved in
  * [attemptedCursor] — callers often need `prev`/`next` context to decide how

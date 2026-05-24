@@ -1,13 +1,12 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
-import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
-import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.core.cache.PagingCache
-
-import com.jamal_aliev.paginator.offset.extension.withLeaf
+import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.offset.extension.withLeaf
 
 /**
  * A [PagingCache] decorator that keeps **only** pages within the current context window.
@@ -15,7 +14,7 @@ import com.jamal_aliev.paginator.core.page.PageState
  * Every time a page is added via [setState], any pages outside the range
  * `startContextPage..endContextPage` are immediately evicted. This is ideal
  * for memory-constrained environments where you only need the currently
- * visible pages — after a [jump][com.jamal_aliev.paginator.Paginator.jump],
+ * visible pages — after a [jump][com.jamal_aliev.paginator.offset.Paginator.jump],
  * all pages from the previous location are discarded.
  *
  * Optionally, a [margin] can be set to retain pages slightly outside the

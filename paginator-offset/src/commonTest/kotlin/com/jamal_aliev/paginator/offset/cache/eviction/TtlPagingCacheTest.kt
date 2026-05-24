@@ -1,5 +1,6 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
+import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
 import com.jamal_aliev.paginator.core.page.PageState
 import kotlin.test.Test
 import kotlin.test.assertEquals

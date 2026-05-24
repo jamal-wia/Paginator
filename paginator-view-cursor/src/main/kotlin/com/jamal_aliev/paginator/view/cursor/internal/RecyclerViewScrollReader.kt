@@ -9,9 +9,9 @@ import com.jamal_aliev.paginator.view.cursor.internal.ScrollSignal.Companion.NON
 /**
  * Snapshot of the data we read from a [RecyclerView] on every scroll / data-change pass.
  *
- * Mirrors the shape of the indices the [com.jamal_aliev.paginator.prefetch.PaginatorPrefetchController]
+ * Mirrors the shape of the indices the [com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController]
  * accepts, but in **full-list** coordinates (headers + footers included). The remapping into
- * data-only indices is done by [com.jamal_aliev.paginator.prefetch.ScrollWindow.Companion.from] at the call site.
+ * data-only indices is done by [com.jamal_aliev.paginator.core.prefetch.ScrollWindow.Companion.from] at the call site.
  *
  * Packs [firstVisibleIndex] and [lastVisibleIndex] into a single [Long] — zero heap allocation on
  * every scroll/layout pass. Equality (used by the dispatcher to dedup repeated signals) is just a

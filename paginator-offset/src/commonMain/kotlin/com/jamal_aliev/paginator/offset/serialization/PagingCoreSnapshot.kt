@@ -10,10 +10,10 @@ import kotlinx.serialization.json.JsonElement
  * @param data The items on this page; an empty list represents an "empty" page.
  * @param wasDirty `true` if this page was already dirty before saving,
  *   or if it was an ErrorPage/ProgressPage that was converted during save.
- * @param errorMessage The exception message from an [com.jamal_aliev.paginator.page.PageState.ErrorPage],
+ * @param errorMessage The exception message from an [com.jamal_aliev.paginator.core.page.PageState.ErrorPage],
  *   preserved so that the UI can display the error reason after restoration. `null` for non-error pages.
  * @param metadata The serialized metadata attached to this page, or `null` if none was provided or
- *   no [metadataEncoder][com.jamal_aliev.paginator.PagingCore.saveState] was supplied during save.
+ *   no [metadataEncoder][com.jamal_aliev.paginator.offset.PagingCore.saveState] was supplied during save.
  */
 @Serializable
 data class PageEntry<T>(
@@ -25,7 +25,7 @@ data class PageEntry<T>(
 )
 
 /**
- * A serializable snapshot of [com.jamal_aliev.paginator.PagingCore] state.
+ * A serializable snapshot of [com.jamal_aliev.paginator.offset.PagingCore] state.
  *
  * Captures everything needed to restore the paginator's cache after process death.
  * Does **not** include Paginator-level concerns (finalPage, bookmarks, locks, source).

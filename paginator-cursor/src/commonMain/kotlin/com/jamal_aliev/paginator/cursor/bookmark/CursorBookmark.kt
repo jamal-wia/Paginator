@@ -26,9 +26,9 @@ import com.jamal_aliev.paginator.core.bookmark.Bookmark
  * - `next == null` → this page is the **tail** of the feed (no page after it).
  *
  * These are the canonical signals used by
- * [com.jamal_aliev.paginator.CursorPaginator.goNextPage] and
- * [com.jamal_aliev.paginator.CursorPaginator.goPreviousPage] to throw
- * [com.jamal_aliev.paginator.exception.EndOfCursorFeedException].
+ * [com.jamal_aliev.paginator.cursor.CursorPaginator.goNextPage] and
+ * [com.jamal_aliev.paginator.cursor.CursorPaginator.goPreviousPage] to throw
+ * [com.jamal_aliev.paginator.cursor.exception.EndOfCursorFeedException].
  *
  * ## Cache key
  *

@@ -1,14 +1,15 @@
 package com.jamal_aliev.paginator.offset.cache.persistent
 
+import com.jamal_aliev.paginator.core.cache.PagingCache
+import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
+import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.PagingCore
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
-import com.jamal_aliev.paginator.core.cache.PagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
 import com.jamal_aliev.paginator.offset.extension.warmUpFromPersistent
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator.cursor.cache.persistent
 
-import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 
 /**
  * An optional second-level (L2) persistent cache for
- * [com.jamal_aliev.paginator.CursorPaginator], keyed by [CursorBookmark.self].
+ * [com.jamal_aliev.paginator.cursor.CursorPaginator], keyed by [CursorBookmark.self].
  *
  * Unlike the offset-based [PersistentPagingCache], this interface stores the full
  * [CursorBookmark] alongside the [PageState] so that `prev`/`next` links survive
@@ -19,8 +19,8 @@ import com.jamal_aliev.paginator.core.page.PageState
  * saved to L2 via [save] together with its [CursorBookmark].
  *
  * **Lifecycle:** L2 is **not** cleared by
- * [com.jamal_aliev.paginator.CursorPaginator.restart],
- * [com.jamal_aliev.paginator.CursorPaginator.release] or transaction rollback.
+ * [com.jamal_aliev.paginator.cursor.CursorPaginator.restart],
+ * [com.jamal_aliev.paginator.cursor.CursorPaginator.release] or transaction rollback.
  * Lifecycle is the consumer's responsibility.
  *
  * @param T The type of elements contained in each page.

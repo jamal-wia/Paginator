@@ -1,12 +1,12 @@
 package com.jamal_aliev.paginator.cursor.cache
 
-import com.jamal_aliev.paginator.cursor.CursorPagingCore.Companion.DEFAULT_CAPACITY
-import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.CursorPagingCore.Companion.DEFAULT_CAPACITY
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 
 /**
- * L1 cache interface for [com.jamal_aliev.paginator.CursorPaginator].
+ * L1 cache interface for [com.jamal_aliev.paginator.cursor.CursorPaginator].
  *
  * The cache is a **doubly-linked collection** keyed by
  * [CursorBookmark.self]: each entry stores the [PageState] and the full

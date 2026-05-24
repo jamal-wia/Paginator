@@ -1,13 +1,11 @@
 package com.jamal_aliev.paginator.cursor
 
-import com.jamal_aliev.paginator.cursor.CursorPagingCore
-import com.jamal_aliev.paginator.cursor.MutableCursorPaginator
+import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorMostRecentPagingCache
 import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.cursor.extension.warmUpFromPersistent
-import com.jamal_aliev.paginator.core.page.PageState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -50,7 +48,7 @@ class CursorPaginatorPersistentExtTest {
 
     private fun mutablePaginator(
         persistent: CursorPersistentPagingCache<String>? = InMemoryCursorPersistentCache(),
-        cache: com.jamal_aliev.paginator.cache.CursorPagingCache<String> =
+        cache: com.jamal_aliev.paginator.cursor.cache.CursorPagingCache<String> =
             CursorInMemoryPagingCache(),
         backend: FakeCursorBackend = FakeCursorBackend(backendPages()),
         capacity: Int = 3,

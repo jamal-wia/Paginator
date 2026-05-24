@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator.cursor.serialization
 
+import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.serialization.PagingCoreJson
 import com.jamal_aliev.paginator.cursor.CursorPagingCore
-import com.jamal_aliev.paginator.core.load.Metadata
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -13,7 +13,7 @@ import kotlinx.serialization.json.JsonElement
  * @param K The cursor-key type.
  * @param elementSerializer The [KSerializer] for the element type `T`.
  * @param keySerializer The [KSerializer] used to encode/decode every
- *   [com.jamal_aliev.paginator.bookmark.CursorBookmark.self] key.
+ *   [com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark.self] key.
  */
 fun <T, K : Any> CursorPagingCore<T>.saveStateToJson(
     elementSerializer: KSerializer<T>,

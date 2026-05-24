@@ -7,7 +7,7 @@ import com.jamal_aliev.paginator.offset.cache.eviction.ChainablePagingCache
  * Composes two cache strategies so that [this] wraps [inner].
  *
  * The operator is left-associative, so `a + b + c` builds the chain `a → b → c → InMemoryPagingCache`.
- * The leaf [com.jamal_aliev.paginator.cache.InMemoryPagingCache] of [this] is replaced by [inner], recursively.
+ * The leaf [com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache] of [this] is replaced by [inner], recursively.
  *
  * ```kotlin
  * // Equivalent forms:
@@ -22,14 +22,14 @@ import com.jamal_aliev.paginator.offset.cache.eviction.ChainablePagingCache
  * )
  * ```
  *
- * When [this] is not a [com.jamal_aliev.paginator.cache.ChainablePagingCache] (i.e., it is the leaf [com.jamal_aliev.paginator.cache.InMemoryPagingCache]),
+ * When [this] is not a [com.jamal_aliev.paginator.cache.ChainablePagingCache] (i.e., it is the leaf [com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache]),
  * [inner] is returned directly.
  */
 operator fun <T> PagingCache<T>.plus(inner: PagingCache<T>): PagingCache<T> =
     withLeaf(inner)
 
 /**
- * Replaces the leaf [com.jamal_aliev.paginator.cache.InMemoryPagingCache] at the bottom of this cache's delegation chain
+ * Replaces the leaf [com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache] at the bottom of this cache's delegation chain
  * with [newLeaf]. If [this] is not a [com.jamal_aliev.paginator.cache.ChainablePagingCache], [newLeaf] is returned directly.
  *
  * Custom strategy implementations should call this on their private inner cache field

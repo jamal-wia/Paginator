@@ -1,14 +1,14 @@
 package com.jamal_aliev.paginator.cursor.extension
 
+import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
-import com.jamal_aliev.paginator.core.page.PageState
 
 /**
  * Eagerly restores L1 from the
- * [persistent cache][com.jamal_aliev.paginator.CursorPagingCore.persistentCache] (L2) —
- * reverse of [com.jamal_aliev.paginator.MutableCursorPaginator.flush].
+ * [persistent cache][com.jamal_aliev.paginator.cursor.CursorPagingCore.persistentCache] (L2) —
+ * reverse of [com.jamal_aliev.paginator.cursor.MutableCursorPaginator.flush].
  *
  * Cursor counterpart of
  * [warmUpFromPersistent][com.jamal_aliev.paginator.extension.warmUpFromPersistent] on the
@@ -20,11 +20,11 @@ import com.jamal_aliev.paginator.core.page.PageState
  * - Reads every entry via [CursorPersistentPagingCache.loadAll] and writes each pair into L1
  *   silently (no intermediate snapshot emissions).
  * - Pages whose `self` key is **already present** in L1 are skipped — the in-memory copy wins.
- * - A single [snapshot][com.jamal_aliev.paginator.CursorPagingCore.snapshot] is emitted at the
+ * - A single [snapshot][com.jamal_aliev.paginator.cursor.CursorPagingCore.snapshot] is emitted at the
  *   end **only** if a [cursorRange] is provided. Without a range the context window is still
  *   `null`, so there is nothing observable to emit until the caller [jumps]
- *   [com.jamal_aliev.paginator.CursorPaginator.jump] into a cursor.
- * - No-op when [com.jamal_aliev.paginator.CursorPagingCore.persistentCache] is `null`.
+ *   [com.jamal_aliev.paginator.cursor.CursorPaginator.jump] into a cursor.
+ * - No-op when [com.jamal_aliev.paginator.cursor.CursorPagingCore.persistentCache] is `null`.
  *
  * ### Link consistency caveat
  *
@@ -40,7 +40,7 @@ import com.jamal_aliev.paginator.core.page.PageState
  * before the first navigation call.
  *
  * @param cursorRange Optional `(start, end)` pair to pass through to
- *   [snapshot][com.jamal_aliev.paginator.CursorPagingCore.snapshot] so a newly-warmed range
+ *   [snapshot][com.jamal_aliev.paginator.cursor.CursorPagingCore.snapshot] so a newly-warmed range
  *   becomes visible without a jump. When `null` no snapshot is emitted.
  * @return The number of pages actually inserted into L1 (skipped duplicates are not counted).
  */

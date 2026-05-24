@@ -1,16 +1,16 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
-import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
 import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
-import com.jamal_aliev.paginator.offset.dsl.mutablePaginator
-import com.jamal_aliev.paginator.offset.dsl.paginator
-import com.jamal_aliev.paginator.offset.extension.plus
-import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
 import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
+import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
+import com.jamal_aliev.paginator.offset.dsl.mutablePaginator
+import com.jamal_aliev.paginator.offset.dsl.paginator
+import com.jamal_aliev.paginator.offset.extension.plus
+import com.jamal_aliev.paginator.offset.load.LoadResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -244,8 +244,8 @@ class PaginatorBuilderTest {
     /** Minimal logger used only to verify wiring (no formatting concerns). */
     private class NoopLogger : PaginatorLogger {
         override fun log(
-            level: com.jamal_aliev.paginator.logger.LogLevel,
-            component: com.jamal_aliev.paginator.logger.LogComponent,
+            level: com.jamal_aliev.paginator.core.logger.LogLevel,
+            component: com.jamal_aliev.paginator.core.logger.LogComponent,
             message: String,
         ) = Unit
     }

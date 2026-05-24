@@ -1,12 +1,12 @@
 package com.jamal_aliev.paginator.cursor
 
-import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.cursor.exception.CursorLoadGuardedException
-import com.jamal_aliev.paginator.cursor.exception.EndOfCursorFeedException
 import com.jamal_aliev.paginator.core.exception.LockedException
 import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.exception.CursorLoadGuardedException
+import com.jamal_aliev.paginator.cursor.exception.EndOfCursorFeedException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -231,12 +231,12 @@ class CursorPaginatorNavigationTest {
     fun load_error_on_goNext_results_in_ErrorPage_cached_for_target() = runTest {
         // Use a paginator whose 2nd call throws.
         var call = 0
-        val paginator = com.jamal_aliev.paginator.CursorPaginator<String>(
-            core = com.jamal_aliev.paginator.CursorPagingCore(initialCapacity = 3),
+        val paginator = com.jamal_aliev.paginator.cursor.CursorPaginator<String>(
+            core = com.jamal_aliev.paginator.cursor.CursorPagingCore(initialCapacity = 3),
         ) { cursor ->
             call++
             if (call == 1) {
-                com.jamal_aliev.paginator.load.CursorLoadResult(
+                com.jamal_aliev.paginator.cursor.load.CursorLoadResult(
                     data = listOf("a", "b", "c"),
                     bookmark = CursorBookmark(prev = null, self = "p0", next = "p1"),
                 )
@@ -294,8 +294,9 @@ class CursorPaginatorNavigationTest {
             ),
         )
         val backend = FakeCursorBackend(pages = pages)
-        val core = com.jamal_aliev.paginator.CursorPagingCore<String>(initialCapacity = 0)
-        val paginator = com.jamal_aliev.paginator.CursorPaginator<String>(core = core) { cursor ->
+        val core = com.jamal_aliev.paginator.cursor.CursorPagingCore<String>(initialCapacity = 0)
+        val paginator =
+            com.jamal_aliev.paginator.cursor.CursorPaginator<String>(core = core) { cursor ->
             backend.loadResult(cursor)
         }
         paginator.restart(silentlyLoading = true, silentlyResult = true)

@@ -1,18 +1,18 @@
 package com.jamal_aliev.paginator.cursor.extension
 
-import com.jamal_aliev.paginator.cursor.CursorPaginator
-import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.CursorPaginator
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
 import kotlinx.coroutines.CoroutineScope
 
 /**
  * Creates a [CursorPaginatorPrefetchController] bound to this paginator.
  *
- * Mirrors [prefetchController] for [com.jamal_aliev.paginator.Paginator] but
+ * Mirrors [prefetchController] for [com.jamal_aliev.paginator.offset.Paginator] but
  * uses cursor links instead of numeric page bounds to decide when to prefetch.
  */
 fun <T> CursorPaginator<T>.prefetchController(

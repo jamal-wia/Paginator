@@ -1,12 +1,12 @@
 package com.jamal_aliev.paginator.cursor.exception
 /**
- * Thrown by [com.jamal_aliev.paginator.CursorPaginator] when navigation is attempted
+ * Thrown by [com.jamal_aliev.paginator.cursor.CursorPaginator] when navigation is attempted
  * past the boundary of a cursor-based feed.
  *
  * The canonical signal of "nothing more to load" in a cursor-based paginator is
  * `next == null` (tail) or `prev == null` (head) on the current edge bookmark.
- * When [com.jamal_aliev.paginator.CursorPaginator.goNextPage] or
- * [com.jamal_aliev.paginator.CursorPaginator.goPreviousPage] encounters that
+ * When [com.jamal_aliev.paginator.cursor.CursorPaginator.goNextPage] or
+ * [com.jamal_aliev.paginator.cursor.CursorPaginator.goPreviousPage] encounters that
  * signal they throw this exception instead of attempting another load.
  *
  * @param attemptedCursorKey The `self` key of the edge cursor that was used as the

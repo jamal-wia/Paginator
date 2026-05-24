@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator.core.cache.reactive
 /**
  * A change observed in a reactive data source, delivered to a
- * [com.jamal_aliev.paginator.MutablePaginator] via [PaginatorReactiveCache.changes].
+ * [com.jamal_aliev.paginator.offset.MutablePaginator] via [PaginatorReactiveCache.changes].
  *
  * Each event names *what* changed in the source's coordinate system.
  * The paginator translates the event to the corresponding CRUD operation on
@@ -73,7 +73,7 @@ sealed interface ReactiveEvent<out T, out ID : Any> {
      *
      * Semantically equivalent to a transactional pair `[Removed(id),
      * Inserted(item, position)]`: the paginator opens a
-     * [com.jamal_aliev.paginator.Paginator.transaction], removes the existing
+     * [com.jamal_aliev.paginator.offset.Paginator.transaction], removes the existing
      * item, and inserts [item] at [position]. If either step fails the L1
      * cache rolls back, so the UI never observes a half-applied move.
      *
@@ -101,7 +101,7 @@ sealed interface ReactiveEvent<out T, out ID : Any> {
      * applied atomically to the paginator.
      *
      * The paginator wraps the application in
-     * [com.jamal_aliev.paginator.Paginator.transaction], so either all events
+     * [com.jamal_aliev.paginator.offset.Paginator.transaction], so either all events
      * land or the L1 cache is rolled back to its pre-batch state.
      *
      * Batches are **applied recursively inside the same transaction**: a
