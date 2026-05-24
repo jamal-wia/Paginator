@@ -67,14 +67,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.jamal_aliev.paginator.compose.BindToLazyList
-import com.jamal_aliev.paginator.compose.rememberPrefetchController
-import com.jamal_aliev.paginator.extension.isEmptyState
-import com.jamal_aliev.paginator.extension.isErrorState
-import com.jamal_aliev.paginator.extension.isProgressState
-import com.jamal_aliev.paginator.extension.isRealProgressState
-import com.jamal_aliev.paginator.extension.isSuccessState
-import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.compose.offset.BindToLazyList
+import com.jamal_aliev.paginator.compose.offset.rememberPrefetchController
+import com.jamal_aliev.paginator.core.extension.isEmptyState
+import com.jamal_aliev.paginator.core.extension.isErrorState
+import com.jamal_aliev.paginator.core.extension.isProgressState
+import com.jamal_aliev.paginator.core.extension.isRealProgressState
+import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.ui.theme.PaginatorTheme
 import kotlinx.coroutines.launch
 

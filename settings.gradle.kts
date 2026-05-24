@@ -40,7 +40,11 @@ dependencyResolutionManagement {
 
 rootProject.name = "Paginator"
 include(":app")
-include(":paginator")
-include(":paginator-compose")
-include(":paginator-view")
+include(":paginator-core")
+include(":paginator-offset")
+include(":paginator-cursor")
+include(":paginator-view-offset")
+include(":paginator-view-cursor")
+include(":paginator-compose-offset")
+include(":paginator-compose-cursor")
 include(":paginator-bom")

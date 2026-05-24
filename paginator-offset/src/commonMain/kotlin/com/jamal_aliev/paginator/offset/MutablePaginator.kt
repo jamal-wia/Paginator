@@ -1,0 +1,647 @@
+package com.jamal_aliev.paginator.offset
+
+import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
+import com.jamal_aliev.paginator.core.extension.far
+import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.offset.extension.smartForEach
+import com.jamal_aliev.paginator.offset.extension.walkBackwardWhile
+import com.jamal_aliev.paginator.offset.extension.walkForwardWhile
+import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.core.logger.LogComponent
+import com.jamal_aliev.paginator.core.logger.debug
+import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import kotlinx.atomicfu.AtomicRef
+import kotlinx.atomicfu.atomic
+
+/**
+ * A full-featured, mutable pagination manager for Kotlin/Android.
+ *
+ * Extends [Paginator] with element-level CRUD operations
+ * and lifecycle control ([release]).
+ *
+ * Cache management (capacity, resize, state access) is handled by [PagingCore]
+ * accessible via [core].
+ *
+ * Use [Paginator] when you only need read-only access and navigation.
+ *
+ * **Data mutability contract:** element-level operations ([setElement], [removeElement],
+ * [addAllElements]) cast [PageState.data] to [MutableList] directly. This is safe as long as
+ * `data` is always constructed as a `MutableList` (which is guaranteed by [Paginator]'s
+ * internal [loadOrGetPageState] via `.toMutableList()`).
+ * If you call [core].setState directly with a [PageState] whose `data` was created via `listOf()`
+ * or another immutable factory, subsequent element-level mutations will throw
+ * [UnsupportedOperationException]. Always use `mutableListOf()` or `.toMutableList()` when
+ * constructing [PageState] instances passed to [MutablePaginator].
+ *
+ * @param T The type of elements contained in each page.
+ * @param load A suspending lambda that loads data for a given page number.
+ *   The receiver is the paginator itself, giving access to its properties during loading.
+ *
+ * @see Paginator
+ * @see PagingCore
+ * @see PageState
+ */
+open class MutablePaginator<T>(
+    core: PagingCore<T> = PagingCore(),
+    load: suspend Paginator<T>.(page: Int) -> LoadResult<T>
+) : Paginator<T>(core, load) {
+
+    /**
+     * Pages modified by CRUD operations that have not yet been flushed to L2.
+     *
+     * Populated automatically by [setElement], [removeElement], [addAllElements],
+     * [removeState], and [plusAssign]. Flushed by [flush] or
+     * automatically when [transaction] completes successfully.
+     *
+     * Thread-safe via [AtomicRef] with copy-on-write semantics.
+     */
+    private val _affectedPages: AtomicRef<Set<Int>> = atomic(emptySet())
+
+    /**
+     * Read-only snapshot of pages modified by CRUD operations that have not yet been
+     * flushed to the [persistent cache][PagingCore.persistentCache] (L2).
+     *
+     * Useful for diagnostics, tests, and UI "unsaved changes" indicators. The returned
+     * set is a copy — mutating it has no effect on the paginator.
+     *
+     * Note: the snapshot reflects the state at the moment of the read. Concurrent CRUD
+     * or [flush] calls may change the underlying set immediately after.
+     */
+    val affectedPages: Set<Int>
+        get() = _affectedPages.value
+
+    /**
+     * `true` when there are CRUD changes tracked for the next [flush] call.
+     *
+     * Equivalent to `affectedPages.isNotEmpty()` but avoids materialising the set.
+     * Always `false` when [PagingCore.persistentCache] is `null`, since unpersisted
+     * changes are meaningless without an L2 backend.
+     */
+    val hasPendingFlush: Boolean
+        get() = core.persistentCache != null && _affectedPages.value.isNotEmpty()
+
+    private fun markAffected(page: Int) {
+        while (true) {
+            val current = _affectedPages.value
+            if (_affectedPages.compareAndSet(current, current + page)) return
+        }
+    }
+
+    private fun markAffectedAll(pages: Set<Int>) {
+        if (pages.isEmpty()) return
+        while (true) {
+            val current = _affectedPages.value
+            if (_affectedPages.compareAndSet(current, current + pages)) return
+        }
+    }
+
+    private fun markAffectedAll(pages: IntRange) {
+        markAffectedAll(pages.toSet())
+    }
+
+    private fun drainAffectedPages(): Set<Int> {
+        return _affectedPages.getAndSet(emptySet())
+    }
+
+    /**
+     * Removes the state of the specified page from the cache and adjusts surrounding pages and context.
+     *
+     * This function handles both simple removals and complex cases where pages are non-contiguous:
+     * - Finds the state of the page [pageToRemove] in the cache.
+     * - If the page exists, removes it and, if necessary, collapses consecutive pages to maintain
+     *   correct page numbering.
+     * - Detects gaps in the page sequence and ensures context boundaries are updated correctly.
+     * - Handles edge cases such as removing the first page, last page, or pages in the middle of a gap.
+     * - If [silently] is false, takes a snapshot of the current paginator state via [core].snapshot().
+     *
+     * @param pageToRemove The page number whose state should be removed.
+     * @param silently If true, removal will not trigger a snapshot update.
+     * @return The removed page state ([PageState<T>]), or null if the page was not found.
+     */
+    fun removeState(
+        pageToRemove: Int,
+        silently: Boolean = false,
+    ): PageState<T>? {
+        logger.debug(LogComponent.MUTATION) { "removeState: page=$pageToRemove" }
+
+        fun collapse(startPage: Int, compression: Int) {
+            var currentState: PageState<T> = checkNotNull(
+                value = cache.removeFromCache(startPage)
+            ) { "it's impossible to start collapse from this page" }
+            var remaining: Int = compression
+            while (remaining > 0) {
+                val collapsedState: PageState<T> = currentState.copy(page = currentState.page - 1)
+                val pageState: PageState<T> = cache.getStateOf(currentState.page - 1) ?: break
+                cache.setState(state = collapsedState, silently = true)
+                currentState = pageState
+                remaining--
+            }
+        }
+
+        fun recalculateContext(removedPage: Int) {
+            // Using explicit comparison for performance: avoid creating a IntRange object
+            if (cache.startContextPage <= removedPage && removedPage <= cache.endContextPage) {
+                if (cache.endContextPage - cache.startContextPage > 0) {
+                    // Just shrink the context by one page
+                    core.endContextPage--
+                } else if (removedPage == 1) {
+                    // If the first page was removed, find the nearest page
+                    core.findNearContextPage()
+                } else {
+                    // Otherwise, find the nearest pages around the removed page
+                    core.findNearContextPage(removedPage - 1, removedPage + 1)
+                }
+            }
+        }
+
+        val pagesBefore = cache.pages.filter { it >= pageToRemove }.toSet()
+
+        var pageStateWillRemove: PageState<T>?
+        if (!cache.isStarted) {
+            pageStateWillRemove = cache.removeFromCache(pageToRemove)
+        } else {
+            pageStateWillRemove = cache.getStateOf(pageToRemove) ?: return null
+            var indexOfPageWillRemove = -1
+            var indexOfStartContext = -1
+            var haveRemoved = false
+            var previousPageState: PageState<T>? = null
+            smartForEach(
+                initialIndex = { states: List<PageState<T>> ->
+                    indexOfPageWillRemove =
+                        states.binarySearch { state: PageState<T> ->
+                            state.compareTo(pageStateWillRemove)
+                        }
+                    indexOfStartContext = indexOfPageWillRemove
+                    return@smartForEach indexOfPageWillRemove
+                }
+            ) { states: List<PageState<T>>, index: Int, currentState: PageState<T> ->
+                previousPageState = previousPageState ?: currentState
+                if (previousPageState far currentState) {
+                    // pages example: 1,2,3 gap 11,12,13
+                    if (!haveRemoved) {
+                        if (index - 1 == indexOfPageWillRemove) {
+                            cache.removeFromCache(pageStateWillRemove.page)
+                            recalculateContext(pageStateWillRemove.page)
+                        } else {
+                            collapse(previousPageState.page, index - 1 - indexOfPageWillRemove)
+                            recalculateContext(previousPageState.page)
+                        }
+                        if (index == states.lastIndex) {
+                            cache.removeFromCache(currentState.page)
+                            recalculateContext(currentState.page)
+                        }
+                        haveRemoved = true
+                    } else {
+                        collapse(previousPageState.page, index - 1 - indexOfStartContext)
+                        recalculateContext(previousPageState.page)
+                    }
+                    indexOfStartContext = index
+                } else if (index == states.lastIndex) {
+                    if (!haveRemoved) {
+                        if (index == indexOfPageWillRemove) {
+                            cache.removeFromCache(pageStateWillRemove.page)
+                            recalculateContext(pageStateWillRemove.page)
+                        } else {
+                            collapse(currentState.page, index - indexOfPageWillRemove)
+                            recalculateContext(currentState.page)
+                        }
+                        haveRemoved = true
+                    } else {
+                        collapse(currentState.page, index - indexOfStartContext)
+                        recalculateContext(currentState.page)
+                    }
+                }
+                previousPageState = currentState
+                return@smartForEach true
+            }
+        }
+        markAffectedAll(pagesBefore)
+
+        if (!silently && pageStateWillRemove != null) {
+            core.snapshot()
+        }
+        return pageStateWillRemove
+    }
+
+    /**
+     * Replaces an element at a specific position within a cached page.
+     *
+     * **L2 note:** this operation only modifies L1. Call [flush] afterward
+     * to flush the change to the persistent cache, or use [transaction] which flushes
+     * automatically on success.
+     *
+     * @param element The new element to place at the given position.
+     * @param page The page number containing the element.
+     * @param index The zero-based index of the element to replace within the page's data list.
+     * @param silently If `true`, the change will **not** trigger a snapshot emission.
+     * @param isDirty If `true`, marks the page as dirty.
+     * @throws NoSuchElementException If [page] is not found in the cache.
+     * @throws IndexOutOfBoundsException If [index] is out of range for the page's data.
+     */
+    fun setElement(
+        element: T,
+        page: Int,
+        index: Int,
+        silently: Boolean = false,
+        isDirty: Boolean = false
+    ) {
+        logger.debug(LogComponent.MUTATION) { "setElement: page=$page index=$index isDirty=$isDirty" }
+        val pageState = cache.getStateOf(page)
+            ?: throw NoSuchElementException("page-$page was not found in cache")
+        cache.setState(
+            state = pageState.copy(
+                data = pageState.data
+                    .let { it as MutableList }
+                    .also { it[index] = element }
+            ),
+            silently = true
+        )
+
+        markAffected(page)
+
+        if (isDirty) core.markDirty(page)
+
+        if (!silently) snapshotIfPageVisible(page)
+    }
+
+    /**
+     * Removes an element at a specific position within a cached page and rebalances if needed.
+     *
+     * When removing an element causes the page to have fewer items than capacity, elements
+     * are pulled from the **next** page (if it exists and is the same type) to fill the gap.
+     *
+     * **L2 note:** this operation only modifies L1. Call [flush] afterward
+     * to flush the change to the persistent cache, or use [transaction] which flushes
+     * automatically on success.
+     *
+     * @param page The page number containing the element.
+     * @param index The zero-based index of the element to remove within the page's data list.
+     * @param silently If `true`, the change will **not** trigger a snapshot emission.
+     * @param isDirty If `true`, marks the page as dirty.
+     * @return The removed element.
+     * @throws IllegalArgumentException If [page] is not found in the cache.
+     * @throws IndexOutOfBoundsException If [index] is out of range for the page's data.
+     */
+    fun removeElement(
+        page: Int,
+        index: Int,
+        silently: Boolean = false,
+        isDirty: Boolean = false,
+    ): T {
+        logger.debug(LogComponent.MUTATION) { "removeElement: page=$page index=$index isDirty=$isDirty" }
+        val pageState: PageState<T> = requireNotNull(
+            value = cache.getStateOf(page)
+        ) { "page-$page was not created" }
+        markAffected(page)
+        val removed: T
+
+        val updatedData = pageState.data
+            .let { it as MutableList }
+            .also { removed = it.removeAt(index) }
+
+        if (updatedData.size < core.capacity && !core.isCapacityUnlimited) {
+            val nextPageState = cache.getStateOf(page + 1)
+            if (nextPageState != null
+                &&
+                nextPageState::class == pageState::class
+            ) {
+                while (updatedData.size < core.capacity
+                    &&
+                    nextPageState.data.isNotEmpty()
+                ) {
+                    updatedData.add(
+                        removeElement(
+                            page = page + 1,
+                            index = 0,
+                            silently = true
+                        )
+                    )
+                }
+            }
+        }
+
+        if (updatedData.isEmpty()) {
+            removeState(
+                pageToRemove = page,
+                silently = true
+            )
+        } else {
+            cache.setState(
+                state = pageState.copy(data = updatedData),
+                silently = true
+            )
+        }
+
+        if (isDirty) core.markDirty(page)
+
+        if (!silently) snapshotIfPageVisible(page)
+
+        return removed
+    }
+
+    /**
+     * Inserts elements at a specific position within a cached page, with overflow cascading.
+     *
+     * If inserting the elements causes the page to exceed capacity, the excess elements
+     * are cascaded to the **next** page (recursively).
+     *
+     * **L2 note:** this operation only modifies L1. Call [flush] afterward
+     * to flush the change to the persistent cache, or use [transaction] which flushes
+     * automatically on success.
+     *
+     * @param elements The elements to insert.
+     * @param targetPage The page number to insert into.
+     * @param index The zero-based position within the page's data list where elements are inserted.
+     * @param silently If `true`, the change will **not** trigger a snapshot emission.
+     * @param isDirty If `true`, marks the page as dirty.
+     * @param initPageState Optional factory to create a new [PageState] for overflow pages.
+     * @throws IndexOutOfBoundsException If [targetPage] is not in the cache and [initPageState] is `null`.
+     */
+    fun addAllElements(
+        elements: List<T>,
+        targetPage: Int,
+        index: Int,
+        silently: Boolean = false,
+        isDirty: Boolean = false,
+        initPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
+    ) {
+        logger.debug(LogComponent.MUTATION) {
+            "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty"
+        }
+        markAffected(targetPage)
+        val targetState: PageState<T> =
+            (cache.getStateOf(targetPage)
+                ?: initPageState?.invoke(targetPage, mutableListOf())
+                    ?.also { cache.setState(state = it, silently = true) })
+                ?: throw IndexOutOfBoundsException(
+                    "page-$targetPage was not created"
+                )
+
+        val dataOfTargetState: MutableList<T> = requireNotNull(
+            value = targetState.data as? MutableList
+        ) { "data of target page state is not mutable" }
+        dataOfTargetState.addAll(index, elements)
+        val extraElements: MutableList<T>? =
+            if (dataOfTargetState.size > core.capacity && !core.isCapacityUnlimited) {
+                MutableList(size = dataOfTargetState.size - core.capacity) {
+                    dataOfTargetState.removeAt(dataOfTargetState.lastIndex)
+                }.apply(MutableList<T>::reverse)
+            } else {
+                null
+            }
+
+        if (dataOfTargetState is ArrayList) {
+            dataOfTargetState.trimToSize()
+        }
+
+        if (!extraElements.isNullOrEmpty()) {
+            val nextPageState: PageState<T>? = cache.getStateOf(targetPage + 1)
+            if ((nextPageState != null && nextPageState::class == targetState::class)
+                ||
+                (nextPageState == null && initPageState != null)
+            ) {
+                addAllElements(
+                    elements = extraElements,
+                    targetPage = targetPage + 1,
+                    index = 0,
+                    silently = true,
+                    initPageState = initPageState
+                )
+            } else {
+                // Cascade blocked at targetPage+1:
+                //   (a) nextPageState exists but has a different class (transient blocker), or
+                //   (b) nextPageState == null AND no initPageState factory was supplied (gap).
+                //
+                // Semantics we want (per library design):
+                //   - extraElements belong to the slot right after targetPage; across a gap
+                //     or a foreign-class page they have no valid home, so they are DROPPED.
+                //   - The insertion at targetPage still logically shifts every later chunk
+                //     forward by N = extraElements.size positions. To keep the next cached
+                //     chunk internally consistent with that shift, we peel N items off the
+                //     tail of its first page and let the standard cascade propagate them
+                //     through the chunk, creating a new trailing page for the overflow.
+                //
+                // Outcome for data `1..5 gap 10..15 gap 20..25` + insert of N=5 at page 13:
+                //   pages 1..5   — untouched
+                //   pages 10..12 — untouched
+                //   pages 13..15 — cascade shifted by 5 (standard path, not this branch)
+                //   page  20     — loses its last 5 items, ends up partially filled
+                //                  (goPreviousPage will refill it from the source later)
+                //   pages 21..25 — shifted by 5 (full)
+                //   page  26     — newly created with page 25's original tail
+                val shiftSize = extraElements.size
+                val nextChunkStart: Int? = cache.pages
+                    .asSequence()
+                    .filter { it > targetPage + 1 }
+                    .firstOrNull { p ->
+                        cache.getStateOf(p)?.let { it::class == targetState::class } == true
+                    }
+
+                if (nextChunkStart != null) {
+                    val nextChunkState: PageState<T> =
+                        checkNotNull(cache.getStateOf(nextChunkStart))
+                    val nextChunkData: MutableList<T> = requireNotNull(
+                        value = nextChunkState.data as? MutableList
+                    ) { "data of next-chunk page state is not mutable" }
+
+                    val peel = minOf(shiftSize, nextChunkData.size)
+                    if (peel > 0) {
+                        val displaced = MutableList(peel) {
+                            nextChunkData.removeAt(nextChunkData.lastIndex)
+                        }.apply(MutableList<T>::reverse)
+
+                        markAffected(nextChunkStart)
+                        if (nextChunkData.isEmpty()) {
+                            // The shift emptied the first page of the chunk entirely —
+                            // drop it from the cache so we don't keep a zero-size state
+                            // around (a large batch can legitimately wipe a whole page).
+                            cache.removeFromCache(nextChunkStart)
+                        } else {
+                            if (nextChunkData is ArrayList) nextChunkData.trimToSize()
+                            cache.setState(
+                                state = nextChunkState.copy(data = nextChunkData),
+                                silently = true,
+                            )
+                        }
+
+                        addAllElements(
+                            elements = displaced,
+                            targetPage = nextChunkStart + 1,
+                            index = 0,
+                            silently = true,
+                            initPageState = { pageNum, pageData ->
+                                // Synthesize a page of the same class as targetState.
+                                // addAllElements's prologue registers it in the cache and
+                                // then mutates its data list in place.
+                                targetState.copy(page = pageNum, data = pageData.toMutableList())
+                            },
+                        )
+                    }
+                }
+                // If no subsequent chunk of the same class exists, extras are simply dropped
+                // and no shift is needed — there's nothing downstream left to keep consistent.
+            }
+        }
+
+        if (isDirty) core.markDirty(targetPage)
+
+        if (!silently) snapshotIfPageVisible(targetPage)
+    }
+
+    /**
+     * Iterates over **all** elements across all cached pages and conditionally replaces or removes them.
+     *
+     * For each element where [predicate] returns `true`, the [providerElement] factory is called:
+     * - If it returns a **non-null** value, the element is replaced via [setElement].
+     * - If it returns `null`, the element is **removed** via [removeElement].
+     *
+     * All modifications are performed silently (no individual snapshots), and a single
+     * snapshot is emitted at the end (unless [silently] is `true`).
+     *
+     * @param providerElement Factory that produces the replacement element.
+     * @param silently If `true`, no snapshot is emitted after the operation completes.
+     * @param predicate Determines whether an element should be processed.
+     */
+    inline fun replaceAllElements(
+        providerElement: (current: T, pageState: PageState<T>, index: Int) -> T?,
+        silently: Boolean = false,
+        predicate: (current: T, pageState: PageState<T>, index: Int) -> Boolean
+    ) {
+        smartForEach { _, _, pageState ->
+            var index = 0
+            while (index < pageState.data.size) {
+                val current = pageState.data[index]
+                if (predicate(current, pageState, index)) {
+                    val newElement = providerElement(current, pageState, index)
+                    if (newElement != null) {
+                        setElement(
+                            element = newElement,
+                            page = pageState.page,
+                            index = index,
+                            silently = true
+                        )
+                        index++
+                    } else {
+                        removeElement(
+                            page = pageState.page,
+                            index = index,
+                            silently = true
+                        )
+                        // Don't increment index: elements shifted left after removal
+                    }
+                } else {
+                    index++
+                }
+            }
+            return@smartForEach true
+        }
+        if (!silently) {
+            core.snapshot()
+        }
+    }
+
+    /**
+     * Emits a snapshot if [affectedPage] falls within the current visible range.
+     * Extracts the repeated pattern used across CRUD operations.
+     */
+    private fun snapshotIfPageVisible(affectedPage: Int) {
+        val startState = walkBackwardWhile(core[cache.startContextPage]) ?: return
+        val endState = walkForwardWhile(core[cache.endContextPage]) ?: return
+        val rangeSnapshot = startState.page..endState.page
+        if (affectedPage in rangeSnapshot) {
+            core.snapshot(rangeSnapshot)
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    //  Persistent cache (L2) flush
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Flushes CRUD changes to the [persistent cache][PagingCore.persistentCache] (L2).
+     *
+     * Pages still present in L1 as [SuccessPage] are saved; pages that no longer
+     * exist in L1 are removed from L2. Transient states ([PageState.ErrorPage],
+     * [PageState.ProgressPage]) are skipped — their existing L2 entry (if any) is
+     * preserved.
+     *
+     * This method is called **automatically** when [transaction] completes
+     * successfully. Outside a transaction, call it explicitly after CRUD
+     * operations to persist changes.
+     *
+     * No-op when [PagingCore.persistentCache] is `null` or when no CRUD
+     * operations have been performed since the last flush.
+     */
+    suspend fun flush() {
+        val pagingCache: PersistentPagingCache<T> = core.persistentCache ?: return
+        val pagesToFlush: Set<Int> = drainAffectedPages()
+        if (pagesToFlush.isEmpty()) return
+
+        val toSave = mutableListOf<PageState<T>>()
+        val toRemove = mutableListOf<Int>()
+
+        for (page in pagesToFlush) {
+            val state = cache.getStateOf(page)
+            if (state.isSuccessState()) {
+                toSave.add(state)
+            } else if (state == null) {
+                toRemove.add(page)
+            }
+        }
+
+        pagingCache.transaction {
+            if (toSave.isNotEmpty()) saveAll(toSave)
+            if (toRemove.isNotEmpty()) removeAll(toRemove)
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    //  Transaction override (auto-persist on success)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Executes [block] atomically and auto-persists CRUD changes to L2 on success.
+     *
+     * On failure the L1 rollback is performed by the parent class; any CRUD
+     * tracking accumulated inside the block is discarded so L2 remains
+     * unchanged. Pre-transaction pending pages are restored for the caller to
+     * flush later.
+     */
+    override suspend fun <R> transaction(block: suspend Paginator<T>.() -> R): R {
+        val savedAffectedPages = drainAffectedPages()
+        try {
+            val result = super.transaction(block)
+            flush()
+            markAffectedAll(savedAffectedPages)
+            return result
+        } catch (e: Throwable) {
+            _affectedPages.value = savedAffectedPages
+            throw e
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    //  Operators
+    // ──────────────────────────────────────────────────────────────────────────
+
+    operator fun minusAssign(page: Int) {
+        removeState(page)
+    }
+
+    operator fun minusAssign(pageState: PageState<T>) {
+        removeState(pageState.page)
+    }
+
+    /**
+     * **L2 note:** this operation only modifies L1. Call [flush] afterward
+     * to flush the change to the persistent cache, or use [transaction] which flushes
+     * automatically on success.
+     */
+    operator fun plusAssign(pageState: PageState<T>) {
+        core.setState(pageState)
+        markAffected(pageState.page)
+    }
+
+    override fun toString(): String = "MutablePaginator(cache=$cache, bookmarks=$bookmarks)"
+}

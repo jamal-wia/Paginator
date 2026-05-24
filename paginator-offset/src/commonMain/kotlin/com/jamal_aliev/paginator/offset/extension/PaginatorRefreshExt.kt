@@ -1,0 +1,46 @@
+package com.jamal_aliev.paginator.offset.extension
+
+import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.core.exception.LoadGuardedException
+import com.jamal_aliev.paginator.core.exception.LockedException.RefreshWasLockedException
+import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
+import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
+import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.core.page.PageState
+
+/**
+ * Refreshes **all** currently cached pages by reloading them from the source in parallel.
+ *
+ * @param loadingSilently If `true`, the snapshot will **not** be emitted after setting
+ *   pages to progress state.
+ * @param finalSilently If `true`, the snapshot will **not** be emitted after all pages
+ *   finish loading.
+ * @param loadGuard A guard callback invoked for each page before loading.
+ * @param enableCacheFlow If `true`, the full cache flow is also updated.
+ * @param initProgressState Factory for creating progress page instances during loading.
+ * @param initSuccessState Factory for creating success page instances.
+ * @param initErrorState Factory for creating error page instances.
+ * @throws RefreshWasLockedException If refresh is locked.
+ * @throws LoadGuardedException If [loadGuard] returns `false` for any page.
+ */
+suspend fun <T> Paginator<T>.refreshAll(
+    loadingSilently: Boolean = false,
+    finalSilently: Boolean = false,
+    loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+    enableCacheFlow: Boolean = this.core.enableCacheFlow,
+    initProgressState: InitializerProgressPage<T> = this.core.initializerProgressPage,
+    initSuccessState: InitializerSuccessPage<T> = this.core.initializerSuccessPage,
+    initErrorState: InitializerErrorPage<T> = this.core.initializerErrorPage,
+) {
+    if (lockRefresh) throw RefreshWasLockedException()
+    return refresh(
+        pages = this.cache.pages,
+        loadingSilently = loadingSilently,
+        finalSilently = finalSilently,
+        loadGuard = loadGuard,
+        enableCacheFlow = enableCacheFlow,
+        initProgressState = initProgressState,
+        initSuccessState = initSuccessState,
+        initErrorState = initErrorState,
+    )
+}

@@ -1,6 +1,6 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.page.PageState
+import com.jamal_aliev.paginator.core.page.PageState
 
 data class MainViewState(
     val isInitialLoading: Boolean = true,
