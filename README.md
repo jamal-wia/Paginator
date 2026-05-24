@@ -163,7 +163,15 @@ metadata. The `paginator-compose-*` modules go in the shared Compose source set;
 The BOM only pins *Paginator* artifacts; it does not constrain Compose, Kotlin, AndroidX,
 or anything else on your classpath.
 
-**Supported targets:** Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64 · js · wasmJs.
+**Supported targets**
+
+- `paginator-core`, `paginator-offset`, `paginator-cursor`:
+  Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64 · js · wasmJs.
+- `paginator-compose-offset`, `paginator-compose-cursor`:
+  Android · JVM · iosArm64 · iosSimulatorArm64 · js · wasmJs.
+  (No iosX64 — Compose Multiplatform itself dropped that variant, as Apple deprecated the
+  Intel-Mac simulator. Apple-Silicon Macs use `iosSimulatorArm64`.)
+- `paginator-view-offset`, `paginator-view-cursor`: Android only.
 
 ### Migrating from 8.x
 

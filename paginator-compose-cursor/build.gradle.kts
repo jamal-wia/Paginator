@@ -76,7 +76,11 @@ kotlin {
         }
     }
 
-    iosX64()
+    // iosX64 is intentionally omitted: Compose Multiplatform 1.11.0+ no longer publishes
+    // an iosX64 variant (Apple deprecated Intel-Mac simulators). Apple-Silicon Macs use
+    // iosSimulatorArm64. Consumers with iosX64 targets can still depend on :paginator-cursor
+    // (no Compose dependency), but the Compose binding follows compose-multiplatform's own
+    // target list.
     iosArm64()
     iosSimulatorArm64()
 
