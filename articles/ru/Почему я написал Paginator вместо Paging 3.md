@@ -207,11 +207,17 @@ val messages = mutableCursorPaginator<Message> {
 
 ## Что есть сейчас
 
-На момент публикации статьи Paginator опубликован на Maven Central под версией 8.7.1.
-Поддерживаемые таргеты — Android, JVM (Desktop / Server), iosX64, iosArm64, iosSimulatorArm64.
-Есть отдельный артефакт `paginator-compose` с биндингами для Jetpack Compose / Compose
-Multiplatform — он добавляет одну строку scroll-driven prefetch для `LazyColumn` / `LazyRow` /
-`LazyVerticalGrid` и их вариантов, без ручного `LaunchedEffect` / `snapshotFlow`.
+На момент публикации статьи Paginator опубликован на Maven Central под версией 9.0.0 и
+разделён на модули по стратегиям пагинации: `paginator-offset` для page-number лент,
+`paginator-cursor` для cursor / GraphQL-connection лент. Оба построены поверх общего
+`paginator-core`. Поддерживаемые таргеты — Android, JVM (Desktop / Server), iosX64, iosArm64,
+iosSimulatorArm64.
+
+Парные UI-биндинги `paginator-compose-offset` / `paginator-compose-cursor` для Jetpack
+Compose / Compose Multiplatform добавляют одну строку scroll-driven prefetch для
+`LazyColumn` / `LazyRow` / `LazyVerticalGrid` и их вариантов, без ручного `LaunchedEffect` /
+`snapshotFlow`. Для Android `RecyclerView` есть `paginator-view-offset` /
+`paginator-view-cursor`.
 
 Документация лежит в [`docs/`](https://github.com/jamal-wia/Paginator/tree/master/docs)
 репозитория, разбита по темам — от core concepts до cursor pagination и interweaving. Если

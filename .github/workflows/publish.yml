@@ -11,7 +11,7 @@ concurrency:
 jobs:
   publish:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,10 +30,30 @@ jobs:
           echo "${{ secrets.GPG_KEY }}" | base64 --decode | gpg --batch --import
 
       - name: Verify build
-        run: ./gradlew :paginator:check :paginator-compose:check :paginator-view:check :paginator-bom:check --no-configuration-cache
+        run: >-
+          ./gradlew
+          :paginator-core:check
+          :paginator-offset:check
+          :paginator-cursor:check
+          :paginator-view-offset:check
+          :paginator-view-cursor:check
+          :paginator-compose-offset:check
+          :paginator-compose-cursor:check
+          :paginator-bom:check
+          --no-configuration-cache
 
       - name: Publish to Maven Central
-        run: ./gradlew :paginator:publishAndReleaseToMavenCentral :paginator-compose:publishAndReleaseToMavenCentral :paginator-view:publishAndReleaseToMavenCentral :paginator-bom:publishAndReleaseToMavenCentral --no-configuration-cache
+        run: >-
+          ./gradlew
+          :paginator-core:publishAndReleaseToMavenCentral
+          :paginator-offset:publishAndReleaseToMavenCentral
+          :paginator-cursor:publishAndReleaseToMavenCentral
+          :paginator-view-offset:publishAndReleaseToMavenCentral
+          :paginator-view-cursor:publishAndReleaseToMavenCentral
+          :paginator-compose-offset:publishAndReleaseToMavenCentral
+          :paginator-compose-cursor:publishAndReleaseToMavenCentral
+          :paginator-bom:publishAndReleaseToMavenCentral
+          --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}

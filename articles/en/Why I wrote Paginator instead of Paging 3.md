@@ -209,12 +209,16 @@ reinventing the wheel on top of `LoadParams`.
 
 ## Where it stands today
 
-At the time of writing, Paginator is published on Maven Central as version 8.7.1. Supported
-targets are Android, JVM (Desktop / Server), iosX64, iosArm64, iosSimulatorArm64. There's a
-separate `paginator-compose` artifact with bindings for Jetpack Compose / Compose Multiplatform
-— it adds a single line of scroll-driven prefetch for `LazyColumn` / `LazyRow` /
-`LazyVerticalGrid` and their variants, with no manual `LaunchedEffect` / `snapshotFlow`
-plumbing.
+At the time of writing, Paginator is published on Maven Central as version 9.0.0, split into
+per-strategy modules (`paginator-offset` for page-number feeds, `paginator-cursor` for
+cursor / GraphQL-connection feeds), both built on a shared `paginator-core`. Supported
+targets are Android, JVM (Desktop / Server), iosX64, iosArm64, iosSimulatorArm64.
+
+Matching UI bindings ship as `paginator-compose-offset` / `paginator-compose-cursor` for
+Jetpack Compose / Compose Multiplatform — a single line of scroll-driven prefetch for
+`LazyColumn` / `LazyRow` / `LazyVerticalGrid` and their variants, with no manual
+`LaunchedEffect` / `snapshotFlow` plumbing. There are matching `paginator-view-*` artifacts
+for Android `RecyclerView`.
 
 Documentation lives in [`docs/`](https://github.com/jamal-wia/Paginator/tree/master/docs) in
 the repository, broken down by topic — from core concepts to cursor pagination and

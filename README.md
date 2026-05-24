@@ -30,13 +30,19 @@ full-featured page management system: jumping to arbitrary pages, bidirectional 
 bookmarks, page caching, cursor-based pagination, element-level CRUD, incomplete page handling,
 capacity management and reactive UI state via Kotlin Flows.
 
-The library exposes **two flavors** that share the same page-state model, caches, CRUD, UI state
-and snapshot flows:
+The library is split into a **shared core** plus **two pagination strategies** that you import
+independently, so a consumer only pays for the variant they actually need:
 
-- **`Paginator` / `MutablePaginator`** — offset/page-number addressing (`MutableList`-like).
-- **`CursorPaginator` / `MutableCursorPaginator`** — cursor-based, `prev`/`self`/`next` linked
-  navigation (`LinkedList`-like). See
+- **`paginator-offset`** — `Paginator` / `MutablePaginator`, offset/page-number addressing
+  (`MutableList`-like).
+- **`paginator-cursor`** — `CursorPaginator` / `MutableCursorPaginator`, cursor-based
+  `prev`/`self`/`next` linked navigation (`LinkedList`-like). See
   [Cursor-Based Pagination](docs/13.%20cursor-pagination.md).
+
+Both build on `paginator-core`, which holds the shared page-state model, caches, CRUD surface, UI
+state and snapshot flow. UI bindings ship as matching pairs:
+`paginator-compose-offset` / `paginator-compose-cursor` for Compose Multiplatform and
+`paginator-view-offset` / `paginator-view-cursor` for Android `RecyclerView`.
 
 Built entirely with pure Kotlin and without platform-specific dependencies, 
 Paginator can be seamlessly used across all layers of an application 
@@ -90,29 +96,46 @@ write-up: [Paging 3 is good. Until you need something more.](articles/en/Paging%
 
 The library is published to **Maven Central**. No additional repository configuration needed.
 
-The recommended way is to import the **BOM** once and then declare the artifacts you
-need without versions — that way `paginator`, `paginator-compose`, and `paginator-view`
-cannot drift on your classpath:
+Since **9.0.0** the suite is split into per-strategy modules so consumers only pay for the variant
+they actually use:
+
+| Artifact                                       | When to pick it                                                          |
+|------------------------------------------------|--------------------------------------------------------------------------|
+| `io.github.jamal-wia:paginator-core`           | Pulled transitively by everything below. Never declared directly.        |
+| `io.github.jamal-wia:paginator-offset`         | Page-number (`MutableList`-like) `Paginator` / `MutablePaginator`        |
+| `io.github.jamal-wia:paginator-cursor`         | Cursor / GraphQL-connection `CursorPaginator` / `MutableCursorPaginator` |
+| `io.github.jamal-wia:paginator-compose-offset` | Compose Multiplatform bindings for the offset paginator                  |
+| `io.github.jamal-wia:paginator-compose-cursor` | Compose Multiplatform bindings for the cursor paginator                  |
+| `io.github.jamal-wia:paginator-view-offset`    | Android `RecyclerView` bindings for the offset paginator                 |
+| `io.github.jamal-wia:paginator-view-cursor`    | Android `RecyclerView` bindings for the cursor paginator                 |
+| `io.github.jamal-wia:paginator-bom`            | Bill of Materials — pins every paginator-* artifact to the same version  |
+
+The recommended way is to import the **BOM** once and then declare only the artifacts you actually
+use — the BOM keeps the suite aligned on your classpath:
 
 ```kotlin
 dependencies {
   // Pin all Paginator artifacts together. Latest version: see the Maven Central badge above.
-  implementation(platform("io.github.jamal-wia:paginator-bom:8.7.1"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:9.0.0"))
 
-  // Core — required
-  implementation("io.github.jamal-wia:paginator")
+  // Pick exactly one paginator strategy (or both, if your app needs both)
+  implementation("io.github.jamal-wia:paginator-offset")   // page-number paginator
+  // implementation("io.github.jamal-wia:paginator-cursor")  // cursor / GraphQL-connection paginator
 
-  // Optional UI bindings — pick what you actually use
-  implementation("io.github.jamal-wia:paginator-compose")  // Jetpack Compose / Compose Multiplatform
-  implementation("io.github.jamal-wia:paginator-view")     // Android Views / RecyclerView
+  // Optional UI bindings — match the strategy you picked above
+  implementation("io.github.jamal-wia:paginator-compose-offset")  // Compose Multiplatform — offset
+  implementation("io.github.jamal-wia:paginator-view-offset")     // Android RecyclerView — offset
+  // implementation("io.github.jamal-wia:paginator-compose-cursor")
+  // implementation("io.github.jamal-wia:paginator-view-cursor")
 }
 ```
 
+`paginator-core` is brought in automatically by every other module — never declare it directly.
+
 For **Kotlin Multiplatform**, Gradle automatically resolves the correct platform artifact
-(`paginator-jvm`, `paginator-iosArm64`, `paginator-js`, etc.) from the KMP metadata.
-`paginator-compose`
-(KMP) goes in the shared Compose source set; `paginator-view` is Android-only and belongs
-in the Android source set.
+(`paginator-offset-jvm`, `paginator-offset-iosArm64`, `paginator-offset-js`, etc.) from the KMP
+metadata. The `paginator-compose-*` modules go in the shared Compose source set;
+`paginator-view-*` is Android-only and belongs in the Android source set.
 
 > **Kotlin 2.3+ / KMP note:** calling `platform()` inside
 `kotlin { sourceSets { commonMain.dependencies { } } }`
@@ -123,15 +146,15 @@ in the Android source set.
 > ```kotlin
 > // top-level dependencies {} block — NOT inside kotlin { sourceSets { } }
 > dependencies {
->     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:8.7.1"))
+>     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:9.0.0"))
 > }
 >
 > // inside kotlin { sourceSets { commonMain.dependencies { } } } — no version needed
 > kotlin {
 >     sourceSets {
 >         commonMain.dependencies {
->             implementation("io.github.jamal-wia:paginator")
->             implementation("io.github.jamal-wia:paginator-compose")
+>             implementation("io.github.jamal-wia:paginator-offset")
+>             implementation("io.github.jamal-wia:paginator-compose-offset")
 >         }
 >     }
 > }
@@ -142,13 +165,46 @@ or anything else on your classpath.
 
 **Supported targets:** Android · JVM · iosX64 · iosArm64 · iosSimulatorArm64 · js · wasmJs.
 
+### Migrating from 8.x
+
+The 8.x line shipped a single `paginator` artifact (+ `paginator-compose`, `paginator-view`).
+9.0.0 replaces them with the table above and renames Kotlin packages accordingly. Find/replace
+in your project:
+
+| 8.x import                                                                                    | 9.0.0 import                                                          |
+|-----------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|
+| `com.jamal_aliev.paginator.Paginator`                                                         | `com.jamal_aliev.paginator.offset.Paginator`                          |
+| `com.jamal_aliev.paginator.MutablePaginator`                                                  | `com.jamal_aliev.paginator.offset.MutablePaginator`                   |
+| `com.jamal_aliev.paginator.PagingCore`                                                        | `com.jamal_aliev.paginator.offset.PagingCore`                         |
+| `com.jamal_aliev.paginator.CursorPaginator`                                                   | `com.jamal_aliev.paginator.cursor.CursorPaginator`                    |
+| `com.jamal_aliev.paginator.bookmark.BookmarkInt`                                              | `com.jamal_aliev.paginator.offset.bookmark.BookmarkInt`               |
+| `com.jamal_aliev.paginator.bookmark.CursorBookmark`                                           | `com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark`            |
+| `com.jamal_aliev.paginator.bookmark.Bookmark`                                                 | `com.jamal_aliev.paginator.core.bookmark.Bookmark`                    |
+| `com.jamal_aliev.paginator.load.LoadResult`                                                   | `com.jamal_aliev.paginator.offset.load.LoadResult`                    |
+| `com.jamal_aliev.paginator.load.CursorLoadResult`                                             | `com.jamal_aliev.paginator.cursor.load.CursorLoadResult`              |
+| `com.jamal_aliev.paginator.page.*`                                                            | `com.jamal_aliev.paginator.core.page.*`                               |
+| `com.jamal_aliev.paginator.exception.LockedException`                                         | `com.jamal_aliev.paginator.core.exception.LockedException`            |
+| `com.jamal_aliev.paginator.logger.*`                                                          | `com.jamal_aliev.paginator.core.logger.*`                             |
+| `com.jamal_aliev.paginator.cache.PagingCache`                                                 | `com.jamal_aliev.paginator.core.cache.PagingCache`                    |
+| `com.jamal_aliev.paginator.cache.InMemoryPagingCache`                                         | `com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache`          |
+| `com.jamal_aliev.paginator.cache.eviction.CacheEvictionListener`                              | `com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener` |
+| `com.jamal_aliev.paginator.cache.eviction.{Most,Queued,TimeLimited,ContextWindow}PagingCache` | `com.jamal_aliev.paginator.offset.cache.eviction.…`                   |
+| `com.jamal_aliev.paginator.compose.*`                                                         | `com.jamal_aliev.paginator.compose.offset.*` (or `.cursor.*`)         |
+| `com.jamal_aliev.paginator.view.*`                                                            | `com.jamal_aliev.paginator.view.offset.*` (or `.cursor.*`)            |
+
+Rule of thumb: types whose name starts with `Cursor*` live in `com.jamal_aliev.paginator.cursor`,
+`Paginator` / `MutablePaginator` / `BookmarkInt` / `LoadResult` and the page-number cache /
+eviction / serialization helpers live in `com.jamal_aliev.paginator.offset`, everything else
+(bookmarks base, page state, logger, exceptions, prefetch options, reactive cache plumbing) lives
+in `com.jamal_aliev.paginator.core`.
+
 ### What each UI artifact does
 
-`paginator-compose` provides scroll-driven prefetch for `LazyColumn` / `LazyRow` /
-`LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal counterparts) — no manual
-`LaunchedEffect` / `snapshotFlow` plumbing. The recommended entry point is
-`rememberPaginated` + the `paginated { }` DSL — zero manual numbers (`dataItemCount` is
-read from `paginator.uiState`, header / footer counts are tallied by the DSL):
+`paginator-compose-offset` / `paginator-compose-cursor` provide scroll-driven prefetch for
+`LazyColumn` / `LazyRow` / `LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal
+counterparts) — no manual `LaunchedEffect` / `snapshotFlow` plumbing. The recommended entry point
+is `rememberPaginated` + the `paginated { }` DSL — zero manual numbers (`dataItemCount` is read
+from `paginator.uiState`, header / footer counts are tallied by the DSL):
 
 ```kotlin
 val listState = rememberLazyListState()
@@ -166,12 +222,12 @@ LazyColumn(state = listState) {
 A one-call `PrefetchOnScroll(state, dataItemCount, …)` and a low-level
 `rememberPrefetchController` + `BindToLazyList` are also available if you want to keep
 counts explicit or hold a reference to the controller. See
-[docs/7. prefetch.md](docs/7.%20prefetch.md#jetpack-compose-paginator-compose) for the full
+[docs/7. prefetch.md](docs/7.%20prefetch.md) for the full
 guide — including `PrefetchOptions`, reactive error handling via `PrefetchErrorChannel`,
 and advanced knobs (`restartKey`, `scrollSampleMillis`).
 
-`paginator-view` removes the `OnScrollListener` plumbing entirely and offers three
-layers of integration: `bindPaginated` (auto-tracks `dataItemCount` from
+`paginator-view-offset` / `paginator-view-cursor` remove the `OnScrollListener` plumbing entirely
+and offer three layers of integration: `bindPaginated` (auto-tracks `dataItemCount` from
 `paginator.uiState`), `bindPrefetchToRecyclerView` (one-call factory + bind), and the
 low-level `controller.bindToRecyclerView` for `ViewModel`-scoped controllers. All three
 support `LinearLayoutManager`, `GridLayoutManager`, and `StaggeredGridLayoutManager`,
@@ -192,10 +248,10 @@ val paged = paginator.bindPaginated(
 ```
 
 Reactive prefetch errors via `PrefetchErrorChannel` (StateFlow), runtime knobs through
-`PrefetchOptions` (shared with `paginator-compose`), and stable `PageLoadGuard` /
+`PrefetchOptions` (shared with the Compose binding), and stable `PageLoadGuard` /
 `CursorLoadGuard` are also available.
 
-See [docs/7. prefetch.md](docs/7.%20prefetch.md#android-recyclerview-paginator-view) for details.
+See [docs/7. prefetch.md](docs/7.%20prefetch.md) for details.
 
 ---
 
@@ -206,8 +262,8 @@ See [docs/7. prefetch.md](docs/7.%20prefetch.md#android-recyclerview-paginator-v
 The simplest way to create a `MutablePaginator` is via the DSL builder:
 
 ```kotlin
-import com.jamal_aliev.paginator.dsl.mutablePaginator
-import com.jamal_aliev.paginator.load.LoadResult
+import com.jamal_aliev.paginator.offset.dsl.mutablePaginator
+import com.jamal_aliev.paginator.offset.load.LoadResult
 
 class FeedViewModel : ViewModel() {
 
@@ -314,9 +370,9 @@ connections, chat feeds, activity streams, Slack/Instagram/Reddit-style APIs), r
 cursor variant:
 
 ```kotlin
-import com.jamal_aliev.paginator.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.dsl.mutableCursorPaginator
-import com.jamal_aliev.paginator.load.CursorLoadResult
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.dsl.mutableCursorPaginator
+import com.jamal_aliev.paginator.cursor.load.CursorLoadResult
 
 val messages = mutableCursorPaginator<Message>(capacity = 50) {
   load { cursor ->
@@ -418,21 +474,23 @@ differs only in **how pages are addressed**. Read the full guide at
 - **Interweaving** -- opt-in `Flow<PaginatorUiState<T>>.interweave(weaver)` operator that inserts
   meta-rows (date headers, unread dividers, section labels, …) between data items without touching
   the paginator core, cache, CRUD, serialization, or DSL
-- **Bill of Materials (`paginator-bom`)** -- import the BOM once and declare `paginator`,
-  `paginator-compose`, `paginator-view` without versions; the BOM keeps the suite aligned on
-  your classpath and only constrains Paginator artifacts (no impact on Compose / Kotlin /
-  AndroidX versions)
-- **Compose Multiplatform bindings (`paginator-compose`)** -- `PaginatedLazyList`,
-  `PaginatedLazyGrid`, `PaginatedLazyStaggeredGrid` plus `rememberPaginated` + the
-  `paginated { }` DSL for zero-boilerplate prefetch on `LazyColumn` / `LazyRow` /
+- **Per-strategy modules** -- pick `paginator-offset` for page-number feeds and / or
+  `paginator-cursor` for cursor / GraphQL-connection feeds; both build on `paginator-core` and
+  ship matching UI bindings, so consumers never pull the strategy they don't use
+- **Bill of Materials (`paginator-bom`)** -- import the BOM once and declare any of the
+  paginator-* artifacts without versions; the BOM keeps the suite aligned on your classpath
+  and only constrains Paginator artifacts (no impact on Compose / Kotlin / AndroidX versions)
+- **Compose Multiplatform bindings (`paginator-compose-offset` / `paginator-compose-cursor`)** --
+  `PaginatedLazyList`, `PaginatedLazyGrid`, `PaginatedLazyStaggeredGrid` plus `rememberPaginated`
+  + the `paginated { }` DSL for zero-boilerplate prefetch on `LazyColumn` / `LazyRow` /
   `LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal counterparts); a
   one-call `PrefetchOnScroll(state, dataItemCount, …)` and a low-level
   `rememberPrefetchController` + `BindToLazyList` / `BindToLazyGrid` /
   `BindToLazyStaggeredGrid` are also available for explicit-count or controller-scoped
   setups
-- **Android RecyclerView bindings (`paginator-view`)** -- three layers of integration:
-  `bindPaginated` (auto-tracks `dataItemCount` from `paginator.uiState`),
-  `bindPrefetchToRecyclerView` (one-call factory + bind), and a low-level
+- **Android RecyclerView bindings (`paginator-view-offset` / `paginator-view-cursor`)** --
+  three layers of integration: `bindPaginated` (auto-tracks `dataItemCount` from
+  `paginator.uiState`), `bindPrefetchToRecyclerView` (one-call factory + bind), and a low-level
   `controller.bindToRecyclerView` for `ViewModel`-scoped controllers; works with
   `LinearLayoutManager`, `GridLayoutManager`, `StaggeredGridLayoutManager`, installs both
   `OnScrollListener` and `OnLayoutChangeListener` (so partial first pages don't stall),

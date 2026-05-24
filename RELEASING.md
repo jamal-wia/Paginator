@@ -31,39 +31,62 @@ Make sure the following **GitHub Secrets** are configured in the repository
 
 ## Step 1 — Update the Version
 
-The library publishes **three artifacts** that are released together and must share the same
-version: `paginator`, `paginator-compose`, and `paginator-view`. Update the `version` property
-in **all three** module `build.gradle.kts` files:
+Starting with 9.0.0 the library publishes **eight artifacts** that are released together and must
+share the same version:
 
-- `paginator/build.gradle.kts`
-- `paginator-compose/build.gradle.kts`
-- `paginator-view/build.gradle.kts`
+- `paginator-core`
+- `paginator-offset`
+- `paginator-cursor`
+- `paginator-view-offset`
+- `paginator-view-cursor`
+- `paginator-compose-offset`
+- `paginator-compose-cursor`
+- `paginator-bom`
 
-```kotlin
-version = "8.7.1" // ← new version (must match in all three modules)
+All eight modules read their `version` from the **single** `paginator.version` property defined in
+the root [`gradle.properties`](gradle.properties). Update it once:
+
+```properties
+# gradle.properties
+paginator.version=9.0.0   # ← new version (propagates to every module and to the BOM constraints)
 ```
+
+There is **no** per-module version field to edit anymore.
 
 ## Step 2 — Update README Installation Examples
 
-Update the version in all `implementation(...)` snippets in the README
-(sections **KMP**, **Android-only**, **JVM**, **Compose Multiplatform UI bindings**, and
-**Android View bindings**) so that `paginator`, `paginator-compose`, and `paginator-view`
-coordinates all point at the new version.
+Update the version in every `implementation(...)` / `platform(...)` snippet in the README (and any
+other doc that pins a version) so it matches the new `paginator.version`. The BOM keeps the suite
+aligned on the consumer's classpath, so the cleanest snippet is BOM-first:
+
+```kotlin
+dependencies {
+   implementation(platform("io.github.jamal-wia:paginator-bom:<new-version>"))
+
+   // Pick the strategy you need
+   implementation("io.github.jamal-wia:paginator-offset")   // page-number paginator
+   implementation("io.github.jamal-wia:paginator-cursor")   // cursor/GraphQL-connection paginator
+
+   // Optional UI bindings — pick the ones matching your strategy
+   implementation("io.github.jamal-wia:paginator-compose-offset")
+   implementation("io.github.jamal-wia:paginator-view-offset")
+}
+```
 
 ## Step 3 — Commit and Push
 
 ```bash
 git add -A
-git commit -m "Bump version to 8.7.1"
+git commit -m "Bump version to 9.0.0"
 git push origin master
 ```
 
 ## Step 4 — Create a GitHub Release
 
 1. Go to **[Releases → New release](https://github.com/jamal-wia/Paginator/releases/new)**
-2. Click **"Choose a tag"** and type the new version (e.g. `8.7.1`), then select **"Create new tag
+2. Click **"Choose a tag"** and type the new version (e.g. `9.0.0`), then select **"Create new tag
    on publish"**
-3. Set **Release title** (e.g. `8.7.1`)
+3. Set **Release title** (e.g. `9.0.0`)
 4. Describe the changes in the description
 5. Click **"Publish release"**
 
@@ -77,12 +100,18 @@ This triggers the **`Publish to Maven Central`** GitHub Actions workflow automat
 ## Step 6 — Verify on Maven Central
 
 1. Go to [Sonatype Central Portal](https://central.sonatype.com/) → **Deployments**
-2. **Two** deployments should appear (one per artifact), each transitioning
+2. **Eight** deployments should appear (one per artifact), each transitioning
    **PUBLISHING** → **PUBLISHED**
 3. Once **PUBLISHED**, the artifacts are available at:
    ```
-   io.github.jamal-wia:paginator:<version>
-   io.github.jamal-wia:paginator-compose:<version>
+   io.github.jamal-wia:paginator-core:<version>
+   io.github.jamal-wia:paginator-offset:<version>
+   io.github.jamal-wia:paginator-cursor:<version>
+   io.github.jamal-wia:paginator-view-offset:<version>
+   io.github.jamal-wia:paginator-view-cursor:<version>
+   io.github.jamal-wia:paginator-compose-offset:<version>
+   io.github.jamal-wia:paginator-compose-cursor:<version>
+   io.github.jamal-wia:paginator-bom:<version>
    ```
 4. It may take **5–30 minutes** for the artifacts to become resolvable via Gradle after status
    changes to PUBLISHED
@@ -100,9 +129,18 @@ If you need to publish from your local machine instead of CI:
    signing.secretKeyRingFile=<path-to-secring.gpg>
    ```
 
-2. Run (publishes both artifacts in a single invocation):
+2. Run (publishes all eight artifacts in a single invocation):
    ```bash
-   ./gradlew :paginator:publishAndReleaseToMavenCentral :paginator-compose:publishAndReleaseToMavenCentral --no-configuration-cache
+   ./gradlew \
+       :paginator-core:publishAndReleaseToMavenCentral \
+       :paginator-offset:publishAndReleaseToMavenCentral \
+       :paginator-cursor:publishAndReleaseToMavenCentral \
+       :paginator-view-offset:publishAndReleaseToMavenCentral \
+       :paginator-view-cursor:publishAndReleaseToMavenCentral \
+       :paginator-compose-offset:publishAndReleaseToMavenCentral \
+       :paginator-compose-cursor:publishAndReleaseToMavenCentral \
+       :paginator-bom:publishAndReleaseToMavenCentral \
+       --no-configuration-cache
    ```
 
 3. The `automaticRelease = true` flag in `build.gradle.kts` ensures the deployment is
@@ -117,3 +155,4 @@ If you need to publish from your local machine instead of CI:
 | Deployment **FAILED**                   | Check the Central Portal for validation errors (missing POM fields, signature issues, etc.)                                   |
 | Artifact not resolvable after PUBLISHED | Wait up to 30 minutes. Maven Central syncing can be slow                                                                      |
 | Signing error locally                   | Ensure `signing.secretKeyRingFile` points to a valid `.gpg` file and passphrase is correct                                    |
+| Only some of the eight artifacts appear | Re-run the workflow — `publishAndReleaseToMavenCentral` is idempotent for artifacts already validated and skips them          |
