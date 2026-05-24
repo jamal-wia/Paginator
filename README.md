@@ -504,7 +504,9 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
     `MutableCursorPaginator` for opaque-token feeds (GraphQL connections, chat, activity streams)
 14. [**Paginator vs CursorPaginator**](docs/14.%20paginator-vs-cursor.md) — full catalog of
     behavioural differences, removed APIs, signature-only changes, and a migration cheat sheet
-15. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
+15. [**Reactive Sources**](docs/15.%20reactive-sources.md) — bridge Room/SQLDelight/Realm to a
+    paginator via `observe(...)` and `PaginatorReactiveCache` — point CRUD instead of `refreshAll`
+16. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
 
 Maintainer docs:
 

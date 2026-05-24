@@ -1,13 +1,13 @@
 [versions]
 # Build tooling
-agp = "9.2.0"
+agp = "9.2.1"
 kotlin = "2.3.21"
-composeMultiplatform = "1.10.3"
+composeMultiplatform = "1.11.0"
 mavenPublish = "0.36.0"
 
 # Kotlin libraries
 atomicfu = "0.32.1"
-coroutines = "1.10.2"
+coroutines = "1.11.0"
 serializationJson = "1.11.0"
 
 # AndroidX (core / lifecycle / activity)
@@ -17,8 +17,8 @@ activityCompose = "1.13.0"
 recyclerview = "1.4.0"
 
 # Compose (Android-side via BOM in :app)
-composeBom = "2026.04.01"
-composeRuntime = "1.11.0"
+composeBom = "2026.05.01"
+composeRuntime = "1.11.2"
 
 # Third-party
 coil = "2.7.0"
