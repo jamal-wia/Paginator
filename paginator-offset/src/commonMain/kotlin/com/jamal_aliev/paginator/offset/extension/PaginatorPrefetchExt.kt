@@ -1,10 +1,10 @@
 package com.jamal_aliev.paginator.offset.extension
 
-import com.jamal_aliev.paginator.offset.Paginator
 import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.Paginator
 import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
 import kotlinx.coroutines.CoroutineScope
 
@@ -19,8 +19,9 @@ import kotlinx.coroutines.CoroutineScope
  * @param scope [CoroutineScope] for launching prefetch coroutines.
  * @param prefetchDistance Number of items from the edge at which prefetch fires.
  * @param enableBackwardPrefetch If `true`, scrolling up also prefetches via [Paginator.goPreviousPage].
- * @param silentlyLoading If `true` (default), no [PageState.ProgressPage] snapshot is emitted
- *   during prefetch loading.
+ * @param silentlyLoading If `true`, no [PageState.ProgressPage] snapshot is emitted during
+ *   prefetch loading. Default `false` so an append-indicator bound to
+ *   `PaginatorUiState.Content.appendState` shows automatically.
  * @param silentlyResult If `true`, no snapshot is emitted when the prefetched page arrives.
  * @param loadGuard Guard callback forwarded to navigation functions.
  * @param enableCacheFlow Forwarded to navigation functions.
@@ -34,7 +35,7 @@ fun <T> Paginator<T>.prefetchController(
     scope: CoroutineScope,
     prefetchDistance: Int,
     enableBackwardPrefetch: Boolean = false,
-    silentlyLoading: Boolean = true,
+    silentlyLoading: Boolean = false,
     silentlyResult: Boolean = false,
     loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
     enableCacheFlow: Boolean = core.enableCacheFlow,

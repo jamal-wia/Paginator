@@ -22,7 +22,14 @@ const val DefaultPrefetchDistance: Int = 6
 data class PrefetchOptions(
     val prefetchDistance: Int = DefaultPrefetchDistance,
     val enableBackwardPrefetch: Boolean = false,
-    val silentlyLoading: Boolean = true,
+    /**
+     * If `true`, the `ProgressPage` snapshot emitted while a prefetched page is
+     * loading is suppressed. The default is `false` so that an append-indicator
+     * bound to `PaginatorUiState.Content.appendState` renders the loading state
+     * automatically. Set to `true` to silence the indicator (e.g. background
+     * prefetch where the user is far from the loading edge).
+     */
+    val silentlyLoading: Boolean = false,
     val silentlyResult: Boolean = false,
     val enabled: Boolean = true,
     val cancelOnDispose: Boolean = true,

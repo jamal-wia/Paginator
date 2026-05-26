@@ -5,12 +5,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.core.prefetch.DefaultPrefetchDistance
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.extension.prefetchController
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
-import com.jamal_aliev.paginator.core.prefetch.DefaultPrefetchDistance
 
 
 /**
@@ -23,7 +23,7 @@ import com.jamal_aliev.paginator.core.prefetch.DefaultPrefetchDistance
 fun <T> CursorPaginator<T>.rememberPrefetchController(
     prefetchDistance: Int = DefaultPrefetchDistance,
     enableBackwardPrefetch: Boolean = false,
-    silentlyLoading: Boolean = true,
+    silentlyLoading: Boolean = false,
     silentlyResult: Boolean = false,
     enabled: Boolean = true,
     cancelOnDispose: Boolean = true,

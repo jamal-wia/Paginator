@@ -5,10 +5,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import com.jamal_aliev.paginator.offset.Paginator
-import com.jamal_aliev.paginator.offset.extension.prefetchController
 import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.prefetch.DefaultPrefetchDistance
+import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.offset.extension.prefetchController
 import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
 
 /**
@@ -33,6 +33,8 @@ import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
  * @param prefetchDistance Distance from the edge (in items) at which prefetch fires.
  * @param enableBackwardPrefetch If `true`, scrolling up also triggers `goPreviousPage`.
  * @param silentlyLoading Suppress `ProgressPage` snapshot emission during prefetch loading.
+ *   Default `false` so an append-indicator bound to `PaginatorUiState.Content.appendState`
+ *   shows automatically; set to `true` for silent background prefetch.
  * @param silentlyResult Suppress snapshot emission when the prefetched page arrives.
  * @param enabled Master switch — `false` makes [PaginatorPrefetchController.onScroll] a no-op.
  * @param cancelOnDispose If `true` (default), [PaginatorPrefetchController.cancel] runs on
@@ -45,7 +47,7 @@ import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
 fun <T> Paginator<T>.rememberPrefetchController(
     prefetchDistance: Int = DefaultPrefetchDistance,
     enableBackwardPrefetch: Boolean = false,
-    silentlyLoading: Boolean = true,
+    silentlyLoading: Boolean = false,
     silentlyResult: Boolean = false,
     enabled: Boolean = true,
     cancelOnDispose: Boolean = true,

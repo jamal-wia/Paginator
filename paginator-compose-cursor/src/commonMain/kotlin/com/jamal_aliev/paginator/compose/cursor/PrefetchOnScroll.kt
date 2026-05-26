@@ -4,11 +4,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
+import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.core.prefetch.DefaultPrefetchDistance
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
-import com.jamal_aliev.paginator.core.prefetch.DefaultPrefetchDistance
 
 
 /** Cursor-paginator counterpart for [LazyListState]. */
@@ -20,7 +20,7 @@ fun <T> CursorPaginator<T>.PrefetchOnScroll(
     footerCount: Int = 0,
     prefetchDistance: Int = DefaultPrefetchDistance,
     enableBackwardPrefetch: Boolean = false,
-    silentlyLoading: Boolean = true,
+    silentlyLoading: Boolean = false,
     silentlyResult: Boolean = false,
     enabled: Boolean = true,
     cancelOnDispose: Boolean = true,
@@ -59,7 +59,7 @@ fun <T> CursorPaginator<T>.PrefetchOnScroll(
     footerCount: Int = 0,
     prefetchDistance: Int = DefaultPrefetchDistance,
     enableBackwardPrefetch: Boolean = false,
-    silentlyLoading: Boolean = true,
+    silentlyLoading: Boolean = false,
     silentlyResult: Boolean = false,
     enabled: Boolean = true,
     cancelOnDispose: Boolean = true,
@@ -98,7 +98,7 @@ fun <T> CursorPaginator<T>.PrefetchOnScroll(
     footerCount: Int = 0,
     prefetchDistance: Int = DefaultPrefetchDistance,
     enableBackwardPrefetch: Boolean = false,
-    silentlyLoading: Boolean = true,
+    silentlyLoading: Boolean = false,
     silentlyResult: Boolean = false,
     enabled: Boolean = true,
     cancelOnDispose: Boolean = true,

@@ -157,8 +157,10 @@ Important things the controller does:
 
 - **The first `onScroll` is calibration.** The paginator records the starting position and doesn't
   begin loading — to avoid a false fetch on the first appearance of the screen.
-- **Silent loading.** By default `silentlyLoading = true` — meaning `ProgressPage` is not emitted.
-  The UI doesn't flash "Loading" every time the user approaches the edge.
+- **Silent loading (opt-in).** Set `silentlyLoading = true` to suppress the `ProgressPage`
+  snapshot during prefetch — useful for chat-style feeds where you don't want a spinner to
+  flash every time the user approaches the edge. The default is `false` so an
+  append-indicator bound to `PaginatorUiState.Content.appendState` shows automatically.
 - **Respects `finalPage`.** Once the end of the feed is reached, prefetch stops — no spurious
   requests into the void.
 - **Respects dirty pages.** If a page in the context window is marked stale (e.g., after offline

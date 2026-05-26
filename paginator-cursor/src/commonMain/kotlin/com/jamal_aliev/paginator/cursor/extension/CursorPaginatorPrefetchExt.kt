@@ -19,7 +19,7 @@ fun <T> CursorPaginator<T>.prefetchController(
     scope: CoroutineScope,
     prefetchDistance: Int,
     enableBackwardPrefetch: Boolean = false,
-    silentlyLoading: Boolean = true,
+    silentlyLoading: Boolean = false,
     silentlyResult: Boolean = false,
     loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
     enableCacheFlow: Boolean = core.enableCacheFlow,

@@ -1,10 +1,10 @@
 package com.jamal_aliev.paginator.offset.prefetch
 
-import com.jamal_aliev.paginator.offset.Paginator
 import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.Paginator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -86,10 +86,12 @@ import kotlinx.coroutines.launch
  *   scroll".
  * @param enableBackwardPrefetch When `true`, scrolling toward the beginning
  *   of the list also triggers [Paginator.goPreviousPage].
- * @param silentlyLoading If `true` (default), the [PageState.ProgressPage]
- *   emitted during prefetch loading is **not** pushed to the snapshot flow.
- *   This prevents a loading indicator from appearing for a page the user
- *   hasn't scrolled to yet.
+ * @param silentlyLoading If `true`, the [PageState.ProgressPage] emitted
+ *   during prefetch loading is **not** pushed to the snapshot flow. Default
+ *   is `false` so that an append-indicator bound to
+ *   `PaginatorUiState.Content.appendState` renders the loading state
+ *   automatically. Set to `true` to silence the indicator for background
+ *   prefetch where the user is far from the loading edge.
  * @param silentlyResult If `true`, the snapshot is **not** emitted when the
  *   prefetched page finishes loading. Usually `false` so the UI picks up
  *   the new data immediately.
@@ -110,7 +112,7 @@ class PaginatorPrefetchController<T>(
     private val scope: CoroutineScope,
     prefetchDistance: Int,
     var enableBackwardPrefetch: Boolean = false,
-    var silentlyLoading: Boolean = true,
+    var silentlyLoading: Boolean = false,
     var silentlyResult: Boolean = false,
     var loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
     var enableCacheFlow: Boolean = paginator.core.enableCacheFlow,

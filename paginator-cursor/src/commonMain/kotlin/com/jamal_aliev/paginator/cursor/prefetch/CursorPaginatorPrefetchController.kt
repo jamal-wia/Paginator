@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator.cursor.prefetch
 
-import com.jamal_aliev.paginator.cursor.CursorPaginator
-import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.CursorPaginator
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -29,7 +29,7 @@ class CursorPaginatorPrefetchController<T>(
     private val scope: CoroutineScope,
     prefetchDistance: Int,
     var enableBackwardPrefetch: Boolean = false,
-    var silentlyLoading: Boolean = true,
+    var silentlyLoading: Boolean = false,
     var silentlyResult: Boolean = false,
     var loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
     var enableCacheFlow: Boolean = paginator.core.enableCacheFlow,
