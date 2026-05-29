@@ -95,6 +95,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":paginator-offset"))
+            api(project(":paginator-compose-core"))
             api(libs.compose.multiplatform.runtime)
             api(libs.compose.multiplatform.foundation)
             implementation(libs.kotlinx.coroutines.core)

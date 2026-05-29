@@ -35,8 +35,10 @@ jobs:
           :paginator-core:check
           :paginator-offset:check
           :paginator-cursor:check
+          :paginator-view-core:check
           :paginator-view-offset:check
           :paginator-view-cursor:check
+          :paginator-compose-core:check
           :paginator-compose-offset:check
           :paginator-compose-cursor:check
           :paginator-bom:check
@@ -48,8 +50,10 @@ jobs:
           :paginator-core:publishAndReleaseToMavenCentral
           :paginator-offset:publishAndReleaseToMavenCentral
           :paginator-cursor:publishAndReleaseToMavenCentral
+          :paginator-view-core:publishAndReleaseToMavenCentral
           :paginator-view-offset:publishAndReleaseToMavenCentral
           :paginator-view-cursor:publishAndReleaseToMavenCentral
+          :paginator-compose-core:publishAndReleaseToMavenCentral
           :paginator-compose-offset:publishAndReleaseToMavenCentral
           :paginator-compose-cursor:publishAndReleaseToMavenCentral
           :paginator-bom:publishAndReleaseToMavenCentral

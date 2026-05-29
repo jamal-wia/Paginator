@@ -2,12 +2,13 @@ package com.jamal_aliev.paginator.view.offset
 
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
-import com.jamal_aliev.paginator.offset.Paginator
 import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
-import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
 import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
+import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
+import com.jamal_aliev.paginator.view.core.internal.ScrollDispatcher
+import com.jamal_aliev.paginator.view.core.internal.attachScrollPreservation
 import com.jamal_aliev.paginator.view.offset.internal.DataItemCountTracker
-import com.jamal_aliev.paginator.view.offset.internal.ScrollDispatcher
 
 /**
  * Auto-everything entry point for `RecyclerView` pagination — the View counterpart of
@@ -59,6 +60,8 @@ public fun <T> Paginator<T>.bindPaginated(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: PageLoadGuard<T> = PageLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): PrefetchBinding<PaginatorPrefetchController<T>> {
     val controller = prefetchController(
         lifecycleOwner = lifecycleOwner,
@@ -76,6 +79,8 @@ public fun <T> Paginator<T>.bindPaginated(
         footerCount = footerCount,
         scrollSampleMillis = options.scrollSampleMillis,
         onScroll = controller::onScroll,
+        preservationKey = if (preserveScroll) (scrollKey ?: controller) else null,
+        scrollKey = if (preserveScroll) scrollKey else null,
     )
 }
 
@@ -89,6 +94,8 @@ public fun <T> Paginator<T>.bindPaginated(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: PageLoadGuard<T> = PageLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): PrefetchBinding<PaginatorPrefetchController<T>> = bindPaginated(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
@@ -98,6 +105,8 @@ public fun <T> Paginator<T>.bindPaginated(
     enableCacheFlow = enableCacheFlow,
     loadGuard = loadGuard,
     onPrefetchError = onPrefetchError,
+    preserveScroll = preserveScroll,
+    scrollKey = scrollKey,
 )
 
 
@@ -110,8 +119,19 @@ private fun <C : Any> bindPaginatedInternal(
     footerCount: () -> Int,
     scrollSampleMillis: Long,
     onScroll: (firstVisibleIndex: Int, lastVisibleIndex: Int, totalItemCount: Int) -> Unit,
+    preservationKey: Any?,
+    scrollKey: String?,
 ): PrefetchBinding<C> {
     @Suppress("UNUSED_EXPRESSION") footerCount
+
+    val preservationHandle = preservationKey?.let { key ->
+        attachScrollPreservation(
+            recyclerView = recyclerView,
+            lifecycleOwner = lifecycleOwner,
+            key = key,
+            scrollKey = scrollKey,
+        )
+    }
 
     lateinit var dispatcher: ScrollDispatcher
     val tracker = DataItemCountTracker(
@@ -127,6 +147,7 @@ private fun <C : Any> bindPaginatedInternal(
         dataItemCount = tracker.count,
         headerCount = headerCount,
         onScroll = onScroll,
+        preservationHandle = preservationHandle,
     )
     dispatcher.start()
     tracker.start()

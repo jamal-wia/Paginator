@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.compose.cursor
+package com.jamal_aliev.paginator.compose.core
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState

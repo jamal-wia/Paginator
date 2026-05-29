@@ -17,8 +17,10 @@ dependencies {
         api("${project.group}:paginator-core:${project.version}")
         api("${project.group}:paginator-offset:${project.version}")
         api("${project.group}:paginator-cursor:${project.version}")
+        api("${project.group}:paginator-view-core:${project.version}")
         api("${project.group}:paginator-view-offset:${project.version}")
         api("${project.group}:paginator-view-cursor:${project.version}")
+        api("${project.group}:paginator-compose-core:${project.version}")
         api("${project.group}:paginator-compose-offset:${project.version}")
         api("${project.group}:paginator-compose-cursor:${project.version}")
     }

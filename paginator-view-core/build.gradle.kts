@@ -27,16 +27,18 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates(group.toString(), "paginator-view-cursor", version.toString())
+    coordinates(group.toString(), "paginator-view-core", version.toString())
 
     pom {
-        name.set("Paginator View Cursor — RecyclerView bindings for the cursor paginator")
+        name.set("Paginator View Core — shared Android View utilities for Paginator")
         description.set(
-            "Android View / RecyclerView integration for the cursor variant of the Paginator " +
-                    "pagination library. Provides idiomatic bindings between " +
-                    "CursorPaginatorPrefetchController and RecyclerView — auto-pagination on scroll " +
-                    "without manual OnScrollListener wiring. Adapter is left fully to the user. Pair " +
-                    "with paginator-cursor; for page-number feeds use paginator-view-offset instead."
+            "Android View utilities shared between paginator-view-offset and " +
+                    "paginator-view-cursor. Contains the scroll-position preservation primitives " +
+                    "(RecyclerViewScrollSnapshotRegistry, attachScrollPreservation helper) that back " +
+                    "the `preserveScroll = true` parameter on bindToRecyclerView, plus the shared " +
+                    "binding primitives (ScrollBinding, ScrollDispatcher, PrefetchErrorChannel). " +
+                    "Depends only on paginator-core (for the ScrollWindow index-remapping math); " +
+                    "independent of paginator-offset and paginator-cursor."
         )
         url.set("https://github.com/jamal-wia/Paginator")
         inceptionYear.set("2026")
@@ -66,7 +68,7 @@ mavenPublishing {
 }
 
 android {
-    namespace = "com.jamal_aliev.paginator.view.cursor"
+    namespace = "com.jamal_aliev.paginator.view.core"
     compileSdk = 36
 
     defaultConfig {
@@ -94,9 +96,13 @@ android {
 }
 
 dependencies {
-    api(project(":paginator-cursor"))
-    api(project(":paginator-view-core"))
+    implementation(project(":paginator-core"))
     api(libs.androidx.recyclerview)
     api(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.kotlinx.coroutines.core)
+
+    testImplementation(libs.junit)
+    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutines.test)
 }

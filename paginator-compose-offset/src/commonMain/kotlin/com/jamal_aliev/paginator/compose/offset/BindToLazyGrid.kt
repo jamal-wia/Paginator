@@ -3,12 +3,15 @@ package com.jamal_aliev.paginator.compose.offset
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.jamal_aliev.paginator.compose.offset.internal.BindScrollInternal
-import com.jamal_aliev.paginator.compose.offset.internal.ScrollCallback
-import com.jamal_aliev.paginator.compose.offset.internal.ScrollSignal
-import com.jamal_aliev.paginator.compose.offset.internal.ScrollSignalReader
+import com.jamal_aliev.paginator.compose.core.PaginatorInternalApi
+import com.jamal_aliev.paginator.compose.core.internal.BindLazyGridScrollPreservation
+import com.jamal_aliev.paginator.compose.core.internal.BindScrollInternal
+import com.jamal_aliev.paginator.compose.core.internal.ScrollCallback
+import com.jamal_aliev.paginator.compose.core.internal.ScrollSignal
+import com.jamal_aliev.paginator.compose.core.internal.ScrollSignalReader
 import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
 
+@OptIn(PaginatorInternalApi::class)
 private fun LazyGridState.readScrollSignal(): ScrollSignal {
     val info = layoutInfo
     val visible = info.visibleItemsInfo
@@ -33,6 +36,7 @@ private fun LazyGridState.readScrollSignal(): ScrollSignal {
  * Note that grid headers spanning the full width still count as **one item each** for index
  * purposes (use `GridItemSpan(maxLineSpan)` in your DSL). Pass that count via [headerCount].
  */
+@OptIn(PaginatorInternalApi::class)
 @Composable
 fun PaginatorPrefetchController<*>.BindToLazyGrid(
     gridState: LazyGridState,
@@ -41,6 +45,8 @@ fun PaginatorPrefetchController<*>.BindToLazyGrid(
     @Suppress("UNUSED_PARAMETER") footerCount: Int = 0,
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ) {
     val controller = this
     val reader = remember(gridState) { ScrollSignalReader { gridState.readScrollSignal() } }
@@ -57,4 +63,11 @@ fun PaginatorPrefetchController<*>.BindToLazyGrid(
         reader = reader,
         callback = callback,
     )
+    if (preserveScroll) {
+        BindLazyGridScrollPreservation(
+            gridState = gridState,
+            key = scrollKey ?: controller,
+            scrollKey = scrollKey,
+        )
+    }
 }

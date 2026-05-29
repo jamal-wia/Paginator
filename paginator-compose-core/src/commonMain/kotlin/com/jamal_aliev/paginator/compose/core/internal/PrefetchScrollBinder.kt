@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.compose.cursor.internal
+package com.jamal_aliev.paginator.compose.core.internal
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -9,6 +9,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.util.packInts
 import androidx.compose.ui.util.unpackInt1
 import androidx.compose.ui.util.unpackInt2
+import com.jamal_aliev.paginator.compose.core.PaginatorInternalApi
 import com.jamal_aliev.paginator.core.prefetch.ScrollWindow
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -26,14 +27,16 @@ import kotlin.jvm.JvmInline
  * collapse pixel-level scrolls that don't shift the visible-index range) is just a [Long]
  * comparison.
  */
+@PaginatorInternalApi
 @Immutable
 @JvmInline
-internal value class ScrollSignal(val packed: Long) {
-    val firstVisibleIndex: Int get() = unpackInt1(packed)
-    val lastVisibleIndex: Int get() = unpackInt2(packed)
+public value class ScrollSignal(public val packed: Long) {
+    public val firstVisibleIndex: Int get() = unpackInt1(packed)
+    public val lastVisibleIndex: Int get() = unpackInt2(packed)
 }
 
-internal fun ScrollSignal(firstVisibleIndex: Int, lastVisibleIndex: Int): ScrollSignal =
+@PaginatorInternalApi
+public fun ScrollSignal(firstVisibleIndex: Int, lastVisibleIndex: Int): ScrollSignal =
     ScrollSignal(packInts(firstVisibleIndex, lastVisibleIndex))
 
 /**
@@ -44,9 +47,10 @@ internal fun ScrollSignal(firstVisibleIndex: Int, lastVisibleIndex: Int): Scroll
  * "one allocation per `state` instance change", which matters because every recomposition of
  * a paginated container would otherwise invalidate the controller's reader reference.
  */
+@PaginatorInternalApi
 @Stable
-internal fun interface ScrollSignalReader {
-    fun read(): ScrollSignal
+public fun interface ScrollSignalReader {
+    public fun read(): ScrollSignal
 }
 
 /**
@@ -54,9 +58,10 @@ internal fun interface ScrollSignalReader {
  * argument as [ScrollSignalReader] — `remember(controller)` at the call site keeps the SAM
  * instance pinned across recompositions of the binder's container.
  */
+@PaginatorInternalApi
 @Stable
-internal fun interface ScrollCallback {
-    fun onScroll(firstVisibleIndex: Int, lastVisibleIndex: Int, totalItemCount: Int)
+public fun interface ScrollCallback {
+    public fun onScroll(firstVisibleIndex: Int, lastVisibleIndex: Int, totalItemCount: Int)
 }
 
 /**
@@ -64,8 +69,9 @@ internal fun interface ScrollCallback {
  * and forwards the result to [callback].
  *
  * Container-agnostic core used by every `BindTo*` overload (LazyList, LazyGrid,
- * LazyStaggeredGrid). Each overload supplies a [reader] tied to the lazy-state instance and a
- * [callback] tied to the controller.
+ * LazyStaggeredGrid) in `paginator-compose-offset` and `paginator-compose-cursor`. Each
+ * overload supplies a [reader] tied to the lazy-state instance and a [callback] tied to the
+ * controller.
  *
  * The effect is keyed on [controllerKey], [sourceKey], [restartKey], and [scrollSampleMillis].
  * [dataItemCount], [headerCount], [reader] and [callback] are kept fresh through
@@ -85,9 +91,10 @@ internal fun interface ScrollCallback {
  *   [kotlinx.coroutines.flow.sample] — only the latest emission per window is forwarded.
  *   Useful when [callback] does non-trivial work and the user scrolls fast.
  */
+@PaginatorInternalApi
 @OptIn(FlowPreview::class)
 @Composable
-internal fun BindScrollInternal(
+public fun BindScrollInternal(
     controllerKey: Any,
     sourceKey: Any,
     restartKey: Any?,

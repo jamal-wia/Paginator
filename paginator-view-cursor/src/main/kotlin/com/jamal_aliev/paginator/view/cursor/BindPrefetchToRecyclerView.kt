@@ -2,11 +2,11 @@ package com.jamal_aliev.paginator.view.cursor
 
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
+import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.prefetch.CursorLoadGuard
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
-import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
-import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
+import com.jamal_aliev.paginator.view.core.ScrollBinding
 
 /**
  * Binding handle returned by [bindPrefetchToRecyclerView] / [bindPaginated]: bundles the
@@ -31,6 +31,8 @@ public fun <T> CursorPaginator<T>.bindPrefetchToRecyclerView(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): PrefetchBinding<CursorPaginatorPrefetchController<T>> {
     val controller = prefetchController(
         lifecycleOwner = lifecycleOwner,
@@ -46,6 +48,8 @@ public fun <T> CursorPaginator<T>.bindPrefetchToRecyclerView(
         headerCount = headerCount,
         footerCount = footerCount,
         scrollSampleMillis = options.scrollSampleMillis,
+        preserveScroll = preserveScroll,
+        scrollKey = scrollKey,
     )
     return PrefetchBinding(controller, binding)
 }
@@ -61,6 +65,8 @@ public fun <T> CursorPaginator<T>.bindPrefetchToRecyclerView(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): PrefetchBinding<CursorPaginatorPrefetchController<T>> = bindPrefetchToRecyclerView(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
@@ -71,4 +77,6 @@ public fun <T> CursorPaginator<T>.bindPrefetchToRecyclerView(
     enableCacheFlow = enableCacheFlow,
     loadGuard = loadGuard,
     onPrefetchError = onPrefetchError,
+    preserveScroll = preserveScroll,
+    scrollKey = scrollKey,
 )

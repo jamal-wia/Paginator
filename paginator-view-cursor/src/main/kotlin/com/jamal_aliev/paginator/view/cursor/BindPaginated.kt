@@ -2,13 +2,13 @@ package com.jamal_aliev.paginator.view.cursor
 
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
+import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.prefetch.CursorLoadGuard
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
-import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
-import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
+import com.jamal_aliev.paginator.view.core.internal.ScrollDispatcher
+import com.jamal_aliev.paginator.view.core.internal.attachScrollPreservation
 import com.jamal_aliev.paginator.view.cursor.internal.DataItemCountTracker
-import com.jamal_aliev.paginator.view.cursor.internal.ScrollDispatcher
 
 
 /** Cursor-paginator counterpart of [Paginator.bindPaginated]. */
@@ -21,6 +21,8 @@ public fun <T> CursorPaginator<T>.bindPaginated(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): PrefetchBinding<CursorPaginatorPrefetchController<T>> {
     val controller = prefetchController(
         lifecycleOwner = lifecycleOwner,
@@ -38,6 +40,8 @@ public fun <T> CursorPaginator<T>.bindPaginated(
         footerCount = footerCount,
         scrollSampleMillis = options.scrollSampleMillis,
         onScroll = controller::onScroll,
+        preservationKey = if (preserveScroll) (scrollKey ?: controller) else null,
+        scrollKey = if (preserveScroll) scrollKey else null,
     )
 }
 
@@ -51,6 +55,8 @@ public fun <T> CursorPaginator<T>.bindPaginated(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): PrefetchBinding<CursorPaginatorPrefetchController<T>> = bindPaginated(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
@@ -60,6 +66,8 @@ public fun <T> CursorPaginator<T>.bindPaginated(
     enableCacheFlow = enableCacheFlow,
     loadGuard = loadGuard,
     onPrefetchError = onPrefetchError,
+    preserveScroll = preserveScroll,
+    scrollKey = scrollKey,
 )
 
 private fun <C : Any> bindPaginatedInternal(
@@ -71,8 +79,19 @@ private fun <C : Any> bindPaginatedInternal(
     footerCount: () -> Int,
     scrollSampleMillis: Long,
     onScroll: (firstVisibleIndex: Int, lastVisibleIndex: Int, totalItemCount: Int) -> Unit,
+    preservationKey: Any?,
+    scrollKey: String?,
 ): PrefetchBinding<C> {
     @Suppress("UNUSED_EXPRESSION") footerCount
+
+    val preservationHandle = preservationKey?.let { key ->
+        attachScrollPreservation(
+            recyclerView = recyclerView,
+            lifecycleOwner = lifecycleOwner,
+            key = key,
+            scrollKey = scrollKey,
+        )
+    }
 
     lateinit var dispatcher: ScrollDispatcher
     val tracker = DataItemCountTracker(
@@ -88,6 +107,7 @@ private fun <C : Any> bindPaginatedInternal(
         dataItemCount = tracker.count,
         headerCount = headerCount,
         onScroll = onScroll,
+        preservationHandle = preservationHandle,
     )
     dispatcher.start()
     tracker.start()

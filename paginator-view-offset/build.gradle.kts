@@ -95,6 +95,7 @@ android {
 
 dependencies {
     api(project(":paginator-offset"))
+    api(project(":paginator-view-core"))
     api(libs.androidx.recyclerview)
     api(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.kotlinx.coroutines.android)

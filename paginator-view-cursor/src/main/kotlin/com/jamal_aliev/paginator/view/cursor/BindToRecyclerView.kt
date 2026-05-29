@@ -3,13 +3,16 @@ package com.jamal_aliev.paginator.view.cursor
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
-import com.jamal_aliev.paginator.view.cursor.internal.ScrollDispatcher
+import com.jamal_aliev.paginator.view.core.ScrollBinding
+import com.jamal_aliev.paginator.view.core.internal.ScrollDispatcher
+import com.jamal_aliev.paginator.view.core.internal.attachScrollPreservation
 
 
 /**
  * Cursor-paginator counterpart of [PaginatorPrefetchController.bindToRecyclerView].
  *
- * Behaviour, parameters, and constraints are identical — see the page-based overload's KDoc.
+ * Behaviour, parameters, and constraints are identical — see the page-based overload's KDoc,
+ * including the `preserveScroll` / `scrollKey` pair.
  */
 public fun CursorPaginatorPrefetchController<*>.bindToRecyclerView(
     recyclerView: RecyclerView,
@@ -18,6 +21,8 @@ public fun CursorPaginatorPrefetchController<*>.bindToRecyclerView(
     headerCount: () -> Int = ZERO,
     footerCount: () -> Int = ZERO,
     scrollSampleMillis: Long = 0L,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): ScrollBinding = bindInternal(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
@@ -26,6 +31,8 @@ public fun CursorPaginatorPrefetchController<*>.bindToRecyclerView(
     footerCount = footerCount,
     scrollSampleMillis = scrollSampleMillis,
     onScroll = ::onScroll,
+    preservationKey = if (preserveScroll) (scrollKey ?: this) else null,
+    scrollKey = if (preserveScroll) scrollKey else null,
 )
 
 /**
@@ -39,6 +46,8 @@ public fun CursorPaginatorPrefetchController<*>.bindToRecyclerView(
     headerCount: Int,
     footerCount: Int = 0,
     scrollSampleMillis: Long = 0L,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): ScrollBinding = bindToRecyclerView(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
@@ -46,6 +55,8 @@ public fun CursorPaginatorPrefetchController<*>.bindToRecyclerView(
     headerCount = { headerCount },
     footerCount = { footerCount },
     scrollSampleMillis = scrollSampleMillis,
+    preserveScroll = preserveScroll,
+    scrollKey = scrollKey,
 )
 
 private val ZERO: () -> Int = { 0 }
@@ -58,7 +69,17 @@ private fun bindInternal(
     @Suppress("UNUSED_PARAMETER") footerCount: () -> Int,
     scrollSampleMillis: Long,
     onScroll: (firstVisibleIndex: Int, lastVisibleIndex: Int, totalItemCount: Int) -> Unit,
+    preservationKey: Any?,
+    scrollKey: String?,
 ): ScrollBinding {
+    val preservationHandle = preservationKey?.let { key ->
+        attachScrollPreservation(
+            recyclerView = recyclerView,
+            lifecycleOwner = lifecycleOwner,
+            key = key,
+            scrollKey = scrollKey,
+        )
+    }
     val dispatcher = ScrollDispatcher(
         recyclerView = recyclerView,
         lifecycleOwner = lifecycleOwner,
@@ -66,6 +87,7 @@ private fun bindInternal(
         dataItemCount = dataItemCount,
         headerCount = headerCount,
         onScroll = onScroll,
+        preservationHandle = preservationHandle,
     )
     dispatcher.start()
     return dispatcher

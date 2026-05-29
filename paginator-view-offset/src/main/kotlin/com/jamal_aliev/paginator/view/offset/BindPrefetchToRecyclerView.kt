@@ -2,10 +2,11 @@ package com.jamal_aliev.paginator.view.offset
 
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
-import com.jamal_aliev.paginator.offset.Paginator
 import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
-import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
 import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
+import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
+import com.jamal_aliev.paginator.view.core.ScrollBinding
 
 /**
  * Binding handle returned by [bindPrefetchToRecyclerView] / [bindPaginated]: bundles the
@@ -43,6 +44,8 @@ public fun <T> Paginator<T>.bindPrefetchToRecyclerView(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: PageLoadGuard<T> = PageLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): PrefetchBinding<PaginatorPrefetchController<T>> {
     val controller = prefetchController(
         lifecycleOwner = lifecycleOwner,
@@ -58,6 +61,8 @@ public fun <T> Paginator<T>.bindPrefetchToRecyclerView(
         headerCount = headerCount,
         footerCount = footerCount,
         scrollSampleMillis = options.scrollSampleMillis,
+        preserveScroll = preserveScroll,
+        scrollKey = scrollKey,
     )
     return PrefetchBinding(controller, binding)
 }
@@ -73,6 +78,8 @@ public fun <T> Paginator<T>.bindPrefetchToRecyclerView(
     enableCacheFlow: Boolean = core.enableCacheFlow,
     loadGuard: PageLoadGuard<T> = PageLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): PrefetchBinding<PaginatorPrefetchController<T>> = bindPrefetchToRecyclerView(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
@@ -83,6 +90,8 @@ public fun <T> Paginator<T>.bindPrefetchToRecyclerView(
     enableCacheFlow = enableCacheFlow,
     loadGuard = loadGuard,
     onPrefetchError = onPrefetchError,
+    preserveScroll = preserveScroll,
+    scrollKey = scrollKey,
 )
 
 

@@ -3,12 +3,15 @@ package com.jamal_aliev.paginator.compose.offset
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.jamal_aliev.paginator.compose.offset.internal.BindScrollInternal
-import com.jamal_aliev.paginator.compose.offset.internal.ScrollCallback
-import com.jamal_aliev.paginator.compose.offset.internal.ScrollSignal
-import com.jamal_aliev.paginator.compose.offset.internal.ScrollSignalReader
+import com.jamal_aliev.paginator.compose.core.PaginatorInternalApi
+import com.jamal_aliev.paginator.compose.core.internal.BindLazyListScrollPreservation
+import com.jamal_aliev.paginator.compose.core.internal.BindScrollInternal
+import com.jamal_aliev.paginator.compose.core.internal.ScrollCallback
+import com.jamal_aliev.paginator.compose.core.internal.ScrollSignal
+import com.jamal_aliev.paginator.compose.core.internal.ScrollSignalReader
 import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
 
+@OptIn(PaginatorInternalApi::class)
 private fun LazyListState.readScrollSignal(): ScrollSignal {
     val info = layoutInfo
     val visible = info.visibleItemsInfo
@@ -48,7 +51,20 @@ private fun LazyListState.readScrollSignal(): ScrollSignal {
  *   the visible-index window down to the data origin.
  * @param footerCount Reserved for self-documentation at the call site; the math relies on
  *   [dataItemCount] and [headerCount] only.
+ * @param preserveScroll When `true`, the binding additionally saves [listState]'s scroll
+ *   position to a process-wide registry when leaving composition, and restores it on
+ *   (re)entry. The intended use case is: a screen that owns a long-lived
+ *   [PaginatorPrefetchController] (e.g., via DI / `ViewModel`), where backing out to another
+ *   screen tears down the composable and Compose forgets the [LazyListState], yet the next
+ *   visit should resume at the same item. Defaults to `false` (no behavior change for
+ *   existing callers).
+ * @param scrollKey Optional stable string key for the scroll snapshot. When `null` (default)
+ *   and [preserveScroll] is `true`, the snapshot is keyed by this controller's identity —
+ *   simple and collision-free when a new controller naturally replaces the old one. When
+ *   non-null, the snapshot is keyed by this string and **also** persisted via
+ *   `rememberSaveable` to survive process death. Ignored when [preserveScroll] is `false`.
  */
+@OptIn(PaginatorInternalApi::class)
 @Composable
 fun PaginatorPrefetchController<*>.BindToLazyList(
     listState: LazyListState,
@@ -57,6 +73,8 @@ fun PaginatorPrefetchController<*>.BindToLazyList(
     @Suppress("UNUSED_PARAMETER") footerCount: Int = 0,
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ) {
     val controller = this
     val reader = remember(listState) { ScrollSignalReader { listState.readScrollSignal() } }
@@ -73,4 +91,11 @@ fun PaginatorPrefetchController<*>.BindToLazyList(
         reader = reader,
         callback = callback,
     )
+    if (preserveScroll) {
+        BindLazyListScrollPreservation(
+            listState = listState,
+            key = scrollKey ?: controller,
+            scrollKey = scrollKey,
+        )
+    }
 }

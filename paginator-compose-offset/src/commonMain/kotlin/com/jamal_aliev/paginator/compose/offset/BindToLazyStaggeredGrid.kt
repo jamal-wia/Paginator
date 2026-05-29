@@ -3,12 +3,15 @@ package com.jamal_aliev.paginator.compose.offset
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.jamal_aliev.paginator.compose.offset.internal.BindScrollInternal
-import com.jamal_aliev.paginator.compose.offset.internal.ScrollCallback
-import com.jamal_aliev.paginator.compose.offset.internal.ScrollSignal
-import com.jamal_aliev.paginator.compose.offset.internal.ScrollSignalReader
+import com.jamal_aliev.paginator.compose.core.PaginatorInternalApi
+import com.jamal_aliev.paginator.compose.core.internal.BindLazyStaggeredGridScrollPreservation
+import com.jamal_aliev.paginator.compose.core.internal.BindScrollInternal
+import com.jamal_aliev.paginator.compose.core.internal.ScrollCallback
+import com.jamal_aliev.paginator.compose.core.internal.ScrollSignal
+import com.jamal_aliev.paginator.compose.core.internal.ScrollSignalReader
 import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
 
+@OptIn(PaginatorInternalApi::class)
 private fun LazyStaggeredGridState.readScrollSignal(): ScrollSignal {
     val info = layoutInfo
     val visible = info.visibleItemsInfo
@@ -46,6 +49,7 @@ private fun LazyStaggeredGridState.readScrollSignal(): ScrollSignal {
  * the linear data sequence — but the **range** between them still bounds the visible items,
  * which is what the controller's edge-distance check needs.
  */
+@OptIn(PaginatorInternalApi::class)
 @Composable
 fun PaginatorPrefetchController<*>.BindToLazyStaggeredGrid(
     gridState: LazyStaggeredGridState,
@@ -54,6 +58,8 @@ fun PaginatorPrefetchController<*>.BindToLazyStaggeredGrid(
     @Suppress("UNUSED_PARAMETER") footerCount: Int = 0,
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ) {
     val controller = this
     val reader = remember(gridState) { ScrollSignalReader { gridState.readScrollSignal() } }
@@ -70,4 +76,11 @@ fun PaginatorPrefetchController<*>.BindToLazyStaggeredGrid(
         reader = reader,
         callback = callback,
     )
+    if (preserveScroll) {
+        BindLazyStaggeredGridScrollPreservation(
+            gridState = gridState,
+            key = scrollKey ?: controller,
+            scrollKey = scrollKey,
+        )
+    }
 }

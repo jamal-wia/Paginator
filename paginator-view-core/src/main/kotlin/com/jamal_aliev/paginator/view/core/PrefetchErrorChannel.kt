@@ -1,4 +1,4 @@
-package com.jamal_aliev.paginator.view.offset
+package com.jamal_aliev.paginator.view.core
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

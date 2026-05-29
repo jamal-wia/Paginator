@@ -1,22 +1,22 @@
-package com.jamal_aliev.paginator.view.cursor.internal
+package com.jamal_aliev.paginator.view.core.internal
 
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
-import com.jamal_aliev.paginator.view.cursor.internal.ScrollSignal.Companion.NONE
+import com.jamal_aliev.paginator.view.core.internal.ScrollSignal.Companion.NONE
 
 /**
  * Snapshot of the data we read from a [RecyclerView] on every scroll / data-change pass.
  *
- * Mirrors the shape of the indices the [com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController]
- * accepts, but in **full-list** coordinates (headers + footers included). The remapping into
- * data-only indices is done by [com.jamal_aliev.paginator.core.prefetch.ScrollWindow.Companion.from] at the call site.
+ * Mirrors the shape of the indices the prefetch controller accepts, but in **full-list**
+ * coordinates (headers + footers included). The remapping into data-only indices is done by
+ * [com.jamal_aliev.paginator.core.prefetch.ScrollWindow.Companion.from] at the call site.
  *
  * Packs [firstVisibleIndex] and [lastVisibleIndex] into a single [Long] — zero heap allocation on
  * every scroll/layout pass. Equality (used by the dispatcher to dedup repeated signals) is just a
  * [Long] comparison. [NONE] is the sentinel for "no previous signal recorded yet" — used to seed
- * [com.jamal_aliev.paginator.view.cursor.internal.ScrollDispatcher.lastEmitted] without nullable boxing.
+ * [ScrollDispatcher]'s last-emitted signal without nullable boxing.
  */
 @JvmInline
 internal value class ScrollSignal(val packed: Long) {

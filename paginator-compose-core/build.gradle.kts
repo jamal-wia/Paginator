@@ -24,16 +24,19 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates(group.toString(), "paginator-compose-cursor", version.toString())
+    coordinates(group.toString(), "paginator-compose-core", version.toString())
 
     pom {
-        name.set("Paginator Compose Cursor — Compose Multiplatform bindings for the cursor paginator")
+        name.set("Paginator Compose Core — shared Compose Multiplatform UI utilities for Paginator")
         description.set(
-            "Compose Multiplatform integration for the cursor variant of the Paginator pagination " +
-                    "library. Provides idiomatic bindings between CursorPaginatorPrefetchController and " +
-                    "LazyListState / LazyGridState / LazyStaggeredGridState — auto-pagination on scroll " +
-                    "without manual snapshotFlow wiring. Pair with paginator-cursor; for page-number " +
-                    "feeds use paginator-compose-offset instead. Targets Android, iOS, JVM, JS, Wasm."
+            "Compose Multiplatform UI utilities shared between paginator-compose-offset and " +
+                    "paginator-compose-cursor. Contains the scroll-position preservation primitives " +
+                    "(ScrollSnapshot data classes, ScrollSnapshotRegistry, internal save/restore " +
+                    "composables) that back the `preserveScroll = true` parameter on BindToLazyList / " +
+                    "BindToLazyGrid / BindToLazyStaggeredGrid, plus the shared scroll-binder core " +
+                    "(BindScrollInternal) and PrefetchErrorChannel. Depends only on paginator-core " +
+                    "(for the ScrollWindow index-remapping math); independent of paginator-offset " +
+                    "and paginator-cursor."
         )
         url.set("https://github.com/jamal-wia/Paginator")
         inceptionYear.set("2026")
@@ -76,11 +79,6 @@ kotlin {
         }
     }
 
-    // iosX64 is intentionally omitted: Compose Multiplatform 1.11.0+ no longer publishes
-    // an iosX64 variant (Apple deprecated Intel-Mac simulators). Apple-Silicon Macs use
-    // iosSimulatorArm64. Consumers with iosX64 targets can still depend on :paginator-cursor
-    // (no Compose dependency), but the Compose binding follows compose-multiplatform's own
-    // target list.
     iosArm64()
     iosSimulatorArm64()
 
@@ -94,8 +92,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            api(project(":paginator-cursor"))
-            api(project(":paginator-compose-core"))
+            implementation(project(":paginator-core"))
             api(libs.compose.multiplatform.runtime)
             api(libs.compose.multiplatform.foundation)
             implementation(libs.kotlinx.coroutines.core)
@@ -108,7 +105,7 @@ kotlin {
 }
 
 android {
-    namespace = "com.jamal_aliev.paginator.compose.cursor"
+    namespace = "com.jamal_aliev.paginator.compose.core"
     compileSdk = 36
 
     defaultConfig {

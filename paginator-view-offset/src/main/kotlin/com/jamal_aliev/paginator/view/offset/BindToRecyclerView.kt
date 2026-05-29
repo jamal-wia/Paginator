@@ -3,7 +3,9 @@ package com.jamal_aliev.paginator.view.offset
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
 import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
-import com.jamal_aliev.paginator.view.offset.internal.ScrollDispatcher
+import com.jamal_aliev.paginator.view.core.ScrollBinding
+import com.jamal_aliev.paginator.view.core.internal.ScrollDispatcher
+import com.jamal_aliev.paginator.view.core.internal.attachScrollPreservation
 
 /**
  * Binds this [PaginatorPrefetchController] to a [RecyclerView] so that scroll-driven prefetch
@@ -50,6 +52,16 @@ import com.jamal_aliev.paginator.view.offset.internal.ScrollDispatcher
  *   per window via [kotlinx.coroutines.flow.sample]. Useful when [PaginatorPrefetchController]'s
  *   `loadGuard` or downstream work is non-trivial and the user can scroll fast. Defaults to `0`
  *   (no throttling).
+ * @param preserveScroll When `true`, also snapshot the `RecyclerView`'s scroll state on
+ *   `Lifecycle.Event.ON_STOP` (and on [ScrollBinding.unbind]) and restore it on the next
+ *   attach to the same key. Backed by [com.jamal_aliev.paginator.view.core.RecyclerViewScrollSnapshotRegistry].
+ *   Defaults to `false` (no behavior change for existing callers).
+ * @param scrollKey Optional stable string key. When `null` (default), the snapshot is keyed
+ *   by this controller's identity — fine for the common case where a new controller naturally
+ *   supersedes the old one. When non-null, the snapshot is keyed by this string and the
+ *   returned [ScrollBinding]'s [ScrollBinding.saveScrollState] / [ScrollBinding.restoreScrollState]
+ *   become functional, letting the host bridge it through `Bundle` to survive process death.
+ *   Ignored when [preserveScroll] is `false`.
  * @return A [ScrollBinding] handle. Call [ScrollBinding.recalibrate] after a manual
  *   `paginator.refresh()` / `paginator.jump()`, or [ScrollBinding.unbind] to detach early.
  */
@@ -60,6 +72,8 @@ public fun PaginatorPrefetchController<*>.bindToRecyclerView(
     headerCount: () -> Int = ZERO,
     footerCount: () -> Int = ZERO,
     scrollSampleMillis: Long = 0L,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): ScrollBinding = bindInternal(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
@@ -68,6 +82,8 @@ public fun PaginatorPrefetchController<*>.bindToRecyclerView(
     footerCount = footerCount,
     scrollSampleMillis = scrollSampleMillis,
     onScroll = ::onScroll,
+    preservationKey = if (preserveScroll) (scrollKey ?: this) else null,
+    scrollKey = if (preserveScroll) scrollKey else null,
 )
 
 /**
@@ -84,6 +100,8 @@ public fun PaginatorPrefetchController<*>.bindToRecyclerView(
     headerCount: Int,
     footerCount: Int = 0,
     scrollSampleMillis: Long = 0L,
+    preserveScroll: Boolean = false,
+    scrollKey: String? = null,
 ): ScrollBinding = bindToRecyclerView(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
@@ -91,6 +109,8 @@ public fun PaginatorPrefetchController<*>.bindToRecyclerView(
     headerCount = { headerCount },
     footerCount = { footerCount },
     scrollSampleMillis = scrollSampleMillis,
+    preserveScroll = preserveScroll,
+    scrollKey = scrollKey,
 )
 
 
@@ -104,7 +124,17 @@ private fun bindInternal(
     @Suppress("UNUSED_PARAMETER") footerCount: () -> Int,
     scrollSampleMillis: Long,
     onScroll: (firstVisibleIndex: Int, lastVisibleIndex: Int, totalItemCount: Int) -> Unit,
+    preservationKey: Any?,
+    scrollKey: String?,
 ): ScrollBinding {
+    val preservationHandle = preservationKey?.let { key ->
+        attachScrollPreservation(
+            recyclerView = recyclerView,
+            lifecycleOwner = lifecycleOwner,
+            key = key,
+            scrollKey = scrollKey,
+        )
+    }
     val dispatcher = ScrollDispatcher(
         recyclerView = recyclerView,
         lifecycleOwner = lifecycleOwner,
@@ -112,6 +142,7 @@ private fun bindInternal(
         dataItemCount = dataItemCount,
         headerCount = headerCount,
         onScroll = onScroll,
+        preservationHandle = preservationHandle,
     )
     dispatcher.start()
     return dispatcher
