@@ -201,7 +201,7 @@ KMP artifact:
 ```kotlin
 commonMain.dependencies {
   // Pin all Paginator artifacts together via the BOM
-  implementation(platform("io.github.jamal-wia:paginator-bom:10.0.2"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:10.0.3"))
   // Pick the strategy you need; both build on paginator-core (pulled transitively)
   implementation("io.github.jamal-wia:paginator-offset")
   // implementation("io.github.jamal-wia:paginator-cursor")
@@ -288,11 +288,11 @@ simple cases.
 
 If pagination is a regular part of your work, give it a try. The repository is active,
 on [Maven Central](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator-core),
-mature (current version 10.0.2), and covered with documentation. Feedback and stars help.
+mature (current version 10.0.3), and covered with documentation. Feedback and stars help.
 
 - **GitHub:** [github.com/jamal-wia/Paginator](https://github.com/jamal-wia/Paginator)
-- **Maven Central:** `io.github.jamal-wia:paginator-offset:10.0.2` /
-  `paginator-cursor:10.0.2` (or via the `paginator-bom`)
+- **Maven Central:** `io.github.jamal-wia:paginator-offset:10.0.3` /
+  `paginator-cursor:10.0.3` (or via the `paginator-bom`)
 - **Telegram community:** [t.me/+0eeAM-EJpqgwNGZi](https://t.me/+0eeAM-EJpqgwNGZi)
 - **Documentation:** by section in [docs/](https://github.com/jamal-wia/Paginator/tree/master/docs)
 
