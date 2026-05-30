@@ -1,12 +1,9 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
-import com.jamal_aliev.paginator.offset.page.OffsetPageState
-
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.offset.cache.PagingCache
-
 import com.jamal_aliev.paginator.offset.extension.plus
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -15,7 +12,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.time.Duration.Companion.hours
 
-class CompositeStrategyTest {
+class ChainablePagingCacheTest {
 
     private fun successPage(page: Int): OffsetPageState.Success<String> =
         OffsetPageState.Success(page = page, data = listOf("item_$page"))
