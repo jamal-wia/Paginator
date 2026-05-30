@@ -14,6 +14,10 @@ data class MainViewState(
     val bookmarks: List<Int> = emptyList(),
     val totalCachedItems: Int = 0,
     val errorMessage: String? = null,
+    /** Page the backend is currently asking the user to resolve, or `null` if no load is pending. */
+    val pendingLoadPage: Int? = null,
+    /** Number of queued load requests (including the one shown), for the dialog hint. */
+    val pendingLoadWaiting: Int = 0,
 )
 
 data class CachedPageInfo(

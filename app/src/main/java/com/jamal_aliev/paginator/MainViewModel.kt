@@ -23,6 +23,7 @@ import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.offset.serialization.restoreStateFromJson
 import com.jamal_aliev.paginator.offset.serialization.saveStateToJson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
@@ -40,8 +41,15 @@ class MainViewModel(
     private val _state = MutableStateFlow(MainViewState())
     val state = _state.asStateFlow()
 
+    /** Bridges every page load to the central dialog so the user picks the backend response. */
+    val loadController = LoadController()
+
     val paginator = MutablePaginator<String>(load = { page ->
-        LoadResult(SampleRepository.loadPage(page))
+        // Suspend until the user resolves the dialog, then simulate a short network latency
+        // so the Progress state is briefly visible before the result lands.
+        val choice = loadController.awaitChoice(page)
+        delay(NETWORK_DELAY_MS)
+        LoadResult(SampleRepository.pageData(page, choice))
     }).apply {
         core.resize(SampleRepository.PAGE_SIZE, resize = false, silently = true)
         finalPage = SampleRepository.FINAL_PAGE
@@ -67,6 +75,18 @@ class MainViewModel(
                 savePaginatorState()
             }
             .flowOn(Dispatchers.Main)
+            .launchIn(viewModelScope)
+
+        // Mirror the controller's pending request into the UI state so the dialog can render.
+        loadController.pending
+            .onEach { pending ->
+                _state.update {
+                    it.copy(
+                        pendingLoadPage = pending?.page,
+                        pendingLoadWaiting = pending?.waitingCount ?: 0,
+                    )
+                }
+            }
             .launchIn(viewModelScope)
 
         // Try to restore state from SavedStateHandle (after process death).
@@ -236,6 +256,11 @@ class MainViewModel(
         }
     }
 
+    /** Delivers the user's dialog choice to the suspended load coroutine. */
+    fun resolveLoad(choice: LoadChoice) {
+        viewModelScope.launch { loadController.resolve(choice) }
+    }
+
     fun clearError() {
         _state.update { it.copy(errorMessage = null) }
     }
@@ -258,6 +283,9 @@ class MainViewModel(
 
     companion object {
         private const val KEY_PAGINATOR_STATE = "paginator_state"
+
+        /** Simulated network latency applied after the user resolves the load dialog. */
+        private const val NETWORK_DELAY_MS = 600L
     }
 }
 

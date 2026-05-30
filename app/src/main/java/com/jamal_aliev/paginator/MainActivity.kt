@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -67,8 +68,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.jamal_aliev.paginator.compose.offset.BindToLazyList
-import com.jamal_aliev.paginator.compose.offset.rememberPrefetchController
 import com.jamal_aliev.paginator.core.extension.isEmptyState
 import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isProgressState
@@ -178,6 +177,96 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { showInspector = false }
                     )
                 }
+
+                // Rendered above everything (including the initial spinner): every page load
+                // pauses here until the user picks what the backend returns.
+                state.pendingLoadPage?.let { page ->
+                    LoadChoiceDialog(
+                        page = page,
+                        waitingCount = state.pendingLoadWaiting,
+                        onChoice = viewModel::resolveLoad
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun LoadChoiceDialog(
+        page: Int,
+        waitingCount: Int,
+        onChoice: (LoadChoice) -> Unit
+    ) {
+        AlertDialog(
+            // Intentionally not dismissable: the load coroutine is suspended waiting for an
+            // answer, so the "backend" has to respond with one of the options.
+            onDismissRequest = {},
+            confirmButton = {},
+            title = {
+                Column {
+                    Text("Load page $page", fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (waitingCount > 1)
+                            "Choose backend response · ${waitingCount - 1} more queued"
+                        else
+                            "Choose what the backend returns",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LoadChoiceButton(
+                        title = "Full page",
+                        subtitle = "All ${SampleRepository.PAGE_SIZE} items",
+                        color = Color(0xFF2E7D32),
+                        onClick = { onChoice(LoadChoice.FULL) }
+                    )
+                    LoadChoiceButton(
+                        title = "Incomplete",
+                        subtitle = "Only ${SampleRepository.INCOMPLETE_SIZE} of ${SampleRepository.PAGE_SIZE} items",
+                        color = Color(0xFFE65100),
+                        onClick = { onChoice(LoadChoice.INCOMPLETE) }
+                    )
+                    LoadChoiceButton(
+                        title = "Empty",
+                        subtitle = "No items (end of list)",
+                        color = Color(0xFF757575),
+                        onClick = { onChoice(LoadChoice.EMPTY) }
+                    )
+                    LoadChoiceButton(
+                        title = "Error",
+                        subtitle = "Throws a network exception",
+                        color = Color(0xFFC62828),
+                        onClick = { onChoice(LoadChoice.ERROR) }
+                    )
+                }
+            }
+        )
+    }
+
+    @Composable
+    private fun LoadChoiceButton(
+        title: String,
+        subtitle: String,
+        color: Color,
+        onClick: () -> Unit
+    ) {
+        Button(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = color),
+            shape = RoundedCornerShape(12.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(title, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.85f)
+                )
             }
         }
     }
@@ -316,24 +405,9 @@ class MainActivity : ComponentActivity() {
     private fun PaginatedContent(state: MainViewState, modifier: Modifier) {
         val lazyListState = rememberLazyListState()
 
-        // paginator-compose: one-line scroll-driven prefetch.
-        // Replaces the manual `LaunchedEffect { snapshotFlow { ... }; prefetch.onScroll(...) }`
-        // pattern shown in docs/7. prefetch.md. The controller's lifecycle is bound to this
-        // composable; if you keep the controller in your ViewModel, drop the `remember…` call
-        // and just use `prefetch.BindToLazyList(...)` directly.
-        val prefetch = viewModel.paginator.rememberPrefetchController(
-            prefetchDistance = 5,
-            enableBackwardPrefetch = true,
-        )
-        prefetch.BindToLazyList(
-            listState = lazyListState,
-            // The demo interleaves per-page debug headers with data items, so headerCount /
-            // footerCount don't apply cleanly here — we pass total cached items and let the
-            // controller's edge check fire slightly early. In a typical UI with a flat data
-            // list (e.g. driven by `paginator.uiState`'s `Content.items`), pass that list's
-            // size as `dataItemCount` and the headerCount / footerCount of any wrapping items.
-            dataItemCount = state.totalCachedItems,
-        )
+        // Scroll-driven prefetch is intentionally NOT wired up in this demo: all loading is
+        // triggered explicitly via the Prev / Next / Jump / Bookmark controls so every page
+        // request goes through the central "choose backend response" dialog.
 
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,

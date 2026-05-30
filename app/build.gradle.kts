@@ -74,7 +74,6 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     implementation(project(":paginator-offset"))
-    implementation(project(":paginator-compose-offset"))
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
