@@ -209,7 +209,7 @@ reinventing the wheel on top of `LoadParams`.
 
 ## Where it stands today
 
-At the time of writing, Paginator is published on Maven Central as version 9.0.0, split into
+At the time of writing, Paginator is published on Maven Central as version 10.0.0, split into
 per-strategy modules (`paginator-offset` for page-number feeds, `paginator-cursor` for
 cursor / GraphQL-connection feeds), both built on a shared `paginator-core`. Supported
 targets are Android, JVM (Desktop / Server), iosX64, iosArm64, iosSimulatorArm64.
