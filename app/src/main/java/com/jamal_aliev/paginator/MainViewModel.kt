@@ -284,8 +284,12 @@ class MainViewModel(
     companion object {
         private const val KEY_PAGINATOR_STATE = "paginator_state"
 
-        /** Simulated network latency applied after the user resolves the load dialog. */
-        private const val NETWORK_DELAY_MS = 600L
+        /**
+         * Simulated network latency applied *after* the user resolves the load dialog. The
+         * dialog closes immediately on choice, so this is the time the page visibly stays in
+         * the Progress state before the real result lands.
+         */
+        private const val NETWORK_DELAY_MS = 1500L
     }
 }
 
