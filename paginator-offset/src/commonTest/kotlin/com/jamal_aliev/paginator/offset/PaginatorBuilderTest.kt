@@ -1,16 +1,14 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
+import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.offset.dsl.mutablePaginator
 import com.jamal_aliev.paginator.offset.dsl.paginator
 import com.jamal_aliev.paginator.offset.extension.plus
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -181,7 +179,7 @@ class PaginatorBuilderTest {
             initializers {
                 success { page, data, meta ->
                     successCalls++
-                    SuccessPage(page = page, data = data, metadata = meta)
+                    OffsetPageState.Success(page = page, data = data, metadata = meta)
                 }
             }
         }
@@ -202,7 +200,7 @@ class PaginatorBuilderTest {
             initializers {
                 error { e, page, data, meta ->
                     errorCalls++
-                    ErrorPage(exception = e, page = page, data = data, metadata = meta)
+                    OffsetPageState.Error(exception = e, page = page, data = data, metadata = meta)
                 }
             }
         }
@@ -217,10 +215,10 @@ class PaginatorBuilderTest {
         val p = paginator<String> {
             load { LoadResult(emptyList()) }
             initializers {
-                success { page, data, meta -> SuccessPage(page, data, meta) }
+                success { page, data, meta -> OffsetPageState.Success(page, data, meta) }
             }
             initializers {
-                error { e, page, data, meta -> ErrorPage(e, page, data, meta) }
+                error { e, page, data, meta -> OffsetPageState.Error(e, page, data, meta) }
             }
         }
         // No assertion needed beyond "did not throw"; but make sure the wiring exists.
@@ -234,9 +232,9 @@ class PaginatorBuilderTest {
 
     /** Minimal no-op persistent cache for wiring tests. */
     private class StubPersistentCache : PersistentPagingCache<String> {
-        override suspend fun save(state: PageState<String>) = Unit
-        override suspend fun load(page: Int): PageState<String>? = null
-        override suspend fun loadAll(): List<PageState<String>> = emptyList()
+        override suspend fun save(state: OffsetPageState<String>) = Unit
+        override suspend fun load(page: Int): OffsetPageState<String>? = null
+        override suspend fun loadAll(): List<OffsetPageState<String>> = emptyList()
         override suspend fun remove(page: Int) = Unit
         override suspend fun clear() = Unit
     }

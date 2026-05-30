@@ -1,9 +1,7 @@
 package com.jamal_aliev.paginator.cursor
 
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -15,17 +13,19 @@ import kotlin.test.assertTrue
 
 class CursorPagingCoreTest {
 
-    private fun bookmarkAt(i: Int, total: Int = 5): CursorBookmark =
-        CursorBookmark(
+    private fun bookmarkAt(i: Int, total: Int = 5): CursorBookmark<String> =
+        CursorBookmark<String>(
             prev = if (i == 0) null else "p${i - 1}",
             self = "p$i",
             next = if (i == total - 1) null else "p${i + 1}",
         )
 
-    private fun full(id: Int, capacity: Int = 3): SuccessPage<String> =
-        SuccessPage(page = id, data = MutableList(capacity) { "v$id-$it" })
+    private fun full(id: Int, capacity: Int = 3): CursorPageState.Success<String, String> =
+        CursorPageState.Success(
+            bookmark = CursorBookmark(null, "p$id", null),
+            data = MutableList(capacity) { "v$id-$it" })
 
-    private fun populate(core: CursorPagingCore<String>, total: Int = 5) {
+    private fun populate(core: CursorPagingCore<String, String>, total: Int = 5) {
         repeat(total) {
             core.cache.setState(bookmarkAt(it, total), full(it + 1, core.capacity), silently = true)
         }
@@ -33,7 +33,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun expandEndContextCursor_walks_to_last_filled_success_page() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         populate(core)
 
         val first = core.cache.getCursorOf("p0")!!
@@ -47,7 +47,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun expandEndContextCursor_stops_at_gap() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         populate(core)
         // Drop p2 from the cache — creates a hole. walkForward on p1 will return p2's
         // bookmark from cache but cache.getStateOf("p2") returns null → walk stops.
@@ -63,7 +63,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun expandEndContextCursor_stops_at_non_filled_success() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         // p0 filled, p1 is a ProgressPage (non-success boundary), p2 filled.
         val p0 = bookmarkAt(0, 3)
         val p1 = bookmarkAt(1, 3)
@@ -71,7 +71,7 @@ class CursorPagingCoreTest {
         core.cache.setState(p0, full(1, 3), silently = true)
         core.cache.setState(
             p1,
-            ProgressPage(page = 2, data = mutableListOf()),
+            CursorPageState.Progress(bookmark = p1, data = mutableListOf()),
             silently = true,
         )
         core.cache.setState(p2, full(3, 3), silently = true)
@@ -85,7 +85,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun expandEndContextCursor_noops_on_null_pivot() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         populate(core)
         core.expandEndContextCursor(null, null)
         assertNull(core.endContextCursor)
@@ -96,7 +96,7 @@ class CursorPagingCoreTest {
         // snapshot() auto-expands through adjacent filled-success pages, mirroring
         // offset PagingCore. When every cached page is a filled success, the entire
         // linked chain is visible.
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         populate(core)
         core.startContextCursor = core.cache.getCursorOf("p1")
         core.endContextCursor = core.cache.getCursorOf("p3")
@@ -105,18 +105,18 @@ class CursorPagingCoreTest {
         val first = core.snapshot.first()
         assertEquals(listOf("p0", "p1", "p2", "p3", "p4"), core.snapshotSelves())
         assertEquals(5, first.size)
-        assertTrue(first.all { it is SuccessPage })
+        assertTrue(first.all { it is CursorPageState.Success<*, *> })
     }
 
     @Test
     fun snapshot_extends_by_one_boundary_page_on_each_side() = runTest {
         // p0 = empty SuccessPage boundary, p1..p3 filled, p4 = ProgressPage boundary.
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         val p0 = bookmarkAt(0, 5)
         val p4 = bookmarkAt(4, 5)
         core.cache.setState(
             p0,
-            com.jamal_aliev.paginator.core.page.PageState.SuccessPage<String>(1, emptyList()),
+            CursorPageState.Success(bookmark = p0, data = emptyList()),
             silently = true,
         )
         (1..3).forEach {
@@ -124,7 +124,7 @@ class CursorPagingCoreTest {
         }
         core.cache.setState(
             p4,
-            com.jamal_aliev.paginator.core.page.PageState.ProgressPage<String>(5, mutableListOf()),
+            CursorPageState.Progress(bookmark = p4, data = mutableListOf()),
             silently = true,
         )
         core.startContextCursor = core.cache.getCursorOf("p1")
@@ -140,7 +140,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun snapshot_emits_empty_when_range_not_started() = runTest {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         // No context cursors set → snapshot() is a no-op.
         core.snapshot()
         val range = core.snapshotCursorRange()
@@ -149,7 +149,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun dirty_tracking_round_trip() {
-        val core = CursorPagingCore<String>()
+        val core = CursorPagingCore<String, String>()
         core.markDirty("a")
         core.markDirty(listOf("b", "c"))
         assertTrue(core.isDirty("a") && core.isDirty("b") && core.isDirty("c"))
@@ -161,7 +161,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun drainDirtyCursorsInRange_returns_only_in_range_and_clears_them() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         populate(core)
         core.markDirty(listOf("p0", "p2", "p4"))
 
@@ -177,7 +177,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun drainDirtyCursorsInRange_returns_null_when_nothing_in_range() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         populate(core)
         core.markDirty("p0")
         val start = core.cache.getCursorOf("p2")!!
@@ -187,13 +187,13 @@ class CursorPagingCoreTest {
 
     @Test
     fun resize_is_not_supported() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         assertFailsWith<UnsupportedOperationException> { core.resize(42) }
     }
 
     @Test
     fun release_resets_context_and_dirty() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         populate(core)
         core.startContextCursor = core.cache.getCursorOf("p0")
         core.endContextCursor = core.cache.getCursorOf("p2")
@@ -208,7 +208,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun scan_inclusive_of_both_ends() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         populate(core)
         val list = core.scan(
             core.cache.getCursorOf("p1")!! to core.cache.getCursorOf("p3")!!,
@@ -218,7 +218,7 @@ class CursorPagingCoreTest {
 
     @Test
     fun scan_single_page_window() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         populate(core)
         val cursor = core.cache.getCursorOf("p2")!!
         val list = core.scan(cursor to cursor)
@@ -227,20 +227,33 @@ class CursorPagingCoreTest {
 
     @Test
     fun isFilledSuccessState_rejects_non_success_states() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         assertTrue(core.isFilledSuccessState(full(1, 3)))
-        assertTrue(!core.isFilledSuccessState(SuccessPage<String>(page = 1, data = emptyList())))
         assertTrue(
             !core.isFilledSuccessState(
-                ProgressPage<String>(page = 1, data = mutableListOf("x"))
+                CursorPageState.Success(
+                    bookmark = CursorBookmark(
+                        null,
+                        "x",
+                        null
+                    ), data = emptyList()
+                )
             )
         )
         assertTrue(
             !core.isFilledSuccessState(
-                ErrorPage<String>(
+                CursorPageState.Progress(
+                    bookmark = CursorBookmark(null, "x", null),
+                    data = mutableListOf("x")
+                )
+            )
+        )
+        assertTrue(
+            !core.isFilledSuccessState(
+                CursorPageState.Error(
                     exception = RuntimeException("boom"),
-                    page = 1,
-                    data = mutableListOf(),
+                    bookmark = CursorBookmark(null, "x", null),
+                    data = mutableListOf()
                 )
             )
         )
@@ -249,15 +262,22 @@ class CursorPagingCoreTest {
 
     @Test
     fun isFilledSuccessState_returns_false_for_partial_page_under_limited_capacity() {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
-        val partial = SuccessPage(page = 1, data = mutableListOf("only-one"))
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
+        val partial = CursorPageState.Success(
+            bookmark = CursorBookmark(null, "x", null),
+            data = mutableListOf("only-one")
+        )
         assertTrue(!core.isFilledSuccessState(partial))
     }
 
     @Test
     fun isFilledSuccessState_returns_true_for_any_size_under_unlimited_capacity() {
-        val core = CursorPagingCore<String>(initialCapacity = CursorPagingCore.UNLIMITED_CAPACITY)
-        val partial = SuccessPage(page = 1, data = mutableListOf("a"))
+        val core =
+            CursorPagingCore<String, String>(initialCapacity = CursorPagingCore.UNLIMITED_CAPACITY)
+        val partial = CursorPageState.Success(
+            bookmark = CursorBookmark(null, "x", null),
+            data = mutableListOf("a")
+        )
         assertTrue(core.isFilledSuccessState(partial))
     }
 }

@@ -11,9 +11,9 @@ import com.jamal_aliev.paginator.core.exception.LockedException.JumpWasLockedExc
 import com.jamal_aliev.paginator.core.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.core.exception.LockedException.RestartWasLockedException
 import com.jamal_aliev.paginator.core.extension.isProgressState
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorErrorPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorProgressPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorSuccessPage
 import com.jamal_aliev.paginator.cursor.load.CursorLoadResult
 import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.LogComponent
@@ -21,11 +21,8 @@ import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.core.logger.info
 import com.jamal_aliev.paginator.core.logger.warn
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.serialization.CursorPaginatorSnapshot
-import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
@@ -42,12 +39,12 @@ import kotlinx.serialization.json.JsonElement
  *
  * `CursorPaginator` is a LinkedList-style counterpart to the RandomAccess-style
  * [Paginator]: every page knows only its immediate neighbours through a
- * [CursorBookmark], and the paginator navigates by following `prev`/`next`
+ * [CursorBookmark<K>], and the paginator navigates by following `prev`/`next`
  * links instead of numeric page indices.
  *
  * ## Loading contract
  *
- * The [load] lambda receives an optional [CursorBookmark]:
+ * The [load] lambda receives an optional [CursorBookmark<K>]:
  * - `null` on the very first call (from [restart] without an [initialCursor]),
  *   meaning "return the first page and its full bookmark".
  * - a bookmark "hint" in every other case. The hint carries the neighbour
@@ -70,12 +67,12 @@ import kotlinx.serialization.json.JsonElement
  *   initializers, etc.
  * @param load A suspending lambda that loads a page given an optional cursor hint.
  */
-open class CursorPaginator<T>(
-    val core: CursorPagingCore<T> = CursorPagingCore(),
-    var load: suspend CursorPaginator<T>.(cursor: CursorBookmark?) -> CursorLoadResult<T>,
+open class CursorPaginator<K : Any, T>(
+    val core: CursorPagingCore<K, T> = CursorPagingCore(),
+    var load: suspend CursorPaginator<K, T>.(cursor: CursorBookmark<K>?) -> CursorLoadResult<K, T>,
 ) {
 
-    val cache: CursorPagingCache<T> get() = core.cache
+    val cache: CursorPagingCache<K, T> get() = core.cache
 
     /** Mutex serialising all mutations to cache across concurrent coroutines. */
     protected val navigationMutex = Mutex()
@@ -94,14 +91,14 @@ open class CursorPaginator<T>(
      * calls [load] with a `null` cursor hint — the server is expected to
      * return the first page of the feed.
      */
-    var initialCursor: CursorBookmark? = null
+    var initialCursor: CursorBookmark<K>? = null
 
     /**
      * Predefined bookmark targets for quick navigation via [jumpForward] /
      * [jumpBack]. Defaults to an empty list (unlike [Paginator] which pre-seeds
      * page 1) because cursor keys are opaque and server-provided.
      */
-    val bookmarks: MutableList<CursorBookmark> = mutableListOf()
+    val bookmarks: MutableList<CursorBookmark<K>> = mutableListOf()
 
     var recyclingBookmark = false
     protected var bookmarkIndex: Int = 0
@@ -120,19 +117,19 @@ open class CursorPaginator<T>(
         recycling: Boolean = recyclingBookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
-        loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = core.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
-    ): Pair<CursorBookmark, PageState<T>>? {
+        initProgressState: InitializerCursorProgressPage<K, T> = core.initializerProgressPage,
+        initSuccessState: InitializerCursorSuccessPage<K, T> = core.initializerSuccessPage,
+        initErrorState: InitializerCursorErrorPage<K, T> = core.initializerErrorPage,
+    ): Pair<CursorBookmark<K>, CursorPageState<K, T>>? {
         if (lockJump) throw JumpWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "jumpForward: recycling=$recycling" }
 
-        val visibleSelves: Set<Any> = core.snapshotSelves().toHashSet()
-        var lastSkipped: CursorBookmark? = null
-        var candidate: CursorBookmark? = null
+        val visibleSelves: Set<K> = core.snapshotSelves().toHashSet()
+        var lastSkipped: CursorBookmark<K>? = null
+        var candidate: CursorBookmark<K>? = null
 
         val bookmarksSize = bookmarks.size
         if (bookmarksSize > 0) {
@@ -182,19 +179,19 @@ open class CursorPaginator<T>(
         recycling: Boolean = recyclingBookmark,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
-        loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = core.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
-    ): Pair<CursorBookmark, PageState<T>>? {
+        initProgressState: InitializerCursorProgressPage<K, T> = core.initializerProgressPage,
+        initSuccessState: InitializerCursorSuccessPage<K, T> = core.initializerSuccessPage,
+        initErrorState: InitializerCursorErrorPage<K, T> = core.initializerErrorPage,
+    ): Pair<CursorBookmark<K>, CursorPageState<K, T>>? {
         if (lockJump) throw JumpWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "jumpBack: recycling=$recycling" }
 
-        val visibleSelves: Set<Any> = core.snapshotSelves().toHashSet()
-        var lastSkipped: CursorBookmark? = null
-        var candidate: CursorBookmark? = null
+        val visibleSelves: Set<K> = core.snapshotSelves().toHashSet()
+        var lastSkipped: CursorBookmark<K>? = null
+        var candidate: CursorBookmark<K>? = null
 
         val bookmarksSize = bookmarks.size
         if (bookmarksSize > 0) {
@@ -245,35 +242,35 @@ open class CursorPaginator<T>(
      * reset around the target and the page is loaded from [load].
      *
      * @param bookmark The cursor bookmark to navigate to. May be a freshly
-     *   constructed stub (`CursorBookmark(null, selfKey, null)`) when jumping
+     *   constructed stub (`CursorBookmark<K>(null, selfKey, null)`) when jumping
      *   to a known `self` without knowing its neighbours in advance — the
      *   server response will fill in the real links.
      */
     suspend fun jump(
-        bookmark: CursorBookmark,
+        bookmark: CursorBookmark<K>,
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
-        loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = core.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
-    ): Pair<CursorBookmark, PageState<T>> = coroutineScope {
+        initProgressState: InitializerCursorProgressPage<K, T> = core.initializerProgressPage,
+        initSuccessState: InitializerCursorSuccessPage<K, T> = core.initializerSuccessPage,
+        initErrorState: InitializerCursorErrorPage<K, T> = core.initializerErrorPage,
+    ): Pair<CursorBookmark<K>, CursorPageState<K, T>> = coroutineScope {
         if (lockJump) throw JumpWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "jump: self=${bookmark.self}" }
 
-        var savedStart: CursorBookmark? = core.startContextCursor
-        var savedEnd: CursorBookmark? = core.endContextCursor
-        var savedState: PageState<T>? = null
-        var savedCursor: CursorBookmark? = null
+        var savedStart: CursorBookmark<K>? = core.startContextCursor
+        var savedEnd: CursorBookmark<K>? = core.endContextCursor
+        var savedState: CursorPageState<K, T>? = null
+        var savedCursor: CursorBookmark<K>? = null
         var shouldCleanup = false
 
         navigationMutex.lock()
         try {
             // Check L1 first, then L2.
-            var cachedState: PageState<T>? = cache.getStateOf(bookmark.self)
-            var effectiveCursor: CursorBookmark = cache.getCursorOf(bookmark.self) ?: bookmark
+            var cachedState: CursorPageState<K, T>? = cache.getStateOf(bookmark.self)
+            var effectiveCursor: CursorBookmark<K> = cache.getCursorOf(bookmark.self) ?: bookmark
             if (cachedState == null) {
                 val persisted = core.loadFromPersistentCache(bookmark.self)
                 if (persisted != null) {
@@ -311,9 +308,9 @@ open class CursorPaginator<T>(
                 forceLoading = true,
                 loading = { cursor, pageState ->
                     val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = core.coerceToCapacity(
-                        state = initProgressState.invoke(syntheticPage(), data, pageState?.metadata)
-                    ) as ProgressPage
+                    val progressState: CursorPageState.Progress<K, T> = core.coerceToCapacity(
+                        state = initProgressState.invoke(cursor, data, pageState?.metadata)
+                    ) as CursorPageState.Progress<K, T>
                     cache.setState(cursor, progressState, silently = true)
                     core.expandStartContextCursor(progressState, cursor)
                     core.expandEndContextCursor(progressState, cursor)
@@ -370,13 +367,13 @@ open class CursorPaginator<T>(
     suspend fun goNextPage(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
-        loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
         lockGoNextPage: Boolean = this.lockGoNextPage,
         enableCacheFlow: Boolean = core.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
-    ): PageState<T> = coroutineScope {
+        initProgressState: InitializerCursorProgressPage<K, T> = core.initializerProgressPage,
+        initSuccessState: InitializerCursorSuccessPage<K, T> = core.initializerSuccessPage,
+        initErrorState: InitializerCursorErrorPage<K, T> = core.initializerErrorPage,
+    ): CursorPageState<K, T> = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "goNextPage" }
         if (!cache.isStarted) {
@@ -394,15 +391,15 @@ open class CursorPaginator<T>(
             )
         }
 
-        var savedCursor: CursorBookmark? = null
-        var savedState: PageState<T>? = null
+        var savedCursor: CursorBookmark<K>? = null
+        var savedState: CursorPageState<K, T>? = null
         var shouldCleanup = false
 
         navigationMutex.lock()
         try {
-            var pivotCursor: CursorBookmark = cache.endContextCursor
+            var pivotCursor: CursorBookmark<K> = cache.endContextCursor
                 ?: throw IllegalStateException("endContextCursor is null but cache.isStarted is true")
-            var pivotState: PageState<T>? = cache.getStateOf(pivotCursor.self)
+            var pivotState: CursorPageState<K, T>? = cache.getStateOf(pivotCursor.self)
             val pivotIsFilled = core.isFilledSuccessState(pivotState)
             if (pivotIsFilled) {
                 val nextCursor = cache.walkForward(pivotCursor)
@@ -416,7 +413,7 @@ open class CursorPaginator<T>(
             }
 
             // Determine next target
-            val nextTargetSelf: Any? = if (pivotIsFilled) pivotCursor.next else null
+            val nextTargetSelf: K? = if (pivotIsFilled) pivotCursor.next else null
             if (pivotIsFilled && nextTargetSelf == null) {
                 throw EndOfCursorFeedException(
                     attemptedCursorKey = pivotCursor.self,
@@ -424,12 +421,16 @@ open class CursorPaginator<T>(
                 )
             }
 
-            val targetCursor: CursorBookmark =
+            val targetCursor: CursorBookmark<K> =
                 if (!pivotIsFilled) pivotCursor
                 else cache.getCursorOf(nextTargetSelf!!)
-                    ?: CursorBookmark(prev = pivotCursor.self, self = nextTargetSelf, next = null)
+                    ?: CursorBookmark<K>(
+                        prev = pivotCursor.self,
+                        self = nextTargetSelf,
+                        next = null
+                    )
 
-            var targetState: PageState<T>? = cache.getStateOf(targetCursor.self)
+            var targetState: CursorPageState<K, T>? = cache.getStateOf(targetCursor.self)
             if (targetState == null) {
                 val persisted = core.loadFromPersistentCache(targetCursor.self)
                 if (persisted != null) targetState = persisted.second
@@ -464,9 +465,9 @@ open class CursorPaginator<T>(
                 forceLoading = true,
                 loading = { cursor, cached ->
                     val data: List<T> = core.coerceToCapacity(cached?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = core.coerceToCapacity(
-                        state = initProgressState.invoke(syntheticPage(), data, cached?.metadata)
-                    ) as ProgressPage
+                    val progressState: CursorPageState.Progress<K, T> = core.coerceToCapacity(
+                        state = initProgressState.invoke(cursor, data, cached?.metadata)
+                    ) as CursorPageState.Progress<K, T>
                     cache.setState(cursor, progressState, silently = true)
                     if (enableCacheFlow) core.repeatCacheFlow()
                     if (!silentlyLoading) core.snapshot()
@@ -524,12 +525,12 @@ open class CursorPaginator<T>(
     suspend fun goPreviousPage(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
-        loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
-    ): PageState<T> = coroutineScope {
+        initProgressState: InitializerCursorProgressPage<K, T> = core.initializerProgressPage,
+        initSuccessState: InitializerCursorSuccessPage<K, T> = core.initializerSuccessPage,
+        initErrorState: InitializerCursorErrorPage<K, T> = core.initializerErrorPage,
+    ): CursorPageState<K, T> = coroutineScope {
         if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "goPreviousPage" }
         check(cache.isStarted) {
@@ -537,15 +538,15 @@ open class CursorPaginator<T>(
                     "via jump() or restart()."
         }
 
-        var savedCursor: CursorBookmark? = null
-        var savedState: PageState<T>? = null
+        var savedCursor: CursorBookmark<K>? = null
+        var savedState: CursorPageState<K, T>? = null
         var shouldCleanup = false
 
         navigationMutex.lock()
         try {
-            var pivotCursor: CursorBookmark = cache.startContextCursor
+            var pivotCursor: CursorBookmark<K> = cache.startContextCursor
                 ?: throw IllegalStateException("startContextCursor is null but cache.isStarted is true")
-            var pivotState: PageState<T>? = cache.getStateOf(pivotCursor.self)
+            var pivotState: CursorPageState<K, T>? = cache.getStateOf(pivotCursor.self)
             val pivotIsFilled = core.isFilledSuccessState(pivotState)
             if (pivotIsFilled) {
                 val prevCursor = cache.walkBackward(pivotCursor)
@@ -558,7 +559,7 @@ open class CursorPaginator<T>(
                 }
             }
 
-            val prevTargetSelf: Any? = if (pivotIsFilled) pivotCursor.prev else null
+            val prevTargetSelf: K? = if (pivotIsFilled) pivotCursor.prev else null
             if (pivotIsFilled && prevTargetSelf == null) {
                 throw EndOfCursorFeedException(
                     attemptedCursorKey = pivotCursor.self,
@@ -566,12 +567,16 @@ open class CursorPaginator<T>(
                 )
             }
 
-            val targetCursor: CursorBookmark =
+            val targetCursor: CursorBookmark<K> =
                 if (!pivotIsFilled) pivotCursor
                 else cache.getCursorOf(prevTargetSelf!!)
-                    ?: CursorBookmark(prev = null, self = prevTargetSelf, next = pivotCursor.self)
+                    ?: CursorBookmark<K>(
+                        prev = null,
+                        self = prevTargetSelf,
+                        next = pivotCursor.self
+                    )
 
-            var targetState: PageState<T>? = cache.getStateOf(targetCursor.self)
+            var targetState: CursorPageState<K, T>? = cache.getStateOf(targetCursor.self)
             if (targetState == null) {
                 val persisted = core.loadFromPersistentCache(targetCursor.self)
                 if (persisted != null) targetState = persisted.second
@@ -606,9 +611,9 @@ open class CursorPaginator<T>(
                 forceLoading = true,
                 loading = { cursor, cached ->
                     val data: List<T> = core.coerceToCapacity(cached?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = core.coerceToCapacity(
-                        state = initProgressState.invoke(syntheticPage(), data, cached?.metadata)
-                    ) as ProgressPage
+                    val progressState: CursorPageState.Progress<K, T> = core.coerceToCapacity(
+                        state = initProgressState.invoke(cursor, data, cached?.metadata)
+                    ) as CursorPageState.Progress<K, T>
                     cache.setState(cursor, progressState, silently = true)
                     if (enableCacheFlow) core.repeatCacheFlow()
                     if (!silentlyLoading) core.snapshot()
@@ -665,11 +670,11 @@ open class CursorPaginator<T>(
     suspend fun restart(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
-        loadGuard: (cursor: CursorBookmark?, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (cursor: CursorBookmark<K>?, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
+        initProgressState: InitializerCursorProgressPage<K, T> = core.initializerProgressPage,
+        initSuccessState: InitializerCursorSuccessPage<K, T> = core.initializerSuccessPage,
+        initErrorState: InitializerCursorErrorPage<K, T> = core.initializerErrorPage,
     ): Unit = coroutineScope {
         if (lockRestart) throw RestartWasLockedException()
         logger.info(LogComponent.LIFECYCLE) { "restart" }
@@ -692,16 +697,16 @@ open class CursorPaginator<T>(
     internal suspend fun restartInternal(
         silentlyLoading: Boolean,
         silentlyResult: Boolean,
-        loadGuard: (cursor: CursorBookmark?, state: PageState<T>?) -> Boolean,
+        loadGuard: (cursor: CursorBookmark<K>?, state: CursorPageState<K, T>?) -> Boolean,
         enableCacheFlow: Boolean,
-        initProgressState: InitializerProgressPage<T>,
-        initSuccessState: InitializerSuccessPage<T>,
-        initErrorState: InitializerErrorPage<T>,
-    ): PageState<T> = coroutineScope {
-        val anchor: CursorBookmark? = initialCursor
+        initProgressState: InitializerCursorProgressPage<K, T>,
+        initSuccessState: InitializerCursorSuccessPage<K, T>,
+        initErrorState: InitializerCursorErrorPage<K, T>,
+    ): CursorPageState<K, T> = coroutineScope {
+        val anchor: CursorBookmark<K>? = initialCursor
 
-        var savedStart: CursorBookmark? = core.startContextCursor
-        var savedEnd: CursorBookmark? = core.endContextCursor
+        var savedStart: CursorBookmark<K>? = core.startContextCursor
+        var savedEnd: CursorBookmark<K>? = core.endContextCursor
         var shouldCleanup = false
 
         navigationMutex.lock()
@@ -715,7 +720,11 @@ open class CursorPaginator<T>(
             if (!loadGuard.invoke(anchor, null)) {
                 if (anchor != null) throw CursorLoadGuardedException(attemptedCursor = anchor)
                 else throw CursorLoadGuardedException(
-                    attemptedCursor = CursorBookmark(prev = null, self = "<restart>", next = null)
+                    attemptedCursor = CursorBookmark<K>(
+                        prev = null,
+                        self = RESTART_SENTINEL as K,
+                        next = null
+                    )
                 )
             }
 
@@ -723,17 +732,17 @@ open class CursorPaginator<T>(
 
             // Emit a transient progress state before hitting the network.
             val progressCursor =
-                anchor ?: CursorBookmark(prev = null, self = PROGRESS_SENTINEL, next = null)
-            val progressState: ProgressPage<T> = core.coerceToCapacity(
-                state = initProgressState.invoke(syntheticPage(), emptyList(), null)
-            ) as ProgressPage
+                anchor ?: CursorBookmark<K>(prev = null, self = PROGRESS_SENTINEL as K, next = null)
+            val progressState: CursorPageState.Progress<K, T> = core.coerceToCapacity(
+                state = initProgressState.invoke(progressCursor, emptyList(), null)
+            ) as CursorPageState.Progress<K, T>
             cache.setState(progressCursor, progressState, silently = true)
             core.startContextCursor = progressCursor
             core.endContextCursor = progressCursor
             if (enableCacheFlow) core.repeatCacheFlow()
             if (!silentlyLoading) core.snapshot()
 
-            val loadResult: CursorLoadResult<T> = try {
+            val loadResult: CursorLoadResult<K, T> = try {
                 load.invoke(this@CursorPaginator, anchor)
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -741,11 +750,11 @@ open class CursorPaginator<T>(
                 logger.warn(LogComponent.NAVIGATION) { "restart: exception=$exception" }
                 // Replace the transient progress state with an error state carrying the exception.
                 val errorState = core.coerceToCapacity(
-                    state = initErrorState.invoke(exception, syntheticPage(), emptyList(), null)
+                    state = initErrorState.invoke(exception, progressCursor, emptyList(), null)
                 )
                 // Drop the synthetic progress entry so we don't pollute the cache with sentinels.
                 if (progressCursor.self == PROGRESS_SENTINEL) {
-                    cache.removeFromCache(PROGRESS_SENTINEL)
+                    cache.removeFromCache(PROGRESS_SENTINEL as K)
                     core.startContextCursor = null
                     core.endContextCursor = null
                 }
@@ -755,11 +764,11 @@ open class CursorPaginator<T>(
                 return@coroutineScope errorState
             }
 
-            val resultCursor: CursorBookmark = loadResult.bookmark
+            val resultCursor: CursorBookmark<K> = loadResult.bookmark
             val data: List<T> = core.coerceToCapacity(loadResult.data)
-            val resultState: PageState<T> = core.coerceToCapacity(
+            val resultState: CursorPageState<K, T> = core.coerceToCapacity(
                 initSuccessState.invoke(
-                    syntheticPage(),
+                    resultCursor,
                     data.toMutableList(),
                     loadResult.metadata
                 )
@@ -787,7 +796,7 @@ open class CursorPaginator<T>(
                 withContext(NonCancellable) {
                     core.startContextCursor = savedStart
                     core.endContextCursor = savedEnd
-                    cache.removeFromCache(PROGRESS_SENTINEL)
+                    cache.removeFromCache(PROGRESS_SENTINEL as K)
                     core.snapshot()
                 }
             }
@@ -801,19 +810,19 @@ open class CursorPaginator<T>(
      * Refreshes the specified cursors by reloading them from [load] in parallel.
      */
     suspend fun refresh(
-        cursors: List<CursorBookmark>,
+        cursors: List<CursorBookmark<K>>,
         loadingSilently: Boolean = false,
         finalSilently: Boolean = false,
-        loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
-        initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-        initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
+        initProgressState: InitializerCursorProgressPage<K, T> = core.initializerProgressPage,
+        initSuccessState: InitializerCursorSuccessPage<K, T> = core.initializerSuccessPage,
+        initErrorState: InitializerCursorErrorPage<K, T> = core.initializerErrorPage,
     ): Unit = coroutineScope {
         if (lockRefresh) throw RefreshWasLockedException()
         logger.debug(LogComponent.LIFECYCLE) { "refresh: cursors=${cursors.map { it.self }}" }
 
-        var savedStates: Map<Any, Pair<CursorBookmark?, PageState<T>?>> = emptyMap()
+        var savedStates: Map<K, Pair<CursorBookmark<K>?, CursorPageState<K, T>?>> = emptyMap()
 
         try {
             navigationMutex.lock()
@@ -828,17 +837,17 @@ open class CursorPaginator<T>(
                     }
                 }
                 cursors.forEach { candidate ->
-                    val cachedCursor: CursorBookmark =
+                    val cachedCursor: CursorBookmark<K> =
                         savedStates[candidate.self]?.first ?: candidate
-                    val cachedState: PageState<T>? = savedStates[candidate.self]?.second
+                    val cachedState: CursorPageState<K, T>? = savedStates[candidate.self]?.second
                     val data: List<T> = core.coerceToCapacity(cachedState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = core.coerceToCapacity(
+                    val progressState: CursorPageState.Progress<K, T> = core.coerceToCapacity(
                         state = initProgressState.invoke(
-                            syntheticPage(),
+                            cachedCursor,
                             data,
                             cachedState?.metadata
                         )
-                    ) as ProgressPage
+                    ) as CursorPageState.Progress<K, T>
                     cache.setState(cachedCursor, progressState, silently = true)
                 }
             } finally {
@@ -847,7 +856,8 @@ open class CursorPaginator<T>(
             if (enableCacheFlow) core.repeatCacheFlow()
             if (!loadingSilently) core.snapshot()
 
-            val results: List<Pair<CursorBookmark, PageState<T>>> = cursors.map { candidate ->
+            val results: List<Pair<CursorBookmark<K>, CursorPageState<K, T>>> =
+                cursors.map { candidate ->
                 async {
                     loadOrGetPageState(
                         hint = candidate,
@@ -869,7 +879,7 @@ open class CursorPaginator<T>(
             }
 
             core.persistentCache?.let { pc ->
-                val successes = results.filter { it.second is SuccessPage }
+                val successes = results.filter { it.second is CursorPageState.Success<*, *> }
                 if (successes.isNotEmpty()) pc.saveAll(successes)
             }
 
@@ -907,31 +917,31 @@ open class CursorPaginator<T>(
      * `prev`/`next` links).
      */
     suspend inline fun loadOrGetPageState(
-        hint: CursorBookmark,
-        cachedCursor: CursorBookmark = hint,
+        hint: CursorBookmark<K>,
+        cachedCursor: CursorBookmark<K> = hint,
         forceLoading: Boolean = false,
-        loading: ((cursor: CursorBookmark, state: PageState<T>?) -> Unit) = { _, _ -> },
-        noinline load: suspend CursorPaginator<T>.(cursor: CursorBookmark?) -> CursorLoadResult<T> = this.load,
-        noinline initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-        noinline initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
-    ): Pair<CursorBookmark, PageState<T>> {
+        loading: ((cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Unit) = { _, _ -> },
+        noinline load: suspend CursorPaginator<K, T>.(cursor: CursorBookmark<K>?) -> CursorLoadResult<K, T> = this.load,
+        noinline initSuccessState: InitializerCursorSuccessPage<K, T> = core.initializerSuccessPage,
+        noinline initErrorState: InitializerCursorErrorPage<K, T> = core.initializerErrorPage,
+    ): Pair<CursorBookmark<K>, CursorPageState<K, T>> {
         logger.debug(LogComponent.NAVIGATION) {
             "loadOrGetPageState: self=${hint.self} forceLoading=$forceLoading"
         }
-        val cachedState: PageState<T>? = cache.getStateOf(hint.self)
+        val cachedState: CursorPageState<K, T>? = cache.getStateOf(hint.self)
         if (!forceLoading && core.isFilledSuccessState(cachedState)) {
             return cachedCursor to cachedState
         }
         loading.invoke(cachedCursor, cachedState)
         return try {
-            val loadResult: CursorLoadResult<T> = load.invoke(this, hint)
+            val loadResult: CursorLoadResult<K, T> = load.invoke(this, hint)
             val data: MutableList<T> = loadResult.data.let {
                 if (core.isCapacityUnlimited) it else it.take(core.capacity)
             }.toMutableList()
             val resultCursor = loadResult.bookmark
-            val resultState: PageState<T> = core.coerceToCapacity(
+            val resultState: CursorPageState<K, T> = core.coerceToCapacity(
                 initSuccessState.invoke(
-                    syntheticPage(),
+                    resultCursor,
                     data,
                     loadResult.metadata
                 )
@@ -947,7 +957,7 @@ open class CursorPaginator<T>(
             val errorState = core.coerceToCapacity(
                 state = initErrorState.invoke(
                     exception,
-                    syntheticPage(),
+                    cachedCursor,
                     data,
                     cachedState?.metadata
                 )
@@ -956,8 +966,11 @@ open class CursorPaginator<T>(
         }
     }
 
-    private suspend fun persistSuccessState(cursor: CursorBookmark, state: PageState<T>) {
-        if (state is SuccessPage) core.persistentCache?.save(cursor, state)
+    private suspend fun persistSuccessState(
+        cursor: CursorBookmark<K>,
+        state: CursorPageState<K, T>
+    ) {
+        if (state is CursorPageState.Success<*, *>) core.persistentCache?.save(cursor, state)
     }
 
     /**
@@ -968,7 +981,7 @@ open class CursorPaginator<T>(
         if (!cache.isStarted) return
         val start = core.startContextCursor ?: return
         val end = core.endContextCursor ?: return
-        val dirty: List<Any> = core.drainDirtyCursorsInRange(start, end) ?: return
+        val dirty: List<K> = core.drainDirtyCursorsInRange(start, end) ?: return
         val bookmarks = dirty.mapNotNull { cache.getCursorOf(it) }
         if (bookmarks.isEmpty()) return
         logger.debug(LogComponent.LIFECYCLE) { "refreshDirtyCursorsInContext: ${bookmarks.map { it.self }}" }
@@ -979,7 +992,7 @@ open class CursorPaginator<T>(
      * Synchronises [bookmarkIndex] so that it sits right after the last bookmark
      * whose `self` key was reached during navigation.
      */
-    private fun syncBookmarkIndex(cursor: CursorBookmark) {
+    private fun syncBookmarkIndex(cursor: CursorBookmark<K>) {
         if (bookmarks.isEmpty()) return
         val index = bookmarks.indexOfFirst { it.self == cursor.self }
         bookmarkIndex = if (index == -1) bookmarks.size else (index + 1)
@@ -1006,16 +1019,16 @@ open class CursorPaginator<T>(
 
     // ── Transaction / snapshot save-point ───────────────────────────────────
 
-    private class CursorTransactionSavepoint<T>(
-        val states: List<Pair<CursorBookmark, PageState<T>>>,
-        val startContextCursor: CursorBookmark?,
-        val endContextCursor: CursorBookmark?,
+    private class CursorTransactionSavepoint<K : Any, T>(
+        val states: List<Pair<CursorBookmark<K>, CursorPageState<K, T>>>,
+        val startContextCursor: CursorBookmark<K>?,
+        val endContextCursor: CursorBookmark<K>?,
         val capacity: Int,
-        val dirtyCursors: Set<Any>,
-        val bookmarks: List<CursorBookmark>,
+        val dirtyCursors: Set<K>,
+        val bookmarks: List<CursorBookmark<K>>,
         val bookmarkIndex: Int,
         val recyclingBookmark: Boolean,
-        val initialCursor: CursorBookmark?,
+        val initialCursor: CursorBookmark<K>?,
         val lockJump: Boolean,
         val lockGoNextPage: Boolean,
         val lockGoPreviousPage: Boolean,
@@ -1023,8 +1036,8 @@ open class CursorPaginator<T>(
         val lockRefresh: Boolean,
     )
 
-    private fun createSavepoint(): CursorTransactionSavepoint<T> {
-        val statesCopy: List<Pair<CursorBookmark, PageState<T>>> =
+    private fun createSavepoint(): CursorTransactionSavepoint<K, T> {
+        val statesCopy: List<Pair<CursorBookmark<K>, CursorPageState<K, T>>> =
             cache.cursors.mapNotNull { cursor ->
                 val state = cache.getStateOf(cursor.self) ?: return@mapNotNull null
                 cursor to state.copy(data = state.data.toMutableList())
@@ -1047,7 +1060,7 @@ open class CursorPaginator<T>(
         )
     }
 
-    open suspend fun <R> transaction(block: suspend CursorPaginator<T>.() -> R): R {
+    open suspend fun <R> transaction(block: suspend CursorPaginator<K, T>.() -> R): R {
         val savepoint = createSavepoint()
         try {
             return block()
@@ -1060,7 +1073,7 @@ open class CursorPaginator<T>(
         }
     }
 
-    private fun rollback(savepoint: CursorTransactionSavepoint<T>) {
+    private fun rollback(savepoint: CursorTransactionSavepoint<K, T>) {
         cache.clear()
         core.clearAllDirty()
         savepoint.states.forEach { (cursor, state) ->
@@ -1089,7 +1102,7 @@ open class CursorPaginator<T>(
     // ── Serialization ───────────────────────────────────────────────────────
 
     suspend fun saveState(
-        selfEncoder: (Any) -> JsonElement,
+        selfEncoder: (K) -> JsonElement,
         contextOnly: Boolean = false,
         metadataEncoder: ((Metadata?) -> JsonElement?)? = null,
     ): CursorPaginatorSnapshot<T> {
@@ -1118,7 +1131,7 @@ open class CursorPaginator<T>(
 
     suspend fun restoreState(
         snapshot: CursorPaginatorSnapshot<T>,
-        selfDecoder: (JsonElement) -> Any,
+        selfDecoder: (JsonElement) -> K,
         silently: Boolean = false,
         metadataDecoder: ((JsonElement?) -> Metadata?)? = null,
     ) {
@@ -1131,13 +1144,13 @@ open class CursorPaginator<T>(
                 val selfKey = selfDecoder.invoke(snapshot.bookmarkSelves[i])
                 val prevKey = snapshot.bookmarkPrevSelves.getOrNull(i)?.let(selfDecoder)
                 val nextKey = snapshot.bookmarkNextSelves.getOrNull(i)?.let(selfDecoder)
-                bookmarks.add(CursorBookmark(prev = prevKey, self = selfKey, next = nextKey))
+                bookmarks.add(CursorBookmark<K>(prev = prevKey, self = selfKey, next = nextKey))
             }
             bookmarkIndex = snapshot.bookmarkIndex.coerceIn(0, bookmarks.size)
             recyclingBookmark = snapshot.recyclingBookmark
 
             initialCursor = snapshot.initialCursorSelf?.let(selfDecoder)?.let { self ->
-                CursorBookmark(
+                CursorBookmark<K>(
                     prev = snapshot.initialCursorPrevSelf?.let(selfDecoder),
                     self = self,
                     next = snapshot.initialCursorNextSelf?.let(selfDecoder),
@@ -1156,19 +1169,19 @@ open class CursorPaginator<T>(
 
     // ── Operators ───────────────────────────────────────────────────────────
 
-    operator fun iterator(): Iterator<PageState<T>> = core.iterator()
+    operator fun iterator(): Iterator<CursorPageState<K, T>> = core.iterator()
 
-    operator fun contains(self: Any): Boolean = cache.getStateOf(self) != null
+    operator fun contains(self: K): Boolean = cache.getStateOf(self) != null
 
-    operator fun contains(pageState: PageState<T>): Boolean {
+    operator fun contains(pageState: CursorPageState<K, T>): Boolean {
         // PageState.page is synthetic here; equality goes by id (see PageState.equals).
         for (state in core.states) if (state == pageState) return true
         return false
     }
 
-    operator fun get(self: Any): PageState<T>? = cache.getStateOf(self)
+    operator fun get(self: K): CursorPageState<K, T>? = cache.getStateOf(self)
 
-    operator fun get(self: Any, index: Int): T? = cache.getElement(self, index)
+    operator fun get(self: K, index: Int): T? = cache.getElement(self, index)
 
     override fun toString(): String = "CursorPaginator(cache=$cache, bookmarks=$bookmarks)"
 
@@ -1177,24 +1190,17 @@ open class CursorPaginator<T>(
     override fun hashCode(): Int = super.hashCode()
 
     companion object {
-        @PublishedApi
-        internal val pageCounter = atomic(0)
-
-        @PublishedApi
-        internal const val PROGRESS_SENTINEL: String = "__cursor_paginator_progress_sentinel__"
-
         /**
-         * Synthesises a positive `page` number for [PageState] objects produced by
-         * the cursor paginator. The cursor paginator does not read this field — it
-         * is required only by the factory signature inherited from [PagingCore].
+         * Sentinel cache key for the transient progress page emitted by [restart] before the
+         * real bookmark is known. It is a unique [Any] instance: since `K` is erased at runtime,
+         * it can be stored under a `K`-typed bookmark via an unchecked cast and compared by
+         * identity. No real user key can ever equal it.
          */
         @PublishedApi
-        internal fun syntheticPage(): Int {
-            val next = pageCounter.incrementAndGet()
-            return if (next <= 0) {
-                pageCounter.value = 1
-                1
-            } else next
-        }
+        internal val PROGRESS_SENTINEL: Any = Any()
+
+        /** Sentinel key used to describe a guard-rejected [restart] that had no anchor cursor. */
+        @PublishedApi
+        internal val RESTART_SENTINEL: Any = Any()
     }
 }

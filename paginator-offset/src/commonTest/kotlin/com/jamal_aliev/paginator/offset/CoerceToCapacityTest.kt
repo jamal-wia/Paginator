@@ -1,10 +1,9 @@
 package com.jamal_aliev.paginator.offset
 
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
+
 import com.jamal_aliev.paginator.offset.extension.prefetchController
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlin.test.Test
@@ -154,108 +153,108 @@ class CoerceToCapacityTest {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  coerceToCapacity(state: PageState<T>)
+    //  coerceToCapacity(state: OffsetPageState<T>)
     // ══════════════════════════════════════════════════════════════════════
 
-    // ── SuccessPage ──────────────────────────────────────────────────────
+    // ── OffsetPageState.Success ──────────────────────────────────────────────────────
 
     @Test
-    fun `state - SuccessPage trimmed when data exceeds capacity`() {
+    fun `state - Success trimmed when data exceeds capacity`() {
         val p = paginator(2)
-        val state = SuccessPage(page = 1, data = listOf("a", "b", "c", "d"))
+        val state = OffsetPageState.Success(page = 1, data = listOf("a", "b", "c", "d"))
         val result = p.core.coerceToCapacity(state)
         assertEquals(listOf("a", "b"), result.data)
         assertEquals(1, result.page)
     }
 
     @Test
-    fun `state - SuccessPage returned as-is when within capacity`() {
+    fun `state - Success returned as-is when within capacity`() {
         val p = paginator(5)
-        val state = SuccessPage(page = 1, data = listOf("a", "b"))
+        val state = OffsetPageState.Success(page = 1, data = listOf("a", "b"))
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
     @Test
-    fun `state - SuccessPage returned as-is when size equals capacity`() {
+    fun `state - Success returned as-is when size equals capacity`() {
         val p = paginator(3)
-        val state = SuccessPage(page = 1, data = listOf("a", "b", "c"))
+        val state = OffsetPageState.Success(page = 1, data = listOf("a", "b", "c"))
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
     @Test
-    fun `state - SuccessPage trimmed at capacity boundary stays SuccessPage`() {
+    fun `state - Success trimmed at capacity boundary stays Success`() {
         val p1 = paginator(1)
-        val state = SuccessPage(page = 1, data = listOf("a"))
+        val state = OffsetPageState.Success(page = 1, data = listOf("a"))
         val result = p1.core.coerceToCapacity(state)
-        assertIs<SuccessPage<String>>(result)
+        assertIs<OffsetPageState.Success<String>>(result)
         assertEquals(listOf("a"), result.data)
     }
 
-    // ── empty SuccessPage ────────────────────────────────────────────────
+    // ── empty OffsetPageState.Success ────────────────────────────────────────────────
 
     @Test
-    fun `state - empty SuccessPage returned as-is`() {
+    fun `state - empty Success returned as-is`() {
         val p = paginator(3)
-        val state = SuccessPage<String>(page = 1, data = emptyList())
+        val state = OffsetPageState.Success<String>(page = 1, data = emptyList())
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
-    // ── ProgressPage ─────────────────────────────────────────────────────
+    // ── OffsetPageState.Progress ─────────────────────────────────────────────────────
 
     @Test
-    fun `state - ProgressPage trimmed when data exceeds capacity`() {
+    fun `state - Progress trimmed when data exceeds capacity`() {
         val p = paginator(2)
-        val state = ProgressPage(page = 1, data = listOf("a", "b", "c"))
+        val state = OffsetPageState.Progress(page = 1, data = listOf("a", "b", "c"))
         val result = p.core.coerceToCapacity(state)
         assertEquals(listOf("a", "b"), result.data)
         assertEquals(1, result.page)
     }
 
     @Test
-    fun `state - ProgressPage returned as-is when within capacity`() {
+    fun `state - Progress returned as-is when within capacity`() {
         val p = paginator(5)
-        val state = ProgressPage(page = 1, data = listOf("a"))
+        val state = OffsetPageState.Progress(page = 1, data = listOf("a"))
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
     @Test
-    fun `state - ProgressPage with empty data returned as-is`() {
+    fun `state - Progress with empty data returned as-is`() {
         val p = paginator(3)
-        val state = ProgressPage<String>(page = 1, data = emptyList())
+        val state = OffsetPageState.Progress<String>(page = 1, data = emptyList())
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
-    // ── ErrorPage ────────────────────────────────────────────────────────
+    // ── OffsetPageState.Error ────────────────────────────────────────────────────────
 
     @Test
-    fun `state - ErrorPage trimmed when data exceeds capacity`() {
+    fun `state - Error trimmed when data exceeds capacity`() {
         val p = paginator(2)
         val ex = RuntimeException("fail")
-        val state = ErrorPage(exception = ex, page = 1, data = listOf("a", "b", "c"))
+        val state = OffsetPageState.Error(exception = ex, page = 1, data = listOf("a", "b", "c"))
         val result = p.core.coerceToCapacity(state)
         assertEquals(listOf("a", "b"), result.data)
         assertEquals(1, result.page)
     }
 
     @Test
-    fun `state - ErrorPage returned as-is when within capacity`() {
+    fun `state - Error returned as-is when within capacity`() {
         val p = paginator(5)
         val ex = RuntimeException("fail")
-        val state = ErrorPage(exception = ex, page = 1, data = listOf("a"))
+        val state = OffsetPageState.Error(exception = ex, page = 1, data = listOf("a"))
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
     @Test
-    fun `state - ErrorPage with empty data returned as-is`() {
+    fun `state - Error with empty data returned as-is`() {
         val p = paginator(3)
         val ex = RuntimeException("fail")
-        val state = ErrorPage<String>(exception = ex, page = 1, data = emptyList())
+        val state = OffsetPageState.Error<String>(exception = ex, page = 1, data = emptyList())
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
@@ -263,27 +262,27 @@ class CoerceToCapacityTest {
     // ── Unlimited capacity (state) ───────────────────────────────────────
 
     @Test
-    fun `state - unlimited capacity never trims SuccessPage`() {
+    fun `state - unlimited capacity never trims Success`() {
         val p = unlimitedPaginator()
-        val state = SuccessPage(page = 1, data = List(500) { "item_$it" })
+        val state = OffsetPageState.Success(page = 1, data = List(500) { "item_$it" })
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
         assertEquals(500, result.data.size)
     }
 
     @Test
-    fun `state - unlimited capacity never trims ProgressPage`() {
+    fun `state - unlimited capacity never trims Progress`() {
         val p = unlimitedPaginator()
-        val state = ProgressPage(page = 1, data = List(500) { "item_$it" })
+        val state = OffsetPageState.Progress(page = 1, data = List(500) { "item_$it" })
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
 
     @Test
-    fun `state - unlimited capacity never trims ErrorPage`() {
+    fun `state - unlimited capacity never trims Error`() {
         val p = unlimitedPaginator()
         val ex = RuntimeException("fail")
-        val state = ErrorPage(exception = ex, page = 1, data = List(500) { "item_$it" })
+        val state = OffsetPageState.Error(exception = ex, page = 1, data = List(500) { "item_$it" })
         val result = p.core.coerceToCapacity(state)
         assertSame(result, state)
     }
@@ -293,7 +292,7 @@ class CoerceToCapacityTest {
     @Test
     fun `state - page number is preserved after trimming`() {
         val p = paginator(1)
-        val state = SuccessPage(page = 42, data = listOf("a", "b", "c"))
+        val state = OffsetPageState.Success(page = 42, data = listOf("a", "b", "c"))
         val result = p.core.coerceToCapacity(state)
         assertEquals(42, result.page)
     }
@@ -301,26 +300,26 @@ class CoerceToCapacityTest {
     // ── Type preservation ────────────────────────────────────────────────
 
     @Test
-    fun `state - ProgressPage type preserved after trimming`() {
+    fun `state - Progress type preserved after trimming`() {
         val p = paginator(1)
-        val state = ProgressPage(page = 1, data = listOf("a", "b"))
+        val state = OffsetPageState.Progress(page = 1, data = listOf("a", "b"))
         val result = p.core.coerceToCapacity(state)
-        assertIs<ProgressPage<String>>(result)
+        assertIs<OffsetPageState.Progress<String>>(result)
     }
 
     @Test
-    fun `state - ErrorPage type preserved after trimming`() {
+    fun `state - Error type preserved after trimming`() {
         val p = paginator(1)
         val ex = RuntimeException("fail")
-        val state = ErrorPage(exception = ex, page = 1, data = listOf("a", "b"))
+        val state = OffsetPageState.Error(exception = ex, page = 1, data = listOf("a", "b"))
         val result = p.core.coerceToCapacity(state)
-        assertIs<ErrorPage<String>>(result)
+        assertIs<OffsetPageState.Error<String>>(result)
     }
 
     @Test
     fun `state - data exactly one over capacity is trimmed`() {
         val p = paginator(3)
-        val state = SuccessPage(page = 1, data = listOf("a", "b", "c", "d"))
+        val state = OffsetPageState.Success(page = 1, data = listOf("a", "b", "c", "d"))
         val result = p.core.coerceToCapacity(state)
         assertEquals(3, result.data.size)
     }

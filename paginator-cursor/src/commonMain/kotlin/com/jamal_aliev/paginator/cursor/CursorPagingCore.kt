@@ -1,22 +1,19 @@
 package com.jamal_aliev.paginator.cursor
 
+import com.jamal_aliev.paginator.core.extension.isErrorState
+import com.jamal_aliev.paginator.core.extension.isProgressState
+import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.core.load.Metadata
+import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.cursor.CursorPagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
-import com.jamal_aliev.paginator.core.extension.isErrorState
-import com.jamal_aliev.paginator.core.extension.isProgressState
-import com.jamal_aliev.paginator.core.extension.isSuccessState
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
-import com.jamal_aliev.paginator.core.load.Metadata
-import com.jamal_aliev.paginator.core.logger.PaginatorLogger
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorErrorPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorProgressPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorSuccessPage
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.serialization.CursorPageEntry
 import com.jamal_aliev.paginator.cursor.serialization.CursorPagingCoreSnapshot
 import kotlinx.coroutines.flow.Flow
@@ -36,13 +33,13 @@ import kotlin.contracts.contract
  * or a chain of eviction strategies).
  *
  * **Doubly-linked, not indexed.** Pages are identified by their
- * [CursorBookmark.self] key and ordered by following `next`/`prev` links, not
+ * [CursorBookmark<K>.self] key and ordered by following `next`/`prev` links, not
  * by numeric comparison. This means random-access queries like "find the page
  * closest to index N" are intentionally unavailable — if you need those, use
  * the classic [PagingCore].
  *
  * **Key concepts:**
- * - **Cache**: a keyed store of [PageState] + [CursorBookmark] pairs.
+ * - **Cache**: a keyed store of [PageState] + [CursorBookmark<K>] pairs.
  * - **Context window** ([startContextCursor]..[endContextCursor]): the
  *   contiguous chain of filled success pages visible to the UI via
  *   [snapshot]. A value of `null` on either side means "not started".
@@ -51,9 +48,9 @@ import kotlin.contracts.contract
  *   next navigation. Use [UNLIMITED_CAPACITY] to disable the check.
  * - **Dirty cursors**: page keys marked for refresh on the next navigation.
  */
-open class CursorPagingCore<T>(
-    val cache: CursorPagingCache<T> = CursorInMemoryPagingCache<T>(),
-    val persistentCache: CursorPersistentPagingCache<T>? = null,
+open class CursorPagingCore<K : Any, T>(
+    val cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>(),
+    val persistentCache: CursorPersistentPagingCache<K, T>? = null,
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {
 
@@ -65,20 +62,20 @@ open class CursorPagingCore<T>(
         }
 
     /** All cached bookmarks in head-to-tail order. */
-    val cursors: List<CursorBookmark> get() = cache.cursors
+    val cursors: List<CursorBookmark<K>> get() = cache.cursors
 
     /** All cached page states in head-to-tail order. */
-    val states: List<PageState<T>>
+    val states: List<CursorPageState<K, T>>
         get() = cache.cursors.mapNotNull { cache.getStateOf(it.self) }
 
     /** The number of pages currently in the cache. */
     val size: Int get() = cache.size
 
     /** Returns the tail bookmark of the cached chain, or `null` if empty. */
-    fun tailCursor(): CursorBookmark? = cache.tail()
+    fun tailCursor(): CursorBookmark<K>? = cache.tail()
 
     /** Returns the head bookmark of the cached chain, or `null` if empty. */
-    fun headCursor(): CursorBookmark? = cache.head()
+    fun headCursor(): CursorBookmark<K>? = cache.head()
 
     /**
      * The expected number of items per page.
@@ -94,14 +91,14 @@ open class CursorPagingCore<T>(
         get() = capacity == UNLIMITED_CAPACITY
 
     /** The left (head-side) boundary of the current context window. `null` = not started. */
-    var startContextCursor: CursorBookmark?
+    var startContextCursor: CursorBookmark<K>?
         get() = cache.startContextCursor
         internal set(value) {
             cache.startContextCursor = value
         }
 
     /** The right (tail-side) boundary of the current context window. `null` = not started. */
-    var endContextCursor: CursorBookmark?
+    var endContextCursor: CursorBookmark<K>?
         get() = cache.endContextCursor
         internal set(value) {
             cache.endContextCursor = value
@@ -114,7 +111,10 @@ open class CursorPagingCore<T>(
      * Walks backward from [pageState]'s bookmark through contiguous filled success pages
      * and updates [startContextCursor] to the earliest bookmark found.
      */
-    fun expandStartContextCursor(pageState: PageState<T>?, cursor: CursorBookmark?): PageState<T>? {
+    fun expandStartContextCursor(
+        pageState: CursorPageState<K, T>?,
+        cursor: CursorBookmark<K>?
+    ): CursorPageState<K, T>? {
         cursor ?: return null
         return walkWhile(
             pageState,
@@ -130,7 +130,10 @@ open class CursorPagingCore<T>(
      * Walks forward from [pageState]'s bookmark through contiguous filled success pages
      * and updates [endContextCursor] to the latest bookmark found.
      */
-    fun expandEndContextCursor(pageState: PageState<T>?, cursor: CursorBookmark?): PageState<T>? {
+    fun expandEndContextCursor(
+        pageState: CursorPageState<K, T>?,
+        cursor: CursorBookmark<K>?
+    ): CursorPageState<K, T>? {
         cursor ?: return null
         return walkWhile(
             pageState,
@@ -143,16 +146,16 @@ open class CursorPagingCore<T>(
     }
 
     /** Retrieves the cached [PageState] by its `self` key. */
-    fun getStateOf(self: Any): PageState<T>? = cache.getStateOf(self)
+    fun getStateOf(self: K): CursorPageState<K, T>? = cache.getStateOf(self)
 
-    /** Retrieves the cached [CursorBookmark] by its `self` key. */
-    fun getCursorOf(self: Any): CursorBookmark? = cache.getCursorOf(self)
+    /** Retrieves the cached [CursorBookmark<K>] by its `self` key. */
+    fun getCursorOf(self: K): CursorBookmark<K>? = cache.getCursorOf(self)
 
     /**
      * Attempts to load a page from the [persistentCache] (L2) and promote it
      * into the in-memory [cache] (L1).
      */
-    suspend fun loadFromPersistentCache(self: Any): Pair<CursorBookmark, PageState<T>>? {
+    suspend fun loadFromPersistentCache(self: K): Pair<CursorBookmark<K>, CursorPageState<K, T>>? {
         val pc = persistentCache ?: return null
         val persisted = pc.load(self) ?: return null
         cache.setState(persisted.first, persisted.second, silently = true)
@@ -165,8 +168,8 @@ open class CursorPagingCore<T>(
      * when the server returns new `prev`/`next` for an already-cached page.
      */
     fun setState(
-        cursor: CursorBookmark,
-        state: PageState<T>,
+        cursor: CursorBookmark<K>,
+        state: CursorPageState<K, T>,
         silently: Boolean = false
     ) {
         cache.setState(cursor, state, silently = true)
@@ -174,7 +177,7 @@ open class CursorPagingCore<T>(
     }
 
     /** Removes the page identified by [self] from the cache. */
-    fun removeFromCache(self: Any): PageState<T>? = cache.removeFromCache(self)
+    fun removeFromCache(self: K): CursorPageState<K, T>? = cache.removeFromCache(self)
 
     /** Clears all pages from the cache. */
     fun clear() {
@@ -182,7 +185,7 @@ open class CursorPagingCore<T>(
     }
 
     /** Retrieves a single element from the page identified by [self]. */
-    fun getElement(self: Any, index: Int): T? = cache.getElement(self, index)
+    fun getElement(self: K, index: Int): T? = cache.getElement(self, index)
 
     /**
      * Determines whether the given [PageState] represents a successfully loaded page
@@ -190,9 +193,9 @@ open class CursorPagingCore<T>(
      */
     @OptIn(ExperimentalContracts::class)
     @Suppress("NOTHING_TO_INLINE")
-    inline fun isFilledSuccessState(state: PageState<T>?): Boolean {
+    inline fun isFilledSuccessState(state: CursorPageState<K, T>?): Boolean {
         contract {
-            returns(true) implies (state is SuccessPage<T>)
+            returns(true) implies (state is CursorPageState.Success<K, T>)
         }
         if (!state.isSuccessState()) return false
         return isCapacityUnlimited || state.data.size == capacity
@@ -208,7 +211,7 @@ open class CursorPagingCore<T>(
         }
     }
 
-    fun coerceToCapacity(state: PageState<T>): PageState<T> {
+    fun coerceToCapacity(state: CursorPageState<K, T>): CursorPageState<K, T> {
         val newData = coerceToCapacity(state.data)
         return if (newData === state.data) state else state.copy(data = newData)
     }
@@ -220,20 +223,20 @@ open class CursorPagingCore<T>(
      *  - its state satisfies [predicate].
      */
     inline fun walkWhile(
-        pivotState: PageState<T>?,
-        pivotCursor: CursorBookmark?,
-        next: (state: PageState<T>, cursor: CursorBookmark) -> CursorBookmark?,
-        predicate: (PageState<T>) -> Boolean = { true },
-    ): Pair<PageState<T>, CursorBookmark>? {
+        pivotState: CursorPageState<K, T>?,
+        pivotCursor: CursorBookmark<K>?,
+        next: (state: CursorPageState<K, T>, cursor: CursorBookmark<K>) -> CursorBookmark<K>?,
+        predicate: (CursorPageState<K, T>) -> Boolean = { true },
+    ): Pair<CursorPageState<K, T>, CursorBookmark<K>>? {
         if (pivotState == null || pivotCursor == null) return null
         if (!predicate.invoke(pivotState)) return null
 
-        var currentState: PageState<T> = pivotState
-        var currentCursor: CursorBookmark = pivotCursor
+        var currentState: CursorPageState<K, T> = pivotState
+        var currentCursor: CursorBookmark<K> = pivotCursor
         while (true) {
-            val nextCursor: CursorBookmark =
+            val nextCursor: CursorBookmark<K> =
                 next.invoke(currentState, currentCursor) ?: return currentState to currentCursor
-            val nextState: PageState<T>? = cache.getStateOf(nextCursor.self)
+            val nextState: CursorPageState<K, T>? = cache.getStateOf(nextCursor.self)
             if (nextState != null && predicate.invoke(nextState)) {
                 currentState = nextState
                 currentCursor = nextCursor
@@ -247,10 +250,10 @@ open class CursorPagingCore<T>(
 
     var enableCacheFlow = false
         private set
-    private val _cacheFlow = MutableStateFlow<List<PageState<T>>>(emptyList())
+    private val _cacheFlow = MutableStateFlow<List<CursorPageState<K, T>>>(emptyList())
 
     /** Returns a [Flow] that emits the **entire** cache list whenever it changes. */
-    fun asFlow(): Flow<List<PageState<T>>> {
+    fun asFlow(): Flow<List<CursorPageState<K, T>>> {
         enableCacheFlow = true
         return _cacheFlow.asStateFlow()
     }
@@ -262,26 +265,26 @@ open class CursorPagingCore<T>(
 
     // ── Snapshot ────────────────────────────────────────────────────────────
 
-    private data class SnapshotEmission<T>(
+    private data class SnapshotEmission<K : Any, T>(
         val version: Long,
-        val pages: List<PageState<T>>,
-        val startCursor: CursorBookmark?,
-        val endCursor: CursorBookmark?,
+        val pages: List<CursorPageState<K, T>>,
+        val startCursor: CursorBookmark<K>?,
+        val endCursor: CursorBookmark<K>?,
     )
 
-    private val _snapshot = MutableStateFlow(SnapshotEmission<T>(0L, emptyList(), null, null))
+    private val _snapshot = MutableStateFlow(SnapshotEmission<K, T>(0L, emptyList(), null, null))
 
     /**
      * A [Flow] emitting the list of [PageState] objects within the current
      * context window. Mirrors [PagingCore.snapshot].
      */
-    val snapshot: Flow<List<PageState<T>>> = _snapshot.map { it.pages }
+    val snapshot: Flow<List<CursorPageState<K, T>>> = _snapshot.map { it.pages }
 
     /**
      * Returns the `(startCursor, endCursor)` pair currently visible in the last
      * emitted snapshot, or `null` if the snapshot is empty.
      */
-    fun snapshotCursorRange(): Pair<CursorBookmark, CursorBookmark>? {
+    fun snapshotCursorRange(): Pair<CursorBookmark<K>, CursorBookmark<K>>? {
         val emission = _snapshot.value
         val start = emission.startCursor ?: return null
         val end = emission.endCursor ?: return null
@@ -293,14 +296,14 @@ open class CursorPagingCore<T>(
      * in head-to-tail order. Useful for checking whether a candidate cursor is
      * already visible.
      */
-    fun snapshotSelves(): List<Any> {
+    fun snapshotSelves(): List<K> {
         val emission = _snapshot.value
         if (emission.pages.isEmpty()) return emptyList()
         val start = emission.startCursor ?: return emptyList()
         val end = emission.endCursor ?: return emptyList()
-        val result = ArrayList<Any>()
-        val visited = HashSet<Any>()
-        var current: CursorBookmark? = start
+        val result = ArrayList<K>()
+        val visited = HashSet<K>()
+        var current: CursorBookmark<K>? = start
         while (current != null && visited.add(current.self)) {
             result.add(current.self)
             if (current.self == end.self) break
@@ -314,8 +317,8 @@ open class CursorPagingCore<T>(
      * is `null`, the range is computed from [startContextCursor] / [endContextCursor]
      * extended outward through any adjacent non-success pages.
      */
-    fun snapshot(cursorRange: Pair<CursorBookmark, CursorBookmark>? = null) {
-        val range: Pair<CursorBookmark, CursorBookmark>? = cursorRange ?: run {
+    fun snapshot(cursorRange: Pair<CursorBookmark<K>, CursorBookmark<K>>? = null) {
+        val range: Pair<CursorBookmark<K>, CursorBookmark<K>>? = cursorRange ?: run {
             if (!isStarted) return@run null
             val start = startContextCursor ?: return@run null
             val end = endContextCursor ?: return@run null
@@ -333,13 +336,13 @@ open class CursorPagingCore<T>(
                 predicate = ::isFilledSuccessState,
             )
 
-            val backwardEdge: CursorBookmark? =
+            val backwardEdge: CursorBookmark<K>? =
                 backwardExpand?.second?.let { cache.walkBackward(it) }
-            val forwardEdge: CursorBookmark? =
+            val forwardEdge: CursorBookmark<K>? =
                 forwardExpand?.second?.let { cache.walkForward(it) }
 
-            val min: CursorBookmark = backwardEdge ?: backwardExpand?.second ?: start
-            val max: CursorBookmark = forwardEdge ?: forwardExpand?.second ?: end
+            val min: CursorBookmark<K> = backwardEdge ?: backwardExpand?.second ?: start
+            val max: CursorBookmark<K> = forwardEdge ?: forwardExpand?.second ?: end
             return@run min to max
         }
 
@@ -353,7 +356,7 @@ open class CursorPagingCore<T>(
      * to [cursorRange].second inclusive.
      */
     fun scan(
-        cursorRange: Pair<CursorBookmark, CursorBookmark> = run {
+        cursorRange: Pair<CursorBookmark<K>, CursorBookmark<K>> = run {
             val start = checkNotNull(startContextCursor) {
                 "You cannot scan because startContextCursor is null"
             }
@@ -362,11 +365,11 @@ open class CursorPagingCore<T>(
             }
             start to end
         }
-    ): List<PageState<T>> {
+    ): List<CursorPageState<K, T>> {
         val (start, end) = cursorRange
-        val visited = HashSet<Any>()
-        val result = ArrayList<PageState<T>>()
-        var current: CursorBookmark? = start
+        val visited = HashSet<K>()
+        val result = ArrayList<CursorPageState<K, T>>()
+        var current: CursorBookmark<K>? = start
         while (current != null && visited.add(current.self)) {
             val state = cache.getStateOf(current.self)
             if (state != null) result.add(state)
@@ -378,22 +381,22 @@ open class CursorPagingCore<T>(
 
     // ── Dirty tracking ──────────────────────────────────────────────────────
 
-    private val _dirtyCursors: MutableSet<Any> = mutableSetOf()
-    val dirtyCursors: Set<Any> get() = _dirtyCursors.toSet()
+    private val _dirtyCursors: MutableSet<K> = mutableSetOf()
+    val dirtyCursors: Set<K> get() = _dirtyCursors.toSet()
 
-    fun markDirty(self: Any) {
+    fun markDirty(self: K) {
         _dirtyCursors.add(self)
     }
 
-    fun markDirty(selves: Collection<Any>) {
+    fun markDirty(selves: Collection<K>) {
         _dirtyCursors.addAll(selves)
     }
 
-    fun clearDirty(self: Any) {
+    fun clearDirty(self: K) {
         _dirtyCursors.remove(self)
     }
 
-    fun clearDirty(selves: Collection<Any>) {
+    fun clearDirty(selves: Collection<K>) {
         _dirtyCursors.removeAll(selves.toSet())
     }
 
@@ -401,7 +404,7 @@ open class CursorPagingCore<T>(
         _dirtyCursors.clear()
     }
 
-    fun isDirty(self: Any): Boolean = self in _dirtyCursors
+    fun isDirty(self: K): Boolean = self in _dirtyCursors
 
     fun isDirtyCursorsEmpty(): Boolean = _dirtyCursors.isEmpty()
 
@@ -410,13 +413,13 @@ open class CursorPagingCore<T>(
      * (walking `next`), removing them from the dirty set.
      */
     fun drainDirtyCursorsInRange(
-        startCursor: CursorBookmark,
-        endCursor: CursorBookmark,
-    ): List<Any>? {
+        startCursor: CursorBookmark<K>,
+        endCursor: CursorBookmark<K>,
+    ): List<K>? {
         if (_dirtyCursors.isEmpty()) return null
-        val inRange = HashSet<Any>()
-        val visited = HashSet<Any>()
-        var current: CursorBookmark? = startCursor
+        val inRange = HashSet<K>()
+        val visited = HashSet<K>()
+        var current: CursorBookmark<K>? = startCursor
         while (current != null && visited.add(current.self)) {
             if (current.self in _dirtyCursors) inRange.add(current.self)
             if (current.self == endCursor.self) break
@@ -429,19 +432,37 @@ open class CursorPagingCore<T>(
 
     // ── Initializers ────────────────────────────────────────────────────────
 
-    var initializerProgressPage: InitializerProgressPage<T> =
-        fun(page: Int, data: List<T>, metadata: Metadata?): ProgressPage<T> {
-            return ProgressPage(page = page, data = data, metadata = metadata)
+    var initializerProgressPage: InitializerCursorProgressPage<K, T> =
+        fun(
+            bookmark: CursorBookmark<K>,
+            data: List<T>,
+            metadata: Metadata?
+        ): CursorPageState.Progress<K, T> {
+            return CursorPageState.Progress(bookmark = bookmark, data = data, metadata = metadata)
         }
 
-    var initializerSuccessPage: InitializerSuccessPage<T> =
-        fun(page: Int, data: List<T>, metadata: Metadata?): SuccessPage<T> {
-            return SuccessPage(page = page, data = data, metadata = metadata)
+    var initializerSuccessPage: InitializerCursorSuccessPage<K, T> =
+        fun(
+            bookmark: CursorBookmark<K>,
+            data: List<T>,
+            metadata: Metadata?
+        ): CursorPageState.Success<K, T> {
+            return CursorPageState.Success(bookmark = bookmark, data = data, metadata = metadata)
         }
 
-    var initializerErrorPage: InitializerErrorPage<T> =
-        fun(exception: Exception, page: Int, data: List<T>, metadata: Metadata?): ErrorPage<T> {
-            return ErrorPage(exception = exception, page = page, data = data, metadata = metadata)
+    var initializerErrorPage: InitializerCursorErrorPage<K, T> =
+        fun(
+            exception: Exception,
+            bookmark: CursorBookmark<K>,
+            data: List<T>,
+            metadata: Metadata?
+        ): CursorPageState.Error<K, T> {
+            return CursorPageState.Error(
+                exception = exception,
+                bookmark = bookmark,
+                data = data,
+                metadata = metadata
+            )
         }
 
     /**
@@ -472,11 +493,11 @@ open class CursorPagingCore<T>(
 
     fun saveState(
         contextOnly: Boolean = false,
-        selfEncoder: (Any) -> JsonElement,
+        selfEncoder: (K) -> JsonElement,
         metadataEncoder: ((Metadata?) -> JsonElement?)? = null,
     ): CursorPagingCoreSnapshot<T> {
         val allCursors = cache.cursors
-        val inContext: Set<Any>? =
+        val inContext: Set<K>? =
             if (contextOnly && isStarted) contextSelves() else null
         val filtered =
             if (inContext != null) allCursors.filter { it.self in inContext } else allCursors
@@ -510,7 +531,7 @@ open class CursorPagingCore<T>(
     fun restoreState(
         fromSnapshot: CursorPagingCoreSnapshot<T>,
         silently: Boolean = false,
-        selfDecoder: (JsonElement) -> Any,
+        selfDecoder: (JsonElement) -> K,
         metadataDecoder: ((JsonElement?) -> Metadata?)? = null,
     ) {
         validateSnapshot(fromSnapshot)
@@ -519,20 +540,16 @@ open class CursorPagingCore<T>(
         _dirtyCursors.clear()
 
         fromSnapshot.entries.forEach { entry ->
-            val selfKey: Any = selfDecoder.invoke(entry.selfKey)
-            val prevKey: Any? = entry.prevKey?.let(selfDecoder)
-            val nextKey: Any? = entry.nextKey?.let(selfDecoder)
+            val selfKey: K = selfDecoder.invoke(entry.selfKey)
+            val prevKey: K? = entry.prevKey?.let(selfDecoder)
+            val nextKey: K? = entry.nextKey?.let(selfDecoder)
             val metadata: Metadata? = metadataDecoder?.invoke(entry.metadata)
-            // `page` carried by PageState is unused by the cursor cache; synthesise
-            // a unique sequential value so the factories do not collide on it.
-            val syntheticPage: Int =
-                (PageState.nextId() and Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
-            val pageState: PageState<T> = initializerSuccessPage(
-                syntheticPage,
+            val bookmark = CursorBookmark<K>(prev = prevKey, self = selfKey, next = nextKey)
+            val pageState: CursorPageState<K, T> = initializerSuccessPage(
+                bookmark,
                 entry.data.toMutableList(),
                 metadata,
             )
-            val bookmark = CursorBookmark(prev = prevKey, self = selfKey, next = nextKey)
             cache.setState(bookmark, pageState, silently = true)
             if (entry.wasDirty) _dirtyCursors.add(selfKey)
         }
@@ -558,12 +575,12 @@ open class CursorPagingCore<T>(
         }
     }
 
-    private fun contextSelves(): Set<Any> {
+    private fun contextSelves(): Set<K> {
         val start = startContextCursor ?: return emptySet()
         val end = endContextCursor ?: return emptySet()
-        val result = HashSet<Any>()
-        val visited = HashSet<Any>()
-        var current: CursorBookmark? = start
+        val result = HashSet<K>()
+        val visited = HashSet<K>()
+        var current: CursorBookmark<K>? = start
         while (current != null && visited.add(current.self)) {
             result.add(current.self)
             if (current.self == end.self) break
@@ -572,13 +589,13 @@ open class CursorPagingCore<T>(
         return result
     }
 
-    operator fun iterator(): Iterator<PageState<T>> = states.iterator()
+    operator fun iterator(): Iterator<CursorPageState<K, T>> = states.iterator()
 
-    operator fun contains(self: Any): Boolean = getStateOf(self) != null
+    operator fun contains(self: K): Boolean = getStateOf(self) != null
 
-    operator fun get(self: Any): PageState<T>? = getStateOf(self)
+    operator fun get(self: K): CursorPageState<K, T>? = getStateOf(self)
 
-    operator fun get(self: Any, index: Int): T? = getElement(self, index)
+    operator fun get(self: K, index: Int): T? = getElement(self, index)
 
     override fun toString(): String = "CursorPagingCore(size=$size)"
 

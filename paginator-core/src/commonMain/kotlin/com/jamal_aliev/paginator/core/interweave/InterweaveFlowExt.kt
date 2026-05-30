@@ -54,9 +54,9 @@ fun <T, I> PaginatorUiState<T>.interweave(
     weaver: Interweaver<T, I>,
 ): PaginatorUiState<WovenEntry<T, I>> = when (this) {
     PaginatorUiState.Idle -> PaginatorUiState.Idle
-    is PaginatorUiState.Loading -> this
-    is PaginatorUiState.Empty -> this
-    is PaginatorUiState.Error -> this
+    is PaginatorUiState.Loading -> PaginatorUiState.Loading(state.wrapDataAs(weaver))
+    is PaginatorUiState.Empty -> PaginatorUiState.Empty(state.wrapDataAs(weaver))
+    is PaginatorUiState.Error -> PaginatorUiState.Error(state.wrapDataAs(weaver))
     is PaginatorUiState.Content -> PaginatorUiState.Content(
         prependState = prependState?.wrapData(weaver),
         items = items.weave(weaver),
@@ -122,9 +122,14 @@ private fun <T, I> PageState<T>.wrapData(
     val wrapped: List<WovenEntry<T, I>> = data.map { item ->
         WovenEntry.Data(value = item, wovenKey = weaver.itemKey(item))
     }
-    return when (this) {
-        is PageState.SuccessPage -> PageState.SuccessPage(page, wrapped, metadata, id)
-        is PageState.ProgressPage -> PageState.ProgressPage(page, wrapped, metadata, id)
-        is PageState.ErrorPage -> PageState.ErrorPage(exception, page, wrapped, metadata, id)
-    }
+    return withData(wrapped)
 }
+
+/**
+ * Like [wrapData] but narrows the result to the same status marker as the receiver. The cast is
+ * safe because [PageState.withData] preserves the runtime status of the page state.
+ */
+@Suppress("UNCHECKED_CAST")
+private fun <T, I, S : PageState<WovenEntry<T, I>>> PageState<T>.wrapDataAs(
+    weaver: Interweaver<T, I>,
+): S = wrapData(weaver) as S

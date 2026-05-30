@@ -1,12 +1,12 @@
 package com.jamal_aliev.paginator.offset.serialization
 
+import com.jamal_aliev.paginator.core.extension.isEmptyState
+import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.PagingCore
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
-import com.jamal_aliev.paginator.core.extension.isEmptyState
-import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlin.test.Test
@@ -38,7 +38,7 @@ class PagingCoreSerializationTest {
     }
 
     @Test
-    fun `round-trip with all SuccessPages`() = runTest {
+    fun `round-trip with all Successs`() = runTest {
         val paginator = createTestPaginator()
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         for (i in 2..5) {
@@ -65,15 +65,15 @@ class PagingCoreSerializationTest {
     }
 
     @Test
-    fun `ErrorPage converted to SuccessPage and marked dirty`() = runTest {
+    fun `Error converted to Success and marked dirty`() = runTest {
         val paginator = createTestPaginator()
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
-        // Set page 2 to ErrorPage with cached data
+        // Set page 2 to OffsetPageState.Error with cached data
         val cachedData = paginator.cache.getStateOf(2)!!.data
         paginator.cache.setState(
-            PageState.ErrorPage(
+            OffsetPageState.Error(
                 exception = RuntimeException("test error"),
                 page = 2,
                 data = cachedData,
@@ -99,14 +99,14 @@ class PagingCoreSerializationTest {
     }
 
     @Test
-    fun `ProgressPage converted to SuccessPage and marked dirty`() = runTest {
+    fun `Progress converted to Success and marked dirty`() = runTest {
         val paginator = createTestPaginator()
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
         val cachedData = paginator.cache.getStateOf(2)!!.data
         paginator.cache.setState(
-            PageState.ProgressPage(page = 2, data = cachedData),
+            OffsetPageState.Progress(page = 2, data = cachedData),
             silently = true,
         )
 
@@ -124,12 +124,12 @@ class PagingCoreSerializationTest {
     }
 
     @Test
-    fun `empty SuccessPage preserved`() = runTest {
+    fun `empty Success preserved`() = runTest {
         val paginator = createTestPaginator()
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
         paginator.cache.setState(
-            PageState.SuccessPage<TestItem>(page = 2, data = emptyList()),
+            OffsetPageState.Success<TestItem>(page = 2, data = emptyList()),
             silently = true,
         )
 
@@ -247,14 +247,14 @@ class PagingCoreSerializationTest {
     // ── errorMessage tests ──────────────────────────────────────────────────
 
     @Test
-    fun `errorMessage preserved for ErrorPage`() = runTest {
+    fun `errorMessage preserved for Error`() = runTest {
         val paginator = createTestPaginator()
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
         val cachedData = paginator.cache.getStateOf(2)!!.data
         paginator.cache.setState(
-            PageState.ErrorPage(
+            OffsetPageState.Error(
                 exception = RuntimeException("network timeout"),
                 page = 2,
                 data = cachedData,
@@ -289,7 +289,7 @@ class PagingCoreSerializationTest {
 
         val cachedData = paginator.cache.getStateOf(2)!!.data
         paginator.cache.setState(
-            PageState.ErrorPage(
+            OffsetPageState.Error(
                 exception = IllegalStateException("bad state"),
                 page = 2,
                 data = cachedData,

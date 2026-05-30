@@ -12,14 +12,13 @@ import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import com.jamal_aliev.paginator.compose.cursor.internal.rememberCursorPaginatorDataItemCount
+import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.compose.cursor.internal.rememberCursorPaginatorDataItemCount
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.prefetch.CursorLoadGuard
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
-import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
-import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 
 /** `LazyGrid` analogue of [PaginatedLazyListHolder] — see that type for the contract. */
 @Stable
@@ -98,7 +97,7 @@ class PaginatedLazyGridScope @PublishedApi internal constructor(
 }
 
 /** `items(List<T>, …)` shortcut for [PaginatedLazyGridScope]. */
-inline fun <T> PaginatedLazyGridScope.items(
+inline fun <K : Any, T> PaginatedLazyGridScope.items(
     items: List<T>,
     noinline key: ((item: T) -> Any)? = null,
     noinline span: (LazyGridItemSpanScope.(item: T) -> GridItemSpan)? = null,
@@ -113,7 +112,7 @@ inline fun <T> PaginatedLazyGridScope.items(
 )
 
 /** `itemsIndexed(List<T>, …)` shortcut for [PaginatedLazyGridScope]. */
-inline fun <T> PaginatedLazyGridScope.itemsIndexed(
+inline fun <K : Any, T> PaginatedLazyGridScope.itemsIndexed(
     items: List<T>,
     noinline key: ((index: Int, item: T) -> Any)? = null,
     noinline span: (LazyGridItemSpanScope.(index: Int, item: T) -> GridItemSpan)? = null,
@@ -144,13 +143,13 @@ fun LazyGridScope.paginated(
 
 /** Cursor-paginator counterpart of [Paginator.rememberPaginated] for grids. */
 @Composable
-fun <T> CursorPaginator<T>.rememberPaginated(
+fun <K : Any, T> CursorPaginator<K, T>.rememberPaginated(
     state: LazyGridState,
     options: PrefetchOptions = PrefetchOptions(),
     restartKey: Any? = null,
     onPrefetchError: ((Exception) -> Unit)? = null,
-    loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
-): PaginatedLazyGridHolder<CursorPaginatorPrefetchController<T>> {
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
+): PaginatedLazyGridHolder<CursorPaginatorPrefetchController<K, T>> {
     val controller = rememberPrefetchController(
         prefetchDistance = options.prefetchDistance,
         enableBackwardPrefetch = options.enableBackwardPrefetch,
@@ -158,7 +157,12 @@ fun <T> CursorPaginator<T>.rememberPaginated(
         silentlyResult = options.silentlyResult,
         enabled = options.enabled,
         cancelOnDispose = options.cancelOnDispose,
-        loadGuard = { cursor: CursorBookmark, st: PageState<T>? -> loadGuard(cursor, st) },
+        loadGuard = { cursor: CursorBookmark<K>, st: CursorPageState<K, T>? ->
+            loadGuard(
+                cursor,
+                st
+            )
+        },
         onPrefetchError = onPrefetchError,
     )
     val holder = remember(controller) { PaginatedLazyGridHolder(controller) }

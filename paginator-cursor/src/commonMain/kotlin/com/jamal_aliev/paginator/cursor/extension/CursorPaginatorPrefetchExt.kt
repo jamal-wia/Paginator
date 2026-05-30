@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator.cursor.extension
 
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorErrorPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorProgressPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorSuccessPage
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
 import kotlinx.coroutines.CoroutineScope
 
@@ -15,19 +15,19 @@ import kotlinx.coroutines.CoroutineScope
  * Mirrors [prefetchController] for [com.jamal_aliev.paginator.offset.Paginator] but
  * uses cursor links instead of numeric page bounds to decide when to prefetch.
  */
-fun <T> CursorPaginator<T>.prefetchController(
+fun <K : Any, T> CursorPaginator<K, T>.prefetchController(
     scope: CoroutineScope,
     prefetchDistance: Int,
     enableBackwardPrefetch: Boolean = false,
     silentlyLoading: Boolean = false,
     silentlyResult: Boolean = false,
-    loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
+    loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
     enableCacheFlow: Boolean = core.enableCacheFlow,
-    initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
-    initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
-    initErrorState: InitializerErrorPage<T> = core.initializerErrorPage,
+    initProgressState: InitializerCursorProgressPage<K, T> = core.initializerProgressPage,
+    initSuccessState: InitializerCursorSuccessPage<K, T> = core.initializerSuccessPage,
+    initErrorState: InitializerCursorErrorPage<K, T> = core.initializerErrorPage,
     onPrefetchError: ((Exception) -> Unit)? = null,
-): CursorPaginatorPrefetchController<T> {
+): CursorPaginatorPrefetchController<K, T> {
     return CursorPaginatorPrefetchController(
         paginator = this,
         scope = scope,

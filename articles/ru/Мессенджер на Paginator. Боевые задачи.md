@@ -30,7 +30,7 @@
 API при этом — зеркальное:
 
 ```kotlin
-val paginator = mutableCursorPaginator<Message>(capacity = 50) {
+val paginator = mutableCursorPaginator<String, Message>(capacity = 50) {
     load { cursor ->
         val page = api.getMessages(cursor?.self as? String)
         CursorLoadResult(

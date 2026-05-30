@@ -1,9 +1,9 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.load.LoadResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -125,7 +125,7 @@ class NavigationEdgeCasesTest {
     }
 
     @Test
-    fun `source error produces ErrorPage`() = runTest {
+    fun `source error produces Error`() = runTest {
         val paginator = MutablePaginator<String> { page ->
             if (page == 2) throw RuntimeException("network error")
             LoadResult(MutableList(this.core.capacity) { "item_$it" })

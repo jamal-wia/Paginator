@@ -2,10 +2,7 @@ package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.offset.extension.smartForEach
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -119,11 +116,11 @@ private fun createPaginatorWith(n: Int): MutablePaginator<String> {
     return paginator
 }
 
-private fun <T> createRandomPageState(page: Int, data: List<T>): PageState<T> {
+private fun <T> createRandomPageState(page: Int, data: List<T>): OffsetPageState<T> {
     return when ((0..100).random()) {
-        in 0..24 -> ProgressPage(page, data)
-        in 25..49 -> SuccessPage(page, emptyList())
-        in 50..75 -> ErrorPage(Exception(), page, data)
-        else -> SuccessPage(page, data)
+        in 0..24 -> OffsetPageState.Progress(page, data)
+        in 25..49 -> OffsetPageState.Success(page, emptyList())
+        in 50..75 -> OffsetPageState.Error(Exception(), page, data)
+        else -> OffsetPageState.Success(page, data)
     }
 }

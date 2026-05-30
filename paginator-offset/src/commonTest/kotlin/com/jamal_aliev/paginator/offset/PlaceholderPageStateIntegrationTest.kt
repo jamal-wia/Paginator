@@ -1,12 +1,10 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.extension.isEmptyState
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
-import com.jamal_aliev.paginator.core.page.PlaceholderPageState.PlaceholderProgressPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
+import com.jamal_aliev.paginator.offset.page.OffsetPlaceholderProgressPage
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,7 +34,7 @@ class PlaceholderPageStateIntegrationTest {
         val paginator = MutablePaginator(load = load)
         paginator.core.resize(capacity = capacity, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data, _ ->
-            PlaceholderProgressPage(
+            OffsetPlaceholderProgressPage(
                 page = page,
                 data = data,
                 placeholders = skeletons(skeletonCount),
@@ -50,27 +48,27 @@ class PlaceholderPageStateIntegrationTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `jump - progress state is PlaceholderProgressPage`() = runTest {
-        var capturedProgress: ProgressPage<String>? = null
+    fun `jump - progress state is OffsetPlaceholderProgressPage`() = runTest {
+        var capturedProgress: OffsetPageState.Progress<String>? = null
         val paginator =
             MutablePaginator { page -> LoadResult(List(core.capacity) { "p${page}_item$it" }) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data, _ ->
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
                 .also { capturedProgress = it }
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
-        assertIs<PlaceholderProgressPage<String, Skeleton>>(capturedProgress)
+        assertIs<OffsetPlaceholderProgressPage<String, Skeleton>>(capturedProgress)
     }
 
     @Test
-    fun `jump - PlaceholderProgressPage carries correct placeholders`() = runTest {
+    fun `jump - OffsetPlaceholderProgressPage carries correct placeholders`() = runTest {
         var capturedPlaceholders: List<Skeleton>? = null
         val paginator = createPaginator(capacity = 3, skeletonCount = 5)
         paginator.core.initializerProgressPage = { page, data, _ ->
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(5))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(5))
                 .also {
                     capturedPlaceholders = it.placeholders
                 }
@@ -85,10 +83,10 @@ class PlaceholderPageStateIntegrationTest {
 
     @Test
     fun `jump - placeholders are separate from data`() = runTest {
-        var capturedState: PlaceholderProgressPage<String, Skeleton>? = null
+        var capturedState: OffsetPlaceholderProgressPage<String, Skeleton>? = null
         val paginator = createPaginator(capacity = 3, skeletonCount = 3)
         paginator.core.initializerProgressPage = { page, data, _ ->
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
                 .also {
                     capturedState = it
                 }
@@ -103,14 +101,14 @@ class PlaceholderPageStateIntegrationTest {
     }
 
     @Test
-    fun `jump - result is SuccessPage after loading`() = runTest {
+    fun `jump - result is Success after loading`() = runTest {
         val paginator = createPaginator(capacity = 3)
         val (_, result) = paginator.jump(
             BookmarkInt(1),
             silentlyLoading = true,
             silentlyResult = true
         )
-        assertIs<SuccessPage<String>>(result)
+        assertIs<OffsetPageState.Success<String>>(result)
         assertEquals(3, result.data.size)
     }
 
@@ -120,7 +118,7 @@ class PlaceholderPageStateIntegrationTest {
         val paginator = createPaginator(capacity = 3)
         paginator.core.initializerProgressPage = { page, data, _ ->
             capturedPage = page
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         paginator.jump(BookmarkInt(7), silentlyLoading = true, silentlyResult = true)
@@ -132,14 +130,14 @@ class PlaceholderPageStateIntegrationTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `goNextPage - creates PlaceholderProgressPage`() = runTest {
+    fun `goNextPage - creates OffsetPlaceholderProgressPage`() = runTest {
         var progressCreated = false
         val paginator = createPaginator(capacity = 3)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
         paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
@@ -155,7 +153,7 @@ class PlaceholderPageStateIntegrationTest {
         // page 2 has no cache yet — data should be empty
         paginator.core.initializerProgressPage = { page, data, _ ->
             capturedProgressData = data
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
@@ -165,12 +163,12 @@ class PlaceholderPageStateIntegrationTest {
     }
 
     @Test
-    fun `goNextPage - result is SuccessPage`() = runTest {
+    fun `goNextPage - result is Success`() = runTest {
         val paginator = createPaginator(capacity = 3)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
         val result = paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        assertIs<SuccessPage<String>>(result)
+        assertIs<OffsetPageState.Success<String>>(result)
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -178,7 +176,7 @@ class PlaceholderPageStateIntegrationTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `goPreviousPage - creates PlaceholderProgressPage`() = runTest {
+    fun `goPreviousPage - creates OffsetPlaceholderProgressPage`() = runTest {
         var progressCreated = false
         val paginator = createPaginator(capacity = 3)
         paginator.jump(BookmarkInt(2), silentlyLoading = true, silentlyResult = true)
@@ -186,7 +184,7 @@ class PlaceholderPageStateIntegrationTest {
 
         paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
@@ -194,7 +192,7 @@ class PlaceholderPageStateIntegrationTest {
     }
 
     @Test
-    fun `goPreviousPage - passes cached data to PlaceholderProgressPage`() = runTest {
+    fun `goPreviousPage - passes cached data to OffsetPlaceholderProgressPage`() = runTest {
         var capturedProgressData: List<String>? = null
 
         // Source returns partial results (< capacity) for page 2 so it needs a reload on next nav
@@ -214,7 +212,7 @@ class PlaceholderPageStateIntegrationTest {
         // After reload context is at page 2-3. goPreviousPage goes to page 1 (no cache → empty data)
         paginator.core.initializerProgressPage = { page, data, _ ->
             capturedProgressData = data
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         paginator.jump(BookmarkInt(4), silentlyLoading = true, silentlyResult = true)
@@ -230,14 +228,14 @@ class PlaceholderPageStateIntegrationTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `restart - creates PlaceholderProgressPage`() = runTest {
+    fun `restart - creates OffsetPlaceholderProgressPage`() = runTest {
         var progressCreated = false
         val paginator = createPaginator(capacity = 3)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
         paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         paginator.restart(silentlyLoading = true, silentlyResult = true)
@@ -245,12 +243,12 @@ class PlaceholderPageStateIntegrationTest {
     }
 
     @Test
-    fun `restart - page 1 is SuccessPage after restart`() = runTest {
+    fun `restart - page 1 is Success after restart`() = runTest {
         val paginator = createPaginator(capacity = 3)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
         paginator.restart(silentlyLoading = true, silentlyResult = true)
 
-        assertIs<SuccessPage<String>>(paginator.core.getStateOf(1))
+        assertIs<OffsetPageState.Success<String>>(paginator.core.getStateOf(1))
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -258,7 +256,7 @@ class PlaceholderPageStateIntegrationTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `refresh - creates PlaceholderProgressPage for each refreshed page`() = runTest {
+    fun `refresh - creates OffsetPlaceholderProgressPage for each refreshed page`() = runTest {
         var progressCount = 0
         val paginator = createPaginator(capacity = 3)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -266,7 +264,7 @@ class PlaceholderPageStateIntegrationTest {
 
         paginator.core.initializerProgressPage = { page, data, _ ->
             progressCount++
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         paginator.refresh(pages = listOf(1, 2), loadingSilently = true, finalSilently = true)
@@ -288,7 +286,7 @@ class PlaceholderPageStateIntegrationTest {
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data, _ ->
             defaultUsed = true
-            ProgressPage(page = page, data = data)
+            OffsetPageState.Progress(page = page, data = data)
         }
 
         paginator.jump(
@@ -297,7 +295,7 @@ class PlaceholderPageStateIntegrationTest {
             silentlyResult = true,
             initProgressState = { page, data, _ ->
                 overrideUsed = true
-                PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+                OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
             },
         )
 
@@ -314,7 +312,7 @@ class PlaceholderPageStateIntegrationTest {
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data, _ ->
             defaultUsed = true
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -326,23 +324,26 @@ class PlaceholderPageStateIntegrationTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `coerceToCapacity trims PlaceholderProgressPage data when it exceeds capacity`() = runTest {
+    fun `coerceToCapacity trims OffsetPlaceholderProgressPage data when it exceeds capacity`() =
+        runTest {
         val paginator =
             MutablePaginator { page -> LoadResult(List(core.capacity) { "p${page}_item$it" }) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         val bigData = List(10) { "item_$it" }
-        val state = PlaceholderProgressPage(page = 1, data = bigData, placeholders = skeletons(3))
+            val state =
+                OffsetPlaceholderProgressPage(page = 1, data = bigData, placeholders = skeletons(3))
         val coerced = paginator.core.coerceToCapacity(state)
 
         assertEquals(3, coerced.data.size)
     }
 
     @Test
-    fun `coerceToCapacity does not trim PlaceholderProgressPage when within capacity`() = runTest {
+    fun `coerceToCapacity does not trim OffsetPlaceholderProgressPage when within capacity`() =
+        runTest {
         val paginator = createPaginator(capacity = 5)
 
-        val state = PlaceholderProgressPage(
+            val state = OffsetPlaceholderProgressPage(
             page = 1,
             data = List(3) { "item_$it" },
             placeholders = skeletons(3)
@@ -361,7 +362,7 @@ class PlaceholderPageStateIntegrationTest {
             silently = true
         )
 
-        val state = PlaceholderProgressPage(
+        val state = OffsetPlaceholderProgressPage(
             page = 1,
             data = List(100) { "item_$it" },
             placeholders = skeletons(50)
@@ -377,13 +378,13 @@ class PlaceholderPageStateIntegrationTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `source error after PlaceholderProgressPage results in ErrorPage`() = runTest {
+    fun `source error after OffsetPlaceholderProgressPage results in Error`() = runTest {
         var progressCreated = false
         val paginator = MutablePaginator<String> { _ -> throw RuntimeException("network error") }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         val (_, result) = paginator.jump(
@@ -392,17 +393,17 @@ class PlaceholderPageStateIntegrationTest {
             silentlyResult = true
         )
         assertTrue(progressCreated)
-        assertIs<ErrorPage<String>>(result)
+        assertIs<OffsetPageState.Error<String>>(result)
     }
 
     @Test
-    fun `empty source after PlaceholderProgressPage results in empty SuccessPage`() = runTest {
+    fun `empty source after OffsetPlaceholderProgressPage results in empty Success`() = runTest {
         var progressCreated = false
         val paginator = MutablePaginator<String> { _ -> LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.core.initializerProgressPage = { page, data, _ ->
             progressCreated = true
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         val (_, result) = paginator.jump(
@@ -419,12 +420,12 @@ class PlaceholderPageStateIntegrationTest {
     // ══════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `PlaceholderProgressPage created for each navigation step in sequence`() = runTest {
+    fun `OffsetPlaceholderProgressPage created for each navigation step in sequence`() = runTest {
         val progressPages = mutableListOf<Int>()
         val paginator = createPaginator(capacity = 3)
         paginator.core.initializerProgressPage = { page, data, _ ->
             progressPages.add(page)
-            PlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
+            OffsetPlaceholderProgressPage(page = page, data = data, placeholders = skeletons(3))
         }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)

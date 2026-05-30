@@ -3,71 +3,59 @@ package com.jamal_aliev.paginator.core.page
 import com.jamal_aliev.paginator.core.load.Metadata
 import kotlinx.atomicfu.atomic
 
-sealed class PageState<E>(
-    open val page: Int,
-    open val data: List<E>,
-    open val metadata: Metadata? = null,
-    open val id: Long = ids.incrementAndGet(),
-) : Comparable<PageState<*>> {
+/**
+ * Strategy-agnostic root of the page-state model.
+ *
+ * A `PageState` describes the load status and payload of a single logical page. It deliberately
+ * carries **no positional key**: the offset strategy keys pages by a numeric `page` (see
+ * `OffsetPageState` in `paginator-offset`) while the cursor strategy keys them by a typed
+ * bookmark (see `CursorPageState` in `paginator-cursor`). Code that does not care which strategy
+ * produced a page — UI mapping ([PaginatorUiState]), predicates ([com.jamal_aliev.paginator.core.extension.isSuccessState]
+ * and friends), caches, prefetch guards — works against this interface and the three status
+ * markers nested below.
+ *
+ * Status is expressed through the marker sub-interfaces [ErrorState], [ProgressState] and
+ * [SuccessState] so that the concrete classes of either strategy can opt into a status without
+ * sharing a class hierarchy. Match on these markers (e.g. `is PageState.SuccessState`) rather
+ * than on a strategy's concrete class when you want to stay strategy-agnostic.
+ *
+ * @param E the element type of the page payload.
+ */
+interface PageState<out E> {
 
-    abstract fun copy(
-        page: Int = this.page,
-        data: List<E> = this.data,
-        metadata: Metadata? = this.metadata,
-        id: Long = this.id
-    ): PageState<E>
+    /** The page payload. A [SuccessState] with an empty list represents an "empty" page. */
+    val data: List<E>
 
-    override fun toString() = "${this::class.simpleName}(page=$page id=$id data=$data)"
-    override fun hashCode(): Int = this.page.hashCode()
-    override fun equals(other: Any?): Boolean = (other as? PageState<*>)?.id == id
-    override operator fun compareTo(other: PageState<*>): Int = page.compareTo(other.page)
+    /** Optional API-level metadata propagated from the load result (cursors, totals, ETags…). */
+    val metadata: Metadata?
 
-    open class ErrorPage<T>(
-        val exception: Exception,
-        override val page: Int,
-        override val data: List<T>,
-        override val metadata: Metadata? = null,
-        override val id: Long = ids.incrementAndGet(),
-    ) : PageState<T>(page, data, metadata, id) {
+    /** Per-instance identity used for equality/diffing. Preserved across `copy`. */
+    val id: Long
 
-        open fun copy(
-            exception: Exception = this.exception,
-            page: Int = this.page,
-            data: List<T> = this.data,
-            metadata: Metadata? = this.metadata,
-            id: Long = this.id
-        ): ErrorPage<T> = ErrorPage(exception, page, data, metadata, id)
+    /**
+     * Returns a page state of the **same status and strategy** as this one, but carrying [data]
+     * in place of the current payload. `metadata` and [id] are preserved.
+     *
+     * Used by strategy-agnostic transforms (e.g. interweaving) that need to rebuild a page with
+     * a different element type without knowing which concrete strategy produced it.
+     */
+    fun <R> withData(data: List<R>): PageState<R>
 
-        override fun copy(page: Int, data: List<T>, metadata: Metadata?, id: Long): ErrorPage<T> =
-            copy(this.exception, page, data, metadata, id)
-
-        override fun toString(): String =
-            "${this::class.simpleName}(exception=${exception}, data=${this.data})"
+    /** Marker for a failed load. Carries the [exception] that caused the failure. */
+    interface ErrorState<out E> : PageState<E> {
+        val exception: Exception
     }
 
-    open class ProgressPage<T>(
-        override val page: Int,
-        override val data: List<T>,
-        override val metadata: Metadata? = null,
-        override val id: Long = ids.incrementAndGet()
-    ) : PageState<T>(page, data, metadata, id) {
-        override fun copy(page: Int, data: List<T>, metadata: Metadata?, id: Long) =
-            ProgressPage(page, data, metadata, id)
-    }
+    /** Marker for an in-flight load. */
+    interface ProgressState<out E> : PageState<E>
 
-    open class SuccessPage<T>(
-        override val page: Int,
-        override val data: List<T>,
-        override val metadata: Metadata? = null,
-        override val id: Long = ids.incrementAndGet()
-    ) : PageState<T>(page, data, metadata, id) {
-
-        override fun copy(page: Int, data: List<T>, metadata: Metadata?, id: Long): SuccessPage<T> =
-            SuccessPage(page, data, metadata, id)
-    }
+    /** Marker for a successful load. An empty [data] denotes an "empty" page. */
+    interface SuccessState<out E> : PageState<E>
 
     companion object {
         private val ids = atomic(0L)
+
+        /** Allocates a fresh, process-unique [id] for a new page-state instance. */
         fun nextId(): Long = ids.incrementAndGet()
     }
 }

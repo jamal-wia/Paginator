@@ -1,13 +1,12 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
-import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
-import com.jamal_aliev.paginator.core.cache.PagingCache
-
-import com.jamal_aliev.paginator.offset.extension.withLeaf
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
+import com.jamal_aliev.paginator.offset.extension.withLeaf
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.time.Duration
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -66,13 +65,13 @@ class TimeLimitedPagingCache<T>(
     /** Tracks when each page was last added (or accessed, if [refreshOnAccess]). */
     private val timestamps = hashMapOf<Int, TimeMark>()
 
-    override fun setState(state: PageState<T>, silently: Boolean) {
+    override fun setState(state: OffsetPageState<T>, silently: Boolean) {
         cache.setState(state, silently)
         timestamps[state.page] = timeSource.markNow()
         performEviction()
     }
 
-    override fun getStateOf(page: Int): PageState<T>? {
+    override fun getStateOf(page: Int): OffsetPageState<T>? {
         val result = cache.getStateOf(page)
         if (result != null && refreshOnAccess) {
             timestamps[page] = timeSource.markNow()
@@ -88,7 +87,7 @@ class TimeLimitedPagingCache<T>(
         return result
     }
 
-    override fun removeFromCache(page: Int): PageState<T>? {
+    override fun removeFromCache(page: Int): OffsetPageState<T>? {
         val result = cache.removeFromCache(page)
         if (result != null) timestamps.remove(page)
         return result

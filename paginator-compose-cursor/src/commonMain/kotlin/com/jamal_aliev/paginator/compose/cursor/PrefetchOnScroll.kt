@@ -4,16 +4,16 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.Composable
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.prefetch.DefaultPrefetchDistance
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
 
 
 /** Cursor-paginator counterpart for [LazyListState]. */
 @Composable
-fun <T> CursorPaginator<T>.PrefetchOnScroll(
+fun <K : Any, T> CursorPaginator<K, T>.PrefetchOnScroll(
     state: LazyListState,
     dataItemCount: Int,
     headerCount: Int = 0,
@@ -27,8 +27,8 @@ fun <T> CursorPaginator<T>.PrefetchOnScroll(
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
     onPrefetchError: ((Exception) -> Unit)? = null,
-    loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
-): CursorPaginatorPrefetchController<T> {
+    loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
+): CursorPaginatorPrefetchController<K, T> {
     val controller = rememberPrefetchController(
         prefetchDistance = prefetchDistance,
         enableBackwardPrefetch = enableBackwardPrefetch,
@@ -52,7 +52,7 @@ fun <T> CursorPaginator<T>.PrefetchOnScroll(
 
 /** Cursor-paginator counterpart for [LazyGridState]. */
 @Composable
-fun <T> CursorPaginator<T>.PrefetchOnScroll(
+fun <K : Any, T> CursorPaginator<K, T>.PrefetchOnScroll(
     state: LazyGridState,
     dataItemCount: Int,
     headerCount: Int = 0,
@@ -66,8 +66,8 @@ fun <T> CursorPaginator<T>.PrefetchOnScroll(
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
     onPrefetchError: ((Exception) -> Unit)? = null,
-    loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
-): CursorPaginatorPrefetchController<T> {
+    loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
+): CursorPaginatorPrefetchController<K, T> {
     val controller = rememberPrefetchController(
         prefetchDistance = prefetchDistance,
         enableBackwardPrefetch = enableBackwardPrefetch,
@@ -91,7 +91,7 @@ fun <T> CursorPaginator<T>.PrefetchOnScroll(
 
 /** Cursor-paginator counterpart for [LazyStaggeredGridState]. */
 @Composable
-fun <T> CursorPaginator<T>.PrefetchOnScroll(
+fun <K : Any, T> CursorPaginator<K, T>.PrefetchOnScroll(
     state: LazyStaggeredGridState,
     dataItemCount: Int,
     headerCount: Int = 0,
@@ -105,8 +105,8 @@ fun <T> CursorPaginator<T>.PrefetchOnScroll(
     restartKey: Any? = null,
     scrollSampleMillis: Long = 0L,
     onPrefetchError: ((Exception) -> Unit)? = null,
-    loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
-): CursorPaginatorPrefetchController<T> {
+    loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
+): CursorPaginatorPrefetchController<K, T> {
     val controller = rememberPrefetchController(
         prefetchDistance = prefetchDistance,
         enableBackwardPrefetch = enableBackwardPrefetch,

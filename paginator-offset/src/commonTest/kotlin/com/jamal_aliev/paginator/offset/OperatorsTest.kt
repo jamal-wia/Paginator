@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,7 +26,7 @@ class OperatorsTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
         val state = paginator.cache.getStateOf(2)!!
         assertTrue(state in paginator)
-        val unknown = SuccessPage(page = 99, data = listOf("x"))
+        val unknown = OffsetPageState.Success(page = 99, data = listOf("x"))
         assertFalse(unknown in paginator)
     }
 
@@ -74,7 +74,7 @@ class OperatorsTest {
     @Test
     fun `plusAssign adds state`() {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
-        val state = SuccessPage(page = 1, data = mutableListOf("a"))
+        val state = OffsetPageState.Success(page = 1, data = mutableListOf("a"))
         paginator += state
         assertEquals(state, paginator[1])
     }

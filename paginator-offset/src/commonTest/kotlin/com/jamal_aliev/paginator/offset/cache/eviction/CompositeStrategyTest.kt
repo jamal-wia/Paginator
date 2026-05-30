@@ -1,7 +1,9 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
+
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
-import com.jamal_aliev.paginator.core.cache.PagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
 
 import com.jamal_aliev.paginator.offset.extension.plus
 import com.jamal_aliev.paginator.core.page.PageState
@@ -15,8 +17,8 @@ import kotlin.time.Duration.Companion.hours
 
 class CompositeStrategyTest {
 
-    private fun successPage(page: Int): PageState.SuccessPage<String> =
-        PageState.SuccessPage(page = page, data = listOf("item_$page"))
+    private fun successPage(page: Int): OffsetPageState.Success<String> =
+        OffsetPageState.Success(page = page, data = listOf("item_$page"))
 
     // ── ChainablePagingCache: interface membership ─────────────────────────────
     // Compile-time assertions: if any strategy stops implementing

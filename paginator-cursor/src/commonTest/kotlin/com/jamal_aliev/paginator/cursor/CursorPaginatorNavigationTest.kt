@@ -1,9 +1,10 @@
 package com.jamal_aliev.paginator.cursor
 
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
+
 import com.jamal_aliev.paginator.core.exception.LockedException
 import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.exception.CursorLoadGuardedException
 import com.jamal_aliev.paginator.cursor.exception.EndOfCursorFeedException
@@ -36,7 +37,7 @@ class CursorPaginatorNavigationTest {
     fun restart_with_initialCursor_jumps_to_anchor() = runTest {
         val backend = FakeCursorBackend()
         val paginator = cursorPaginatorOf(backend).apply {
-            initialCursor = CursorBookmark(prev = null, self = "p2", next = null)
+            initialCursor = CursorBookmark<String>(prev = null, self = "p2", next = null)
         }
 
         paginator.restart(silentlyLoading = true, silentlyResult = true)
@@ -74,7 +75,7 @@ class CursorPaginatorNavigationTest {
         val paginator = cursorPaginatorOf(backend)
 
         val (cursor, state) = paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = "p3", next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = "p3", next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )
@@ -89,14 +90,14 @@ class CursorPaginatorNavigationTest {
         val backend = FakeCursorBackend()
         val paginator = cursorPaginatorOf(backend)
         paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = "p1", next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = "p1", next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )
         val callsAfterFirst = backend.callCount
 
         paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = "p1", next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = "p1", next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )
@@ -109,7 +110,7 @@ class CursorPaginatorNavigationTest {
         paginator.lockJump = true
         assertFailsWith<LockedException.JumpWasLockedException> {
             paginator.jump(
-                bookmark = CursorBookmark(prev = null, self = "p0", next = null),
+                bookmark = CursorBookmark<String>(prev = null, self = "p0", next = null),
                 silentlyLoading = true,
                 silentlyResult = true,
             )
@@ -121,7 +122,7 @@ class CursorPaginatorNavigationTest {
         val paginator = cursorPaginatorOf()
         val exception = assertFailsWith<CursorLoadGuardedException> {
             paginator.jump(
-                bookmark = CursorBookmark(prev = null, self = "p0", next = null),
+                bookmark = CursorBookmark<String>(prev = null, self = "p0", next = null),
                 loadGuard = { _, _ -> false },
                 silentlyLoading = true,
                 silentlyResult = true,
@@ -185,7 +186,7 @@ class CursorPaginatorNavigationTest {
     fun goPreviousPage_walks_backward_through_source() = runTest {
         val backend = FakeCursorBackend()
         val paginator = cursorPaginatorOf(backend).apply {
-            initialCursor = CursorBookmark(prev = null, self = "p2", next = null)
+            initialCursor = CursorBookmark<String>(prev = null, self = "p2", next = null)
         }
         paginator.restart(silentlyLoading = true, silentlyResult = true)
 
@@ -231,14 +232,14 @@ class CursorPaginatorNavigationTest {
     fun load_error_on_goNext_results_in_ErrorPage_cached_for_target() = runTest {
         // Use a paginator whose 2nd call throws.
         var call = 0
-        val paginator = com.jamal_aliev.paginator.cursor.CursorPaginator<String>(
+        val paginator = com.jamal_aliev.paginator.cursor.CursorPaginator<String, String>(
             core = com.jamal_aliev.paginator.cursor.CursorPagingCore(initialCapacity = 3),
         ) { cursor ->
             call++
             if (call == 1) {
                 com.jamal_aliev.paginator.cursor.load.CursorLoadResult(
                     data = listOf("a", "b", "c"),
-                    bookmark = CursorBookmark(prev = null, self = "p0", next = "p1"),
+                    bookmark = CursorBookmark<String>(prev = null, self = "p0", next = "p1"),
                 )
             } else {
                 throw RuntimeException("network down")
@@ -263,9 +264,9 @@ class CursorPaginatorNavigationTest {
         paginator.restart(silentlyLoading = true, silentlyResult = false)
         paginator.bookmarks.addAll(
             listOf(
-                CursorBookmark(prev = null, self = "p0", next = null),
-                CursorBookmark(prev = null, self = "p2", next = null),
-                CursorBookmark(prev = null, self = "p4", next = null),
+                CursorBookmark<String>(prev = null, self = "p0", next = null),
+                CursorBookmark<String>(prev = null, self = "p2", next = null),
+                CursorBookmark<String>(prev = null, self = "p4", next = null),
             )
         )
 
@@ -294,15 +295,16 @@ class CursorPaginatorNavigationTest {
             ),
         )
         val backend = FakeCursorBackend(pages = pages)
-        val core = com.jamal_aliev.paginator.cursor.CursorPagingCore<String>(initialCapacity = 0)
+        val core =
+            com.jamal_aliev.paginator.cursor.CursorPagingCore<String, String>(initialCapacity = 0)
         val paginator =
-            com.jamal_aliev.paginator.cursor.CursorPaginator<String>(core = core) { cursor ->
+            com.jamal_aliev.paginator.cursor.CursorPaginator<String, String>(core = core) { cursor ->
             backend.loadResult(cursor)
         }
         paginator.restart(silentlyLoading = true, silentlyResult = true)
         val state = paginator.cache.getStateOf("only")
         assertTrue(
-            state is SuccessPage,
+            state is CursorPageState.Success<*, *>,
             "any non-empty data is a filled success under unlimited cap"
         )
         assertEquals(1, state.data.size)

@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator.offset.extension
 
-import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 /**
  * Eagerly restores L1 from the [persistent cache][com.jamal_aliev.paginator.offset.PagingCore.persistentCache]
@@ -50,7 +50,7 @@ import com.jamal_aliev.paginator.offset.Paginator
 suspend fun <T> Paginator<T>.warmUpFromPersistent(pageRange: IntRange? = null): Int {
     val pc: PersistentPagingCache<T> = core.persistentCache ?: return 0
 
-    val persisted: List<PageState<T>> = pc.loadAll()
+    val persisted: List<OffsetPageState<T>> = pc.loadAll()
     if (persisted.isEmpty()) return 0
 
     var inserted = 0

@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.exception.LoadGuardedException
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

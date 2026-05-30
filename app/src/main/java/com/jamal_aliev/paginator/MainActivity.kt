@@ -74,7 +74,7 @@ import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.extension.isRealProgressState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.ui.theme.PaginatorTheme
 import kotlinx.coroutines.launch
 
@@ -346,7 +346,7 @@ class MainActivity : ComponentActivity() {
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                state.data.forEach { pageState: PageState<String> ->
+                state.data.forEach { pageState: OffsetPageState<String> ->
                     when {
                         pageState.isSuccessState() -> {
                             item(key = "header_success_${pageState.page}") {

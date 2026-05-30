@@ -1,5 +1,7 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
+
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.PagingCore
@@ -248,7 +250,8 @@ class CacheEvictionIntegrationTest {
     fun `evictionListener called when pages evicted during navigation`() = runTest {
         val eviction = MostRecentPagingCache<String>(maxSize = 3)
         val evicted = mutableListOf<Int>()
-        eviction.evictionListener = CacheEvictionListener { evicted.add(it.page) }
+        eviction.evictionListener =
+            CacheEvictionListener { evicted.add((it as OffsetPageState).page) }
 
         val paginator = MutablePaginator(
             core = PagingCore(cache = eviction, initialCapacity = 3)

@@ -1,10 +1,10 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
-import com.jamal_aliev.paginator.core.cache.PagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.offset.extension.withLeaf
 
@@ -54,7 +54,7 @@ class ContextWindowPagingCache<T>(
         require(margin >= 0) { "margin must be >= 0, was $margin" }
     }
 
-    override fun setState(state: PageState<T>, silently: Boolean) {
+    override fun setState(state: OffsetPageState<T>, silently: Boolean) {
         cache.setState(state, silently)
         performEviction(justAddedPage = state.page)
     }

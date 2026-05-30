@@ -12,18 +12,18 @@ import com.jamal_aliev.paginator.view.cursor.internal.DataItemCountTracker
 
 
 /** Cursor-paginator counterpart of [Paginator.bindPaginated]. */
-public fun <T> CursorPaginator<T>.bindPaginated(
+public fun <K : Any, T> CursorPaginator<K, T>.bindPaginated(
     recyclerView: RecyclerView,
     lifecycleOwner: LifecycleOwner,
     headerCount: () -> Int = { 0 },
     footerCount: () -> Int = { 0 },
     options: PrefetchOptions = PrefetchOptions(),
     enableCacheFlow: Boolean = core.enableCacheFlow,
-    loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
     preserveScroll: Boolean = false,
     scrollKey: String? = null,
-): PrefetchBinding<CursorPaginatorPrefetchController<T>> {
+): PrefetchBinding<CursorPaginatorPrefetchController<K, T>> {
     val controller = prefetchController(
         lifecycleOwner = lifecycleOwner,
         options = options,
@@ -46,18 +46,18 @@ public fun <T> CursorPaginator<T>.bindPaginated(
 }
 
 /** Cursor-paginator [Int]-overload of [bindPaginated]. */
-public fun <T> CursorPaginator<T>.bindPaginated(
+public fun <K : Any, T> CursorPaginator<K, T>.bindPaginated(
     recyclerView: RecyclerView,
     lifecycleOwner: LifecycleOwner,
     headerCount: Int,
     footerCount: Int = 0,
     options: PrefetchOptions = PrefetchOptions(),
     enableCacheFlow: Boolean = core.enableCacheFlow,
-    loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
     preserveScroll: Boolean = false,
     scrollKey: String? = null,
-): PrefetchBinding<CursorPaginatorPrefetchController<T>> = bindPaginated(
+): PrefetchBinding<CursorPaginatorPrefetchController<K, T>> = bindPaginated(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
     headerCount = { headerCount },

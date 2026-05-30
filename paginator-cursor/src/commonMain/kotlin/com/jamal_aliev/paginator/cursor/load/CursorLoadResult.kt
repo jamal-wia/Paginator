@@ -33,8 +33,8 @@ import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
  * @param bookmark The [CursorBookmark] describing the loaded page's links. Must be
  *   non-null for a successful load — the paginator needs `self` to key the cache.
  */
-open class CursorLoadResult<T>(
+open class CursorLoadResult<K : Any, T>(
     open val data: List<T>,
     open val metadata: Metadata? = null,
-    open val bookmark: CursorBookmark,
+    open val bookmark: CursorBookmark<K>,
 )

@@ -1,8 +1,7 @@
 package com.jamal_aliev.paginator.offset.cache
 
-import com.jamal_aliev.paginator.core.cache.PagingCache
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 /**
  * A default [PagingCache] implementation providing sorted, binary-search-backed
@@ -36,7 +35,7 @@ class InMemoryPagingCache<T> : PagingCache<T> {
     override var logger: PaginatorLogger? = null
 
     /** Internal sorted cache of page states, ordered by page number. */
-    private val cache = mutableListOf<PageState<T>>()
+    private val cache = mutableListOf<OffsetPageState<T>>()
 
     /**
      * Finds the index of a page in [cache] via binary search.
@@ -59,7 +58,7 @@ class InMemoryPagingCache<T> : PagingCache<T> {
 
     override val isStarted: Boolean get() = startContextPage > 0 && endContextPage > 0
 
-    override fun setState(state: PageState<T>, silently: Boolean) {
+    override fun setState(state: OffsetPageState<T>, silently: Boolean) {
         val index = searchIndexOfPage(state.page)
         if (index >= 0) {
             cache[index] = state
@@ -68,7 +67,7 @@ class InMemoryPagingCache<T> : PagingCache<T> {
         }
     }
 
-    override fun getStateOf(page: Int): PageState<T>? {
+    override fun getStateOf(page: Int): OffsetPageState<T>? {
         val index = searchIndexOfPage(page)
         return if (index >= 0) cache[index] else null
     }
@@ -77,7 +76,7 @@ class InMemoryPagingCache<T> : PagingCache<T> {
         return getStateOf(page)?.data?.get(index)
     }
 
-    override fun removeFromCache(page: Int): PageState<T>? {
+    override fun removeFromCache(page: Int): OffsetPageState<T>? {
         val index = searchIndexOfPage(page)
         return if (index >= 0) cache.removeAt(index) else null
     }

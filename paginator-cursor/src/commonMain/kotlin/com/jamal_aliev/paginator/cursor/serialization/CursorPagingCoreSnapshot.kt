@@ -5,7 +5,7 @@ import kotlinx.serialization.json.JsonElement
 /**
  * A serializable representation of a single cursor-indexed page.
  *
- * Mirrors [PageEntry] but keyed by the [CursorBookmark][com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark]
+ * Mirrors [PageEntry] but keyed by the [CursorBookmark<K>][com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark]
  * triple instead of a numeric page. The cursor keys are stored as [JsonElement]s so
  * the caller can choose how to serialise the user-defined key type.
  *

@@ -1,13 +1,13 @@
 package com.jamal_aliev.paginator.cursor.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
+import com.jamal_aliev.paginator.core.logger.LogComponent
+import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cursor.extension.withLeaf
-import com.jamal_aliev.paginator.core.logger.LogComponent
-import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import kotlin.time.Duration
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -18,16 +18,16 @@ import kotlin.time.TimeSource
  * Each page records a timestamp when added to the cache. When a new page is added
  * via [setState], any pages older than [ttl] are evicted.
  */
-class CursorTimeLimitedPagingCache<T>(
-    private val cache: CursorPagingCache<T> = CursorInMemoryPagingCache<T>(),
+class CursorTimeLimitedPagingCache<K : Any, T>(
+    private val cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>(),
     val ttl: Duration,
     val refreshOnAccess: Boolean = false,
     val protectContextWindow: Boolean = true,
     val timeSource: TimeSource = TimeSource.Monotonic,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : CursorPagingCache<T> by cache, CursorChainablePagingCache<T> {
+) : CursorPagingCache<K, T> by cache, CursorChainablePagingCache<K, T> {
 
-    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): CursorTimeLimitedPagingCache<T> =
+    override fun replaceLeaf(newLeaf: CursorPagingCache<K, T>): CursorTimeLimitedPagingCache<K, T> =
         CursorTimeLimitedPagingCache(
             cache = cache.withLeaf(newLeaf),
             ttl = ttl,
@@ -41,27 +41,31 @@ class CursorTimeLimitedPagingCache<T>(
         require(ttl.isPositive()) { "ttl must be positive, was $ttl" }
     }
 
-    private val timestamps = hashMapOf<Any, TimeMark>()
+    private val timestamps = hashMapOf<K, TimeMark>()
 
-    override fun setState(cursor: CursorBookmark, state: PageState<T>, silently: Boolean) {
+    override fun setState(
+        cursor: CursorBookmark<K>,
+        state: CursorPageState<K, T>,
+        silently: Boolean
+    ) {
         cache.setState(cursor, state, silently)
         timestamps[cursor.self] = timeSource.markNow()
         performEviction()
     }
 
-    override fun getStateOf(self: Any): PageState<T>? {
+    override fun getStateOf(self: K): CursorPageState<K, T>? {
         val result = cache.getStateOf(self)
         if (result != null && refreshOnAccess) timestamps[self] = timeSource.markNow()
         return result
     }
 
-    override fun getElement(self: Any, index: Int): T? {
+    override fun getElement(self: K, index: Int): T? {
         val result = cache.getElement(self, index)
         if (result != null && refreshOnAccess) timestamps[self] = timeSource.markNow()
         return result
     }
 
-    override fun removeFromCache(self: Any): PageState<T>? {
+    override fun removeFromCache(self: K): CursorPageState<K, T>? {
         val result = cache.removeFromCache(self)
         if (result != null) timestamps.remove(self)
         return result
@@ -78,7 +82,7 @@ class CursorTimeLimitedPagingCache<T>(
     }
 
     private fun performEviction() {
-        val protectedSet: Set<Any>? =
+        val protectedSet: Set<K>? =
             if (protectContextWindow && cache.isStarted) protectedSelves() else null
 
         val expired = timestamps.entries
@@ -101,11 +105,11 @@ class CursorTimeLimitedPagingCache<T>(
         }
     }
 
-    private fun protectedSelves(): Set<Any> {
-        val result = HashSet<Any>()
+    private fun protectedSelves(): Set<K> {
+        val result = HashSet<K>()
         var current = cache.startContextCursor
         val end = cache.endContextCursor
-        val visited = HashSet<Any>()
+        val visited = HashSet<K>()
         while (current != null && visited.add(current.self)) {
             result.add(current.self)
             if (end != null && current.self == end.self) break

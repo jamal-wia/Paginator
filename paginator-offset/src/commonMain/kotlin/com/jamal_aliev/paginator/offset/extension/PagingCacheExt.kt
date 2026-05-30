@@ -1,6 +1,6 @@
 package com.jamal_aliev.paginator.offset.extension
 
-import com.jamal_aliev.paginator.core.cache.PagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.ChainablePagingCache
 
 /**

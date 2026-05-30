@@ -1,6 +1,6 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
-import com.jamal_aliev.paginator.core.cache.PagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
 
 /**
  * A [PagingCache] that can participate in strategy composition via the [com.jamal_aliev.paginator.extension.plus] operator.

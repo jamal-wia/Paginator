@@ -1,8 +1,9 @@
 package com.jamal_aliev.paginator.offset
 
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
+
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,10 +37,10 @@ class CapacityTest {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
-        val filledState = SuccessPage(page = 1, data = listOf("a", "b", "c"))
+        val filledState = OffsetPageState.Success(page = 1, data = listOf("a", "b", "c"))
         assertTrue(paginator.core.isFilledSuccessState(filledState))
 
-        val partialState = SuccessPage(page = 1, data = listOf("a", "b"))
+        val partialState = OffsetPageState.Success(page = 1, data = listOf("a", "b"))
         assertFalse(paginator.core.isFilledSuccessState(partialState))
     }
 
@@ -48,12 +49,12 @@ class CapacityTest {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = PagingCore.UNLIMITED_CAPACITY, resize = false, silently = true)
 
-        val state = SuccessPage(page = 1, data = listOf("a"))
+        val state = OffsetPageState.Success(page = 1, data = listOf("a"))
         assertTrue(paginator.core.isFilledSuccessState(state))
     }
 
     @Test
-    fun `isFilledSuccessState false for non-SuccessPage`() {
+    fun `isFilledSuccessState false for non-Success`() {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 

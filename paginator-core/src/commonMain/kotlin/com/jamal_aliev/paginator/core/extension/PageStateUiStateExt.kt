@@ -1,9 +1,9 @@
 package com.jamal_aliev.paginator.core.extension
 
 import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.core.page.PageState.ErrorState
+import com.jamal_aliev.paginator.core.page.PageState.ProgressState
+import com.jamal_aliev.paginator.core.page.PageState.SuccessState
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -14,15 +14,15 @@ import kotlinx.coroutines.flow.map
  * Classification rules (checked in order):
  * 1. If [isStarted] is `false` or the list is empty → [PaginatorUiState.Idle].
  * 2. If the list has exactly one element:
- *    - [ProgressPage] with empty data → [PaginatorUiState.Loading].
- *    - [SuccessPage] with empty data → [PaginatorUiState.Empty].
- *    - [ErrorPage] with empty data → [PaginatorUiState.Error].
+ *    - [ProgressState] with empty data → [PaginatorUiState.Loading].
+ *    - [SuccessState] with empty data → [PaginatorUiState.Empty].
+ *    - [ErrorState] with empty data → [PaginatorUiState.Error].
  *    - Otherwise falls through to [PaginatorUiState.Content].
  * 3. Everything else → [PaginatorUiState.Content], where:
  *    - [PaginatorUiState.Content.prependState] is the first element when it is
- *      not a [SuccessPage] carrying items, otherwise `null`.
+ *      not a [SuccessState] carrying items, otherwise `null`.
  *    - [PaginatorUiState.Content.appendState] is the last element when it is
- *      not a [SuccessPage] carrying items, otherwise `null`.
+ *      not a [SuccessState] carrying items, otherwise `null`.
  *    - [PaginatorUiState.Content.items] flattens the `data` of every state in
  *      the list.
  *
@@ -40,13 +40,13 @@ fun <T> List<PageState<T>>.toUiState(isStarted: Boolean): PaginatorUiState<T> {
         val only: PageState<T> = single()
         when {
             only.isProgressState() && only.data.isEmpty() ->
-                return PaginatorUiState.Loading(page = only.page)
+                return PaginatorUiState.Loading(state = only)
 
             only.isEmptyState() ->
-                return PaginatorUiState.Empty(page = only.page)
+                return PaginatorUiState.Empty(state = only)
 
             only.isErrorState() && only.data.isEmpty() ->
-                return PaginatorUiState.Error(page = only.page, exception = only.exception)
+                return PaginatorUiState.Error(state = only)
         }
     }
 

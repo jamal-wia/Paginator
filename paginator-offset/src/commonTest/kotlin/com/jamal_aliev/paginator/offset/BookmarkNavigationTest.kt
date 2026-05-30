@@ -1,5 +1,7 @@
 package com.jamal_aliev.paginator.offset
 
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
+
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.offset.load.LoadResult

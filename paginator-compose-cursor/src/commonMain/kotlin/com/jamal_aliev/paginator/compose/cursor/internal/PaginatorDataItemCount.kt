@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.map
  * in the offset module — see its KDoc for the implementation contract.
  */
 @Composable
-internal fun <T> rememberCursorPaginatorDataItemCount(paginator: CursorPaginator<T>): MutableIntState {
+internal fun <K : Any, T> rememberCursorPaginatorDataItemCount(paginator: CursorPaginator<K, T>): MutableIntState {
     val state = remember(paginator) { mutableIntStateOf(0) }
     LaunchedEffect(paginator) {
         paginator.uiState

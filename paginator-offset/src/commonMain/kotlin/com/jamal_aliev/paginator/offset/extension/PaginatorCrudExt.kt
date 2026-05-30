@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator.offset.extension
 
 import com.jamal_aliev.paginator.offset.MutablePaginator
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 // ──────────────────────────────────────────────────────────────────────────────
 //  Single-element add / set / remove
@@ -19,7 +19,7 @@ import com.jamal_aliev.paginator.core.page.PageState
 fun <T> MutablePaginator<T>.addElement(
     element: T,
     silently: Boolean = false,
-    initSuccessPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null,
+    initSuccessPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = null,
 ): Boolean {
     val lastPage: Int = core.lastPage() ?: return false
     val lastPageData = cache.getStateOf(lastPage)?.data ?: return false
@@ -40,7 +40,7 @@ fun <T> MutablePaginator<T>.addElement(
     page: Int,
     index: Int,
     silently: Boolean = false,
-    initPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null,
+    initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = null,
 ) {
     return addAllElements(
         elements = listOf(element),
@@ -109,7 +109,7 @@ fun <T> MutablePaginator<T>.removeElement(predicate: (T) -> Boolean): T? {
  * @return The removed element, or `null` if no element matched (or [page] is missing).
  */
 fun <T> MutablePaginator<T>.removeElement(page: Int, predicate: (T) -> Boolean): T? {
-    val state: PageState<T>? = cache.getStateOf(page)
+    val state: OffsetPageState<T>? = cache.getStateOf(page)
     state ?: return null
     for ((index, element) in state.data.withIndex()) {
         if (predicate(element)) {
@@ -147,7 +147,7 @@ fun <T> MutablePaginator<T>.removeElement(page: Int, predicate: (T) -> Boolean):
 fun <T> MutablePaginator<T>.prependElement(
     element: T,
     silently: Boolean = false,
-    initSuccessPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
+    initSuccessPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = null
 ): Boolean {
     val firstPage: Int = cache.pages.firstOrNull() ?: return false
     addAllElements(
@@ -177,9 +177,9 @@ fun <T> MutablePaginator<T>.swapElements(
     silently: Boolean = false,
 ) {
     if (aPage == bPage && aIndex == bIndex) return
-    val aState: PageState<T> = cache.getStateOf(aPage)
+    val aState: OffsetPageState<T> = cache.getStateOf(aPage)
         ?: throw NoSuchElementException("page-$aPage was not found in cache")
-    val bState: PageState<T> = cache.getStateOf(bPage)
+    val bState: OffsetPageState<T> = cache.getStateOf(bPage)
         ?: throw NoSuchElementException("page-$bPage was not found in cache")
     val aElement: T = aState.data[aIndex]
     val bElement: T = bState.data[bIndex]
@@ -216,7 +216,7 @@ fun <T> MutablePaginator<T>.moveElement(
 ) {
     if (fromPage == toPage && fromIndex == toIndex) return
 
-    val fromState: PageState<T> = cache.getStateOf(fromPage)
+    val fromState: OffsetPageState<T> = cache.getStateOf(fromPage)
         ?: throw NoSuchElementException("page-$fromPage was not found in cache")
 
     @Suppress("UNCHECKED_CAST")

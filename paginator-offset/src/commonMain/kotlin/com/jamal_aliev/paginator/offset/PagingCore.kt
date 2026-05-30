@@ -1,23 +1,20 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.PagingCore.Companion.DEFAULT_CAPACITY
-import com.jamal_aliev.paginator.offset.PagingCore.Companion.UNLIMITED_CAPACITY
-import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
-import com.jamal_aliev.paginator.core.cache.PagingCache
-import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
-import com.jamal_aliev.paginator.core.extension.gap
 import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.offset.PagingCore.Companion.DEFAULT_CAPACITY
+import com.jamal_aliev.paginator.offset.PagingCore.Companion.UNLIMITED_CAPACITY
+import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
+import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
+import com.jamal_aliev.paginator.offset.extension.gap
+import com.jamal_aliev.paginator.offset.initializer.InitializerErrorPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerProgressPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.offset.serialization.PageEntry
 import com.jamal_aliev.paginator.offset.serialization.PagingCoreSnapshot
 import kotlinx.coroutines.flow.Flow
@@ -39,7 +36,7 @@ import kotlin.contracts.contract
  * Navigation logic lives in [Paginator]; this class is connected to it via composition.
  *
  * **Key concepts:**
- * - **Cache**: a sorted list of [PageState] objects ordered by page number,
+ * - **Cache**: a sorted list of [OffsetPageState] objects ordered by page number,
  *   managed by the underlying [PagingCache].
  * - **Context window** ([startContextPage]..[endContextPage]): the contiguous range of
  *   filled success pages visible to the UI via the [snapshot] flow.
@@ -76,7 +73,7 @@ open class PagingCore<T>(
     val pages: List<Int> get() = cache.pages
 
     /** All cached page states, sorted by page number. */
-    val states: List<PageState<T>>
+    val states: List<OffsetPageState<T>>
         get() = cache.pages.mapNotNull { cache.getStateOf(it) }
 
     /** The number of pages currently in the cache. */
@@ -146,7 +143,7 @@ open class PagingCore<T>(
      * @param pageState The starting page to expand backward from.
      * @return The earliest filled success page found, or `null` if [pageState] is not valid.
      */
-    fun expandStartContextPage(pageState: PageState<T>?): PageState<T>? {
+    fun expandStartContextPage(pageState: OffsetPageState<T>?): OffsetPageState<T>? {
         return walkWhile(pageState, next = { it - 1 }, predicate = ::isFilledSuccessState)
             ?.also { startContextPage = it.page }
     }
@@ -158,7 +155,7 @@ open class PagingCore<T>(
      * @param pageState The starting page to expand forward from.
      * @return The latest filled success page found, or `null` if [pageState] is not valid.
      */
-    fun expandEndContextPage(pageState: PageState<T>?): PageState<T>? {
+    fun expandEndContextPage(pageState: OffsetPageState<T>?): OffsetPageState<T>? {
         return walkWhile(pageState, next = { it + 1 }, predicate = ::isFilledSuccessState)
             ?.also { endContextPage = it.page }
     }
@@ -288,7 +285,7 @@ open class PagingCore<T>(
                 minIndex = rtrIndex
             }
 
-            val nearestPage: PageState<T> = validStates[minIndex]
+            val nearestPage: OffsetPageState<T> = validStates[minIndex]
             expandStartContextPage(nearestPage)
             expandEndContextPage(nearestPage)
         }
@@ -321,12 +318,12 @@ open class PagingCore<T>(
     }
 
     /**
-     * Retrieves the cached [PageState] for the given [page] number.
+     * Retrieves the cached [OffsetPageState] for the given [page] number.
      *
      * @param page The page number to look up.
-     * @return The cached [PageState], or `null` if the page is not in the cache.
+     * @return The cached [OffsetPageState], or `null` if the page is not in the cache.
      */
-    fun getStateOf(page: Int): PageState<T>? {
+    fun getStateOf(page: Int): OffsetPageState<T>? {
         return cache.getStateOf(page)
     }
 
@@ -338,9 +335,9 @@ open class PagingCore<T>(
      * returns `null` without modifying L1.
      *
      * @param page The page number to load from persistent storage.
-     * @return The restored [PageState], or `null` if not found.
+     * @return The restored [OffsetPageState], or `null` if not found.
      */
-    suspend fun loadFromPersistentCache(page: Int): PageState<T>? {
+    suspend fun loadFromPersistentCache(page: Int): OffsetPageState<T>? {
         val pc = persistentCache ?: return null
         val persisted = pc.load(page) ?: return null
         cache.setState(persisted, silently = true)
@@ -348,7 +345,7 @@ open class PagingCore<T>(
     }
 
     /**
-     * Stores a [PageState] in the cache via the strategy chain, replacing any existing
+     * Stores a [OffsetPageState] in the cache via the strategy chain, replacing any existing
      * state for that page number.
      *
      * The page number is determined by [state]`.page`.
@@ -358,7 +355,7 @@ open class PagingCore<T>(
      *   Set to `true` during batch operations to avoid redundant emissions.
      */
     fun setState(
-        state: PageState<T>,
+        state: OffsetPageState<T>,
         silently: Boolean = false
     ) {
         cache.setState(state, silently = true)
@@ -371,9 +368,9 @@ open class PagingCore<T>(
      * Removes a page from the cache by its page number.
      *
      * @param page The page number to remove.
-     * @return The removed [PageState], or `null` if the page was not in the cache.
+     * @return The removed [OffsetPageState], or `null` if the page was not in the cache.
      */
-    fun removeFromCache(page: Int): PageState<T>? {
+    fun removeFromCache(page: Int): OffsetPageState<T>? {
         return cache.removeFromCache(page)
     }
 
@@ -400,24 +397,24 @@ open class PagingCore<T>(
     }
 
     /**
-     * Determines whether the given [PageState] represents a successfully loaded page
+     * Determines whether the given [OffsetPageState] represents a successfully loaded page
      * whose data set is considered "filled".
      *
      * A state is treated as "filled" when:
-     * - it is a [SuccessPage] with non-empty data;
+     * - it is a [OffsetPageState.Success] with non-empty data;
      * - its data size is equal to the configured `capacity`, unless `capacity` is unlimited.
      *
-     * For any non-success state — and for a [SuccessPage] with empty data — the result is `false`.
+     * For any non-success state — and for a [OffsetPageState.Success] with empty data — the result is `false`.
      *
-     * @param state The [PageState] instance to evaluate.
-     * @return `true` if `state` is a [SuccessPage] containing the maximum number of items
+     * @param state The [OffsetPageState] instance to evaluate.
+     * @return `true` if `state` is a [OffsetPageState.Success] containing the maximum number of items
      *         (or if the capacity is unlimited), `false` otherwise.
      */
     @OptIn(ExperimentalContracts::class)
     @Suppress("NOTHING_TO_INLINE")
-    inline fun isFilledSuccessState(state: PageState<T>?): Boolean {
+    inline fun isFilledSuccessState(state: OffsetPageState<T>?): Boolean {
         contract {
-            returns(true) implies (state is SuccessPage<T>)
+            returns(true) implies (state is OffsetPageState.Success<T>)
         }
         if (!state.isSuccessState()) return false
         return isCapacityUnlimited || state.data.size == capacity
@@ -453,13 +450,13 @@ open class PagingCore<T>(
     }
 
     /**
-     * Returns a [PageState] whose `data` is trimmed to at most [capacity].
+     * Returns a [OffsetPageState] whose `data` is trimmed to at most [capacity].
      *
      * When trimming is not required (unlimited capacity or `data.size <= capacity`),
      * the original [state] is returned unchanged. Otherwise, a copy is produced via
-     * [PageState.copy] with the trimmed data.
+     * [OffsetPageState.copy] with the trimmed data.
      */
-    fun coerceToCapacity(state: PageState<T>): PageState<T> {
+    fun coerceToCapacity(state: OffsetPageState<T>): OffsetPageState<T> {
         if (isCapacityUnlimited || state.data.size <= capacity) return state
         val newData = coerceToCapacity(state.data)
         return if (newData === state.data) {
@@ -492,17 +489,17 @@ open class PagingCore<T>(
      * or null if [pivotState] is null or does not satisfy [predicate].
      */
     inline fun walkWhile(
-        pivotState: PageState<T>?,
+        pivotState: OffsetPageState<T>?,
         next: (current: Int) -> Int,
-        predicate: (PageState<T>) -> Boolean = { true }
-    ): PageState<T>? {
+        predicate: (OffsetPageState<T>) -> Boolean = { true }
+    ): OffsetPageState<T>? {
         if (pivotState == null) return null
         if (!predicate.invoke(pivotState)) return null
 
-        var resultState: PageState<T> = pivotState
+        var resultState: OffsetPageState<T> = pivotState
         while (true) {
             val nextPage: Int = next.invoke(resultState.page)
-            val nextState: PageState<T>? = cache.getStateOf(nextPage)
+            val nextState: OffsetPageState<T>? = cache.getStateOf(nextPage)
 
             if (nextState != null && predicate.invoke(nextState)) {
                 resultState = nextState
@@ -515,7 +512,7 @@ open class PagingCore<T>(
     /** Whether the full cache flow ([asFlow]) has been activated by a subscriber. */
     var enableCacheFlow = false
         private set
-    private val _cacheFlow = MutableStateFlow<List<PageState<T>>>(emptyList())
+    private val _cacheFlow = MutableStateFlow<List<OffsetPageState<T>>>(emptyList())
 
     /**
      * Returns a [Flow] that emits the **entire** cache list whenever it changes.
@@ -525,7 +522,7 @@ open class PagingCore<T>(
      *
      * For most UI use cases, prefer [snapshot] which emits only the visible pages.
      */
-    fun asFlow(): Flow<List<PageState<T>>> {
+    fun asFlow(): Flow<List<OffsetPageState<T>>> {
         enableCacheFlow = true
         return _cacheFlow.asStateFlow()
     }
@@ -554,20 +551,20 @@ open class PagingCore<T>(
      */
     private data class SnapshotEmission<T>(
         val version: Long,
-        val pages: List<PageState<T>>,
+        val pages: List<OffsetPageState<T>>,
     )
 
     private val _snapshot = MutableStateFlow(SnapshotEmission<T>(0L, emptyList()))
 
     /**
-     * A [Flow] that emits the list of [PageState] objects within the current context window
+     * A [Flow] that emits the list of [OffsetPageState] objects within the current context window
      * whenever a navigation action completes.
      *
      * This is the primary reactive API for observing the paginator's visible state.
      * Collect this flow in your UI layer (e.g., in a ViewModel) to update the screen.
      *
      * The emitted list includes pages from [startContextPage] to [endContextPage],
-     * plus any adjacent non-success pages (e.g., [ProgressPage] or [ErrorPage]).
+     * plus any adjacent non-success pages (e.g., [OffsetPageState.Progress] or [OffsetPageState.Error]).
      *
      * **Delivery guarantee:** every call to the internal `snapshot()` method produces a
      * new emission, even if the resulting list is structurally equal to the previous one.
@@ -579,7 +576,7 @@ open class PagingCore<T>(
      * New subscribers immediately receive the last emitted list
      * (or `emptyList()` if none has been emitted yet).
      */
-    val snapshot: Flow<List<PageState<T>>> = _snapshot
+    val snapshot: Flow<List<OffsetPageState<T>>> = _snapshot
         .map { it.pages }
 
     /**
@@ -589,7 +586,7 @@ open class PagingCore<T>(
      * Used by navigation to skip bookmarks whose pages are already visible on the UI.
      */
     fun snapshotPageRange(): IntRange? {
-        val pages: List<PageState<T>> = _snapshot.value.pages
+        val pages: List<OffsetPageState<T>> = _snapshot.value.pages
         if (pages.isEmpty()) return null
         return pages.first().page..pages.last().page
     }
@@ -604,7 +601,7 @@ open class PagingCore<T>(
      *
      * @param pageRange An explicit range of pages to include. If `null`, the range is computed
      *   from [startContextPage] to [endContextPage], expanded outward through any adjacent
-     *   non-success pages (e.g., [ProgressPage] or [ErrorPage]).
+     *   non-success pages (e.g., [OffsetPageState.Progress] or [OffsetPageState.Error]).
      */
     fun snapshot(pageRange: IntRange? = null) {
         (pageRange ?: run {
@@ -615,7 +612,7 @@ open class PagingCore<T>(
                 walkWhile(
                     pivotState = pivotBackwardState,
                     next = { it - 1 },
-                    predicate = { state: PageState<T> ->
+                    predicate = { state: OffsetPageState<T> ->
                         isFilledSuccessState(state)
                     }
                 )?.page?.minus(1)?.coerceAtLeast(1)
@@ -623,7 +620,7 @@ open class PagingCore<T>(
                 walkWhile(
                     pivotState = pivotForwardState,
                     next = { it + 1 },
-                    predicate = { state: PageState<T> ->
+                    predicate = { state: OffsetPageState<T> ->
                         isFilledSuccessState(state)
                     }
                 )?.page?.plus(1)
@@ -638,14 +635,14 @@ open class PagingCore<T>(
     }
 
     /**
-     * Returns a list of [PageState] objects for all cached pages within [pagesRange].
+     * Returns a list of [OffsetPageState] objects for all cached pages within [pagesRange].
      *
      * Iterates through the range and collects cached pages, skipping any page numbers
      * that are not present in the cache.
      *
      * @param pagesRange The range of page numbers to scan. Defaults to the expanded
      *   context window ([startContextPage]..[endContextPage] plus adjacent pages).
-     * @return A list of contiguous [PageState] objects within the range.
+     * @return A list of contiguous [OffsetPageState] objects within the range.
      * @throws IllegalStateException If [startContextPage] or [endContextPage] is `0`
      *   (when using the default range).
      */
@@ -659,11 +656,11 @@ open class PagingCore<T>(
             checkNotNull(max) { "max is null the data structure is broken!" }
             return@run min..max
         }
-    ): List<PageState<T>> {
+    ): List<OffsetPageState<T>> {
         val rangeSize: Int = (pagesRange.last - pagesRange.first + 1)
-        val result: List<PageState<T>> = buildList(rangeSize) {
+        val result: List<OffsetPageState<T>> = buildList(rangeSize) {
             for (page in pagesRange) {
-                val pageState: PageState<T> =
+                val pageState: OffsetPageState<T> =
                     getStateOf(page) ?: continue
                 this.add(pageState)
             }
@@ -752,33 +749,43 @@ open class PagingCore<T>(
     }
 
     /**
-     * Factory for creating [ProgressPage] instances during page loading.
+     * Factory for creating [OffsetPageState.Progress] instances during page loading.
      * Override to provide custom progress page subclasses with additional metadata.
      */
     var initializerProgressPage: InitializerProgressPage<T> =
-        fun(page: Int, data: List<T>, metadata: Metadata?): ProgressPage<T> {
-            return ProgressPage(page = page, data = data, metadata = metadata)
+        fun(page: Int, data: List<T>, metadata: Metadata?): OffsetPageState.Progress<T> {
+            return OffsetPageState.Progress(page = page, data = data, metadata = metadata)
         }
 
     /**
-     * Factory for creating [SuccessPage] instances on successful load.
+     * Factory for creating [OffsetPageState.Success] instances on successful load.
      * The same factory is used regardless of whether the source returned data or
-     * not — an "empty" page is just a [SuccessPage] with an empty `data` list.
+     * not — an "empty" page is just a [OffsetPageState.Success] with an empty `data` list.
      * Override to provide custom success page subclasses.
      */
     var initializerSuccessPage: InitializerSuccessPage<T> =
-        fun(page: Int, data: List<T>, metadata: Metadata?): SuccessPage<T> {
-            return SuccessPage(page = page, data = data, metadata = metadata)
+        fun(page: Int, data: List<T>, metadata: Metadata?): OffsetPageState.Success<T> {
+            return OffsetPageState.Success(page = page, data = data, metadata = metadata)
         }
 
     /**
-     * Factory for creating [ErrorPage] instances when the source throws an exception.
+     * Factory for creating [OffsetPageState.Error] instances when the source throws an exception.
      * The previously cached data (if any) is preserved in the error state.
      * Override to provide custom error page subclasses.
      */
     var initializerErrorPage: InitializerErrorPage<T> =
-        fun(exception: Exception, page: Int, data: List<T>, metadata: Metadata?): ErrorPage<T> {
-            return ErrorPage(exception = exception, page = page, data = data, metadata = metadata)
+        fun(
+            exception: Exception,
+            page: Int,
+            data: List<T>,
+            metadata: Metadata?
+        ): OffsetPageState.Error<T> {
+            return OffsetPageState.Error(
+                exception = exception,
+                page = page,
+                data = data,
+                metadata = metadata
+            )
         }
 
     /**
@@ -795,7 +802,7 @@ open class PagingCore<T>(
      * @param resize If `true`, existing cached data is redistributed into pages of the new capacity.
      *   If `false`, only the capacity value is updated without touching cached data.
      * @param silently If `true`, no [snapshot] is emitted after the resize.
-     * @param initSuccessState Factory for creating new [PageState.SuccessPage] instances during redistribution.
+     * @param initSuccessState Factory for creating new [OffsetPageState.Success] instances during redistribution.
      * @throws IllegalArgumentException If [capacity] is negative.
      */
     fun resize(
@@ -809,26 +816,26 @@ open class PagingCore<T>(
         this.capacity = capacity
 
         if (resize && capacity > 0) {
-            val firstSuccessPageState: PageState<T> =
+            val firstSuccessPageState: OffsetPageState<T> =
                 walkWhile(
                     pivotState = getStateOf(startContextPage),
                     next = { it - 1 },
-                    predicate = { pageState: PageState<T> ->
+                    predicate = { pageState: OffsetPageState<T> ->
                         pageState.isSuccessState()
                     }
                 ) ?: return
-            val lastSuccessPageState: PageState<T> =
+            val lastSuccessPageState: OffsetPageState<T> =
                 walkWhile(
                     pivotState = getStateOf(endContextPage),
                     next = { it + 1 },
-                    predicate = { pageState: PageState<T> ->
+                    predicate = { pageState: OffsetPageState<T> ->
                         pageState.isSuccessState()
                     }
                 ) ?: return
             val items: MutableList<T> =
                 (firstSuccessPageState.page..lastSuccessPageState.page)
                     .mapNotNull { page: Int -> getStateOf(page) }
-                    .flatMap { pageState: PageState<T> -> pageState.data }
+                    .flatMap { pageState: OffsetPageState<T> -> pageState.data }
                     .toMutableList()
 
             cache.clear()
@@ -878,8 +885,8 @@ open class PagingCore<T>(
      * Creates a serializable snapshot of this PagingCore's current state.
      *
      * All cached pages are captured (or only pages within the context window if
-     * [contextOnly] is `true`). [ErrorPage] and [ProgressPage] entries
-     * are converted to [SuccessPage] (preserving their cached data and error
+     * [contextOnly] is `true`). [OffsetPageState.Error] and [OffsetPageState.Progress] entries
+     * are converted to [OffsetPageState.Success] (preserving their cached data and error
      * messages), and their page numbers are marked as dirty in the snapshot so
      * they will be re-fetched on next navigation after restore.
      *
@@ -898,7 +905,7 @@ open class PagingCore<T>(
             allStates
         }
         val entries: List<PageEntry<T>> =
-            filteredStates.map { state: PageState<T> ->
+            filteredStates.map { state: OffsetPageState<T> ->
                 val wasDirty = isDirty(state.page)
                         || state.isErrorState()
                         || state.isProgressState()
@@ -928,7 +935,7 @@ open class PagingCore<T>(
      *
      * Validates the snapshot before applying it. Clears the current cache and dirty pages,
      * then rebuilds the cache from the snapshot's entries. Pages marked as dirty in the snapshot
-     * (including those that were ErrorPage/ProgressPage before saving) are
+     * (including those that were OffsetPageState.Error/OffsetPageState.Progress before saving) are
      * added to the dirty set for automatic re-fetch on next navigation.
      *
      * Uses [initializerSuccessPage] for every entry, so custom PageState subclasses are
@@ -950,7 +957,7 @@ open class PagingCore<T>(
 
         snapshot.entries.forEach { entry: PageEntry<T> ->
             val metadata = metadataDecoder?.invoke(entry.metadata)
-            val pageState: PageState<T> = initializerSuccessPage(
+            val pageState: OffsetPageState<T> = initializerSuccessPage(
                 entry.page,
                 entry.data.toMutableList(),
                 metadata,
@@ -995,15 +1002,16 @@ open class PagingCore<T>(
         }
     }
 
-    operator fun iterator(): Iterator<PageState<T>> {
+    operator fun iterator(): Iterator<OffsetPageState<T>> {
         return states.iterator()
     }
 
     operator fun contains(page: Int): Boolean = getStateOf(page) != null
 
-    operator fun contains(pageState: PageState<T>): Boolean = getStateOf(pageState.page) != null
+    operator fun contains(pageState: OffsetPageState<T>): Boolean =
+        getStateOf(pageState.page) != null
 
-    operator fun get(page: Int): PageState<T>? = getStateOf(page)
+    operator fun get(page: Int): OffsetPageState<T>? = getStateOf(page)
 
     operator fun get(page: Int, index: Int): T? = getElement(page, index)
 

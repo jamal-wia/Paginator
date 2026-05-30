@@ -1,5 +1,7 @@
 package com.jamal_aliev.paginator.cursor
 
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
+
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.extension.addElement
 import com.jamal_aliev.paginator.cursor.extension.distinctBy
@@ -35,11 +37,11 @@ class CursorPaginatorCrudExtTest {
         pageCount: Int,
         capacity: Int,
         pageSize: Int = capacity,
-    ): MutableCursorPaginator<String> {
+    ): MutableCursorPaginator<String, String> {
         val backend = FakeCursorBackend(FakeCursorBackend.defaultPages(pageCount, pageSize))
         val paginator = mutableCursorPaginatorOf(backend, capacity = capacity)
         paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = backend.head.self, next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = backend.head.self, next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )

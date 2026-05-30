@@ -2,21 +2,21 @@ package com.jamal_aliev.paginator.cursor.extension
 
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 /**
  * Iterates through each cached [PageState] in the cursor paginator, in
  * head-to-tail order.
  */
-inline fun <T> CursorPaginator<T>.forEach(action: (PageState<T>) -> Unit) {
+inline fun <K : Any, T> CursorPaginator<K, T>.forEach(action: (CursorPageState<K, T>) -> Unit) {
     for (state in this) action(state)
 }
 
 /**
  * Iterates over the cached `(cursor, state)` pairs, in head-to-tail order.
  */
-inline fun <T> CursorPaginator<T>.forEachEntry(
-    action: (cursor: CursorBookmark, state: PageState<T>) -> Unit,
+inline fun <K : Any, T> CursorPaginator<K, T>.forEachEntry(
+    action: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>) -> Unit,
 ) {
     for (cursor in core.cursors) {
         val state = cache.getStateOf(cursor.self) ?: continue
@@ -31,17 +31,17 @@ inline fun <T> CursorPaginator<T>.forEachEntry(
  * Allows full control over how iteration starts, progresses, and stops, keyed
  * by index into the materialised `cursors` list.
  */
-inline fun <T> CursorPaginator<T>.smartForEach(
-    initialIndex: (list: List<CursorBookmark>) -> Int = { 0 },
+inline fun <K : Any, T> CursorPaginator<K, T>.smartForEach(
+    initialIndex: (list: List<CursorBookmark<K>>) -> Int = { 0 },
     step: (index: Int) -> Int = { it + 1 },
     actionAndContinue: (
-        cursors: List<CursorBookmark>,
+        cursors: List<CursorBookmark<K>>,
         index: Int,
-        currentCursor: CursorBookmark,
-        currentState: PageState<T>,
+        currentCursor: CursorBookmark<K>,
+        currentState: CursorPageState<K, T>,
     ) -> Boolean,
-): List<CursorBookmark> {
-    val cursors: List<CursorBookmark> = this.core.cursors
+): List<CursorBookmark<K>> {
+    val cursors: List<CursorBookmark<K>> = this.core.cursors
     var index = initialIndex.invoke(cursors)
     while (0 <= index && index < cursors.size) {
         val currentCursor = cursors[index]
@@ -58,10 +58,10 @@ inline fun <T> CursorPaginator<T>.smartForEach(
  * Walks forward from [pivot] through consecutive pages that satisfy [predicate]
  * (default: always true), returning the last cursor/state pair in the chain.
  */
-inline fun <T> CursorPaginator<T>.walkForwardWhile(
-    pivot: CursorBookmark?,
-    predicate: (PageState<T>) -> Boolean = { true },
-): Pair<CursorBookmark, PageState<T>>? {
+inline fun <K : Any, T> CursorPaginator<K, T>.walkForwardWhile(
+    pivot: CursorBookmark<K>?,
+    predicate: (CursorPageState<K, T>) -> Boolean = { true },
+): Pair<CursorBookmark<K>, CursorPageState<K, T>>? {
     pivot ?: return null
     val pivotState = cache.getStateOf(pivot.self) ?: return null
     val result = core.walkWhile(
@@ -77,10 +77,10 @@ inline fun <T> CursorPaginator<T>.walkForwardWhile(
  * Walks backward from [pivot] through consecutive pages that satisfy [predicate]
  * (default: always true), returning the earliest cursor/state pair in the chain.
  */
-inline fun <T> CursorPaginator<T>.walkBackwardWhile(
-    pivot: CursorBookmark?,
-    predicate: (PageState<T>) -> Boolean = { true },
-): Pair<CursorBookmark, PageState<T>>? {
+inline fun <K : Any, T> CursorPaginator<K, T>.walkBackwardWhile(
+    pivot: CursorBookmark<K>?,
+    predicate: (CursorPageState<K, T>) -> Boolean = { true },
+): Pair<CursorBookmark<K>, CursorPageState<K, T>>? {
     pivot ?: return null
     val pivotState = cache.getStateOf(pivot.self) ?: return null
     val result = core.walkWhile(

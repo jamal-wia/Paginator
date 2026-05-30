@@ -1,5 +1,7 @@
 package com.jamal_aliev.paginator.offset
 
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
+
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

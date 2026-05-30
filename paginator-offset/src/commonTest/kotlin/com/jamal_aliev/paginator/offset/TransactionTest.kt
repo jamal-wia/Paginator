@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.extension.isErrorState
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -318,15 +318,15 @@ class TransactionTest {
     }
 
     // =========================================================================
-    // ErrorPage preservation
+    // OffsetPageState.Error preservation
     // =========================================================================
 
     @Test
-    fun `ErrorPage type is preserved after rollback`() = runTest {
+    fun `Error type is preserved after rollback`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
 
-        // Manually set an ErrorPage in the cache
-        val errorPage = PageState.ErrorPage<String>(
+        // Manually set an OffsetPageState.Error in the cache
+        val errorPage = OffsetPageState.Error<String>(
             exception = RuntimeException("load error"),
             page = 2,
             data = mutableListOf("cached_item"),
@@ -342,7 +342,7 @@ class TransactionTest {
         }
 
         val restored = paginator[2]!!
-        assertIs<PageState.ErrorPage<String>>(restored)
+        assertIs<OffsetPageState.Error<String>>(restored)
         assertEquals("cached_item", restored.data[0])
     }
 

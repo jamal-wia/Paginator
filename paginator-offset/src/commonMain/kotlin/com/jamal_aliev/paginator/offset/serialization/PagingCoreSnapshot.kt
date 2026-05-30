@@ -9,8 +9,8 @@ import kotlinx.serialization.json.JsonElement
  * @param page The page number (>= 1).
  * @param data The items on this page; an empty list represents an "empty" page.
  * @param wasDirty `true` if this page was already dirty before saving,
- *   or if it was an ErrorPage/ProgressPage that was converted during save.
- * @param errorMessage The exception message from an [com.jamal_aliev.paginator.core.page.PageState.ErrorPage],
+ *   or if it was an OffsetPageState.Error/OffsetPageState.Progress that was converted during save.
+ * @param errorMessage The exception message from an [com.jamal_aliev.paginator.core.page.OffsetPageState.Error],
  *   preserved so that the UI can display the error reason after restoration. `null` for non-error pages.
  * @param metadata The serialized metadata attached to this page, or `null` if none was provided or
  *   no [metadataEncoder][com.jamal_aliev.paginator.offset.PagingCore.saveState] was supplied during save.

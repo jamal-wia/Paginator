@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator.cursor
 
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorMostRecentPagingCache
 import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.cursor.extension.warmUpFromPersistent
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -22,19 +22,23 @@ import kotlin.test.assertTrue
  */
 class CursorPaginatorPersistentExtTest {
 
-    private class InMemoryCursorPersistentCache<T> : CursorPersistentPagingCache<T> {
-        val store = mutableMapOf<Any, Pair<CursorBookmark, PageState<T>>>()
+    private class InMemoryCursorPersistentCache<T> : CursorPersistentPagingCache<String, T> {
+        val store = mutableMapOf<Any, Pair<CursorBookmark<String>, CursorPageState<String, T>>>()
 
-        override suspend fun save(cursor: CursorBookmark, state: PageState<T>) {
+        override suspend fun save(
+            cursor: CursorBookmark<String>,
+            state: CursorPageState<String, T>
+        ) {
             store[cursor.self] = cursor to state.copy(data = state.data.toMutableList())
         }
 
-        override suspend fun load(self: Any): Pair<CursorBookmark, PageState<T>>? = store[self]
+        override suspend fun load(self: String): Pair<CursorBookmark<String>, CursorPageState<String, T>>? =
+            store[self]
 
-        override suspend fun loadAll(): List<Pair<CursorBookmark, PageState<T>>> =
+        override suspend fun loadAll(): List<Pair<CursorBookmark<String>, CursorPageState<String, T>>> =
             store.values.toList()
 
-        override suspend fun remove(self: Any) {
+        override suspend fun remove(self: String) {
             store.remove(self)
         }
 
@@ -47,12 +51,12 @@ class CursorPaginatorPersistentExtTest {
         FakeCursorBackend.defaultPages(pageCount = count, capacity = capacity)
 
     private fun mutablePaginator(
-        persistent: CursorPersistentPagingCache<String>? = InMemoryCursorPersistentCache(),
-        cache: com.jamal_aliev.paginator.cursor.cache.CursorPagingCache<String> =
+        persistent: CursorPersistentPagingCache<String, String>? = InMemoryCursorPersistentCache(),
+        cache: com.jamal_aliev.paginator.cursor.cache.CursorPagingCache<String, String> =
             CursorInMemoryPagingCache(),
         backend: FakeCursorBackend = FakeCursorBackend(backendPages()),
         capacity: Int = 3,
-    ): MutableCursorPaginator<String> = MutableCursorPaginator(
+    ): MutableCursorPaginator<String, String> = MutableCursorPaginator(
         core = CursorPagingCore(
             cache = cache,
             persistentCache = persistent,
@@ -66,9 +70,10 @@ class CursorPaginatorPersistentExtTest {
     ) {
         val pages = backendPages(count)
         for (page in pages) {
-            val cursor = CursorBookmark(prev = page.prev, self = page.self, next = page.next)
+            val cursor =
+                CursorBookmark<String>(prev = page.prev, self = page.self, next = page.next)
             persistent.store[cursor.self] = cursor to
-                    PageState.SuccessPage(page = 0, data = page.items.toMutableList())
+                    CursorPageState.Success(bookmark = cursor, data = page.items.toMutableList())
         }
     }
 
@@ -222,10 +227,10 @@ class CursorPaginatorPersistentExtTest {
 
         val p = mutablePaginator(persistent = persistent)
         // Seed L1 with a different value for "p0".
-        val cursor = CursorBookmark(prev = null, self = "p0", next = "p1")
+        val cursor = CursorBookmark<String>(prev = null, self = "p0", next = "p1")
         p.cache.setState(
             cursor = cursor,
-            state = PageState.SuccessPage(page = 0, data = mutableListOf("in-memory")),
+            state = CursorPageState.Success(bookmark = cursor, data = mutableListOf("in-memory")),
             silently = true,
         )
 
@@ -251,7 +256,7 @@ class CursorPaginatorPersistentExtTest {
         val callsBefore = backend.callCount
 
         p.jump(
-            bookmark = CursorBookmark(prev = null, self = "p1", next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = "p1", next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )
@@ -295,7 +300,8 @@ class CursorPaginatorPersistentExtTest {
         val persistent = InMemoryCursorPersistentCache<String>()
         seed(persistent, count = 5)
 
-        val lru = CursorMostRecentPagingCache<String>(maxSize = 3, protectContextWindow = false)
+        val lru =
+            CursorMostRecentPagingCache<String, String>(maxSize = 3, protectContextWindow = false)
         val p = mutablePaginator(persistent = persistent, cache = lru)
 
         val inserted = p.warmUpFromPersistent()

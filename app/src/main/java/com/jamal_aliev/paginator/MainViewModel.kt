@@ -7,19 +7,19 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
-import com.jamal_aliev.paginator.offset.MutablePaginator
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.core.extension.isEmptyState
 import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.extension.isRealProgressState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
-import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.LogLevel
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.MutablePaginator
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
+import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.offset.serialization.restoreStateFromJson
 import com.jamal_aliev.paginator.offset.serialization.saveStateToJson
 import kotlinx.coroutines.Dispatchers
@@ -109,7 +109,7 @@ class MainViewModel(
         }
     }
 
-    private fun updateStateFromPaginator(data: List<PageState<String>>? = null) {
+    private fun updateStateFromPaginator(data: List<OffsetPageState<String>>? = null) {
         val snapshotData = data ?: _state.value.data
         _state.update { current ->
             current.copy(
@@ -263,7 +263,7 @@ class MainViewModel(
 
 class NextProgressState(
     page: Int, data: List<String>
-) : PageState.ProgressPage<String>(
+) : OffsetPageState.Progress<String>(
     page = page,
     data = data,
 )
@@ -271,7 +271,7 @@ class NextProgressState(
 
 class PreviousProgressState(
     page: Int, data: List<String>
-) : PageState.ProgressPage<String>(
+) : OffsetPageState.Progress<String>(
     page = page,
     data = data,
 )

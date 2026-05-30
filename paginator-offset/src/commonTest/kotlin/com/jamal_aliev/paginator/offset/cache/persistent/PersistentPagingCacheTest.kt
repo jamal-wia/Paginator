@@ -1,13 +1,12 @@
 package com.jamal_aliev.paginator.offset.cache.persistent
 
-import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.PagingCore
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,17 +19,17 @@ import kotlin.test.assertTrue
  * In-memory mock of [PersistentPagingCache] for testing.
  */
 private class InMemoryPersistentCache<T> : PersistentPagingCache<T> {
-    val store = mutableMapOf<Int, PageState<T>>()
+    val store = mutableMapOf<Int, OffsetPageState<T>>()
 
-    override suspend fun save(state: PageState<T>) {
+    override suspend fun save(state: OffsetPageState<T>) {
         // Deep-copy the data list to break reference aliasing with L1,
         // matching the behavior of a real serializing backend (Room, SQLite).
         store[state.page] = state.copy(data = state.data.toMutableList())
     }
 
-    override suspend fun load(page: Int): PageState<T>? = store[page]
+    override suspend fun load(page: Int): OffsetPageState<T>? = store[page]
 
-    override suspend fun loadAll(): List<PageState<T>> = store.values.toList()
+    override suspend fun loadAll(): List<OffsetPageState<T>> = store.values.toList()
 
     override suspend fun remove(page: Int) {
         store.remove(page)
@@ -78,7 +77,7 @@ class PersistentPagingCacheTest {
 
         // Pre-populate persistent cache with page 1
         persistent.save(
-            PageState.SuccessPage(page = 1, data = listOf("cached_a", "cached_b", "cached_c"))
+            OffsetPageState.Success(page = 1, data = listOf("cached_a", "cached_b", "cached_c"))
         )
 
         val (paginator, _) = createPaginatorWithPersistentCache(persistent, sourceCalls)
@@ -90,7 +89,7 @@ class PersistentPagingCacheTest {
             silentlyResult = true,
         )
 
-        assertTrue(state is PageState.SuccessPage)
+        assertTrue(state is OffsetPageState.Success)
         assertEquals(listOf("cached_a", "cached_b", "cached_c"), state.data)
         assertTrue(sourceCalls.isEmpty(), "Source should NOT have been called")
     }
@@ -108,7 +107,7 @@ class PersistentPagingCacheTest {
             silentlyResult = true,
         )
 
-        assertTrue(state is PageState.SuccessPage)
+        assertTrue(state is OffsetPageState.Success)
         assertEquals(1, sourceCalls.size, "Source should have been called once")
         assertEquals(1, sourceCalls[0])
     }
@@ -124,10 +123,10 @@ class PersistentPagingCacheTest {
 
         // Pre-populate persistent with pages 1 and 2
         persistent.save(
-            PageState.SuccessPage(page = 1, data = listOf("p1_a", "p1_b", "p1_c"))
+            OffsetPageState.Success(page = 1, data = listOf("p1_a", "p1_b", "p1_c"))
         )
         persistent.save(
-            PageState.SuccessPage(page = 2, data = listOf("p2_a", "p2_b", "p2_c"))
+            OffsetPageState.Success(page = 2, data = listOf("p2_a", "p2_b", "p2_c"))
         )
 
         val (paginator, _) = createPaginatorWithPersistentCache(persistent, sourceCalls)
@@ -143,7 +142,7 @@ class PersistentPagingCacheTest {
         // goNextPage should find page 2 in persistent — no source call
         val state = paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
-        assertTrue(state is PageState.SuccessPage)
+        assertTrue(state is OffsetPageState.Success)
         assertEquals(2, state.page)
         assertEquals(listOf("p2_a", "p2_b", "p2_c"), state.data)
         assertTrue(sourceCalls.isEmpty(), "Source should NOT have been called for page 2")
@@ -156,7 +155,7 @@ class PersistentPagingCacheTest {
 
         // Only page 1 in persistent
         persistent.save(
-            PageState.SuccessPage(page = 1, data = listOf("p1_a", "p1_b", "p1_c"))
+            OffsetPageState.Success(page = 1, data = listOf("p1_a", "p1_b", "p1_c"))
         )
 
         val (paginator, _) = createPaginatorWithPersistentCache(persistent, sourceCalls)
@@ -171,7 +170,7 @@ class PersistentPagingCacheTest {
         // Page 2 is NOT in persistent — source should be called
         val state = paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
 
-        assertTrue(state is PageState.SuccessPage)
+        assertTrue(state is OffsetPageState.Success)
         assertEquals(2, state.page)
         assertEquals(1, sourceCalls.size)
         assertEquals(2, sourceCalls[0])
@@ -188,10 +187,10 @@ class PersistentPagingCacheTest {
 
         // Pre-populate persistent with pages 1 and 2
         persistent.save(
-            PageState.SuccessPage(page = 1, data = listOf("p1_a", "p1_b", "p1_c"))
+            OffsetPageState.Success(page = 1, data = listOf("p1_a", "p1_b", "p1_c"))
         )
         persistent.save(
-            PageState.SuccessPage(page = 2, data = listOf("p2_a", "p2_b", "p2_c"))
+            OffsetPageState.Success(page = 2, data = listOf("p2_a", "p2_b", "p2_c"))
         )
 
         val (paginator, _) = createPaginatorWithPersistentCache(persistent, sourceCalls)
@@ -207,7 +206,7 @@ class PersistentPagingCacheTest {
         // goPreviousPage should find page 1 in persistent
         val state = paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
 
-        assertTrue(state is PageState.SuccessPage)
+        assertTrue(state is OffsetPageState.Success)
         assertEquals(1, state.page)
         assertEquals(listOf("p1_a", "p1_b", "p1_c"), state.data)
         assertTrue(sourceCalls.isEmpty(), "Source should NOT have been called")
@@ -233,7 +232,7 @@ class PersistentPagingCacheTest {
         // Page 1 should now be in persistent cache
         val persisted = persistent.store[1]
         assertNotNull(persisted, "Page 1 should have been persisted")
-        assertTrue(persisted is PageState.SuccessPage)
+        assertTrue(persisted is OffsetPageState.Success)
         assertEquals(capacity, persisted.data.size)
     }
 
@@ -438,7 +437,7 @@ class PersistentPagingCacheTest {
             silentlyResult = true,
         )
 
-        assertTrue(state is PageState.SuccessPage)
+        assertTrue(state is OffsetPageState.Success)
         assertEquals(1, state.page)
         assertTrue(
             sourceCalls.isEmpty(),
@@ -642,7 +641,7 @@ class PersistentPagingCacheTest {
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
 
-        val customPage = PageState.SuccessPage(
+        val customPage = OffsetPageState.Success(
             page = 5,
             data = mutableListOf("custom_a", "custom_b")
         )

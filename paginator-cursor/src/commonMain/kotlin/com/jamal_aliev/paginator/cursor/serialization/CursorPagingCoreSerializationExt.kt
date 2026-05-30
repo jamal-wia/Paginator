@@ -15,14 +15,14 @@ import kotlinx.serialization.json.JsonElement
  * @param keySerializer The [KSerializer] used to encode/decode every
  *   [com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark.self] key.
  */
-fun <T, K : Any> CursorPagingCore<T>.saveStateToJson(
+fun <T, K : Any> CursorPagingCore<K, T>.saveStateToJson(
     elementSerializer: KSerializer<T>,
     keySerializer: KSerializer<K>,
     json: Json = PagingCoreJson,
     contextOnly: Boolean = false,
 ): String {
     @Suppress("UNCHECKED_CAST")
-    val encoder: (Any) -> JsonElement = { raw ->
+    val encoder: (K) -> JsonElement = { raw ->
         json.encodeToJsonElement(keySerializer, raw as K)
     }
     val snapshot = saveState(contextOnly, encoder)
@@ -34,15 +34,15 @@ fun <T, K : Any> CursorPagingCore<T>.saveStateToJson(
  * Restores [CursorPagingCore] state from a JSON string previously produced by
  * [saveStateToJson].
  */
-fun <T, K : Any> CursorPagingCore<T>.restoreStateFromJson(
+fun <T, K : Any> CursorPagingCore<K, T>.restoreStateFromJson(
     jsonString: String,
     elementSerializer: KSerializer<T>,
     keySerializer: KSerializer<K>,
     json: Json = PagingCoreJson,
     silently: Boolean = false,
 ) {
-    val decoder: (JsonElement) -> Any = { element ->
-        json.decodeFromJsonElement(keySerializer, element) as Any
+    val decoder: (JsonElement) -> K = { element ->
+        json.decodeFromJsonElement(keySerializer, element)
     }
     val snapshotSerializer = CursorPagingCoreSnapshot.serializer(elementSerializer)
     val snapshot = json.decodeFromString(snapshotSerializer, jsonString)
@@ -50,7 +50,7 @@ fun <T, K : Any> CursorPagingCore<T>.restoreStateFromJson(
 }
 
 /** Metadata-aware counterpart of the plain [saveStateToJson] above. */
-fun <T, K : Any, M : Metadata> CursorPagingCore<T>.saveStateToJson(
+fun <T, K : Any, M : Metadata> CursorPagingCore<K, T>.saveStateToJson(
     elementSerializer: KSerializer<T>,
     keySerializer: KSerializer<K>,
     metadataSerializer: KSerializer<M>,
@@ -58,7 +58,7 @@ fun <T, K : Any, M : Metadata> CursorPagingCore<T>.saveStateToJson(
     contextOnly: Boolean = false,
 ): String {
     @Suppress("UNCHECKED_CAST")
-    val encoder: (Any) -> JsonElement = { raw ->
+    val encoder: (K) -> JsonElement = { raw ->
         json.encodeToJsonElement(keySerializer, raw as K)
     }
 
@@ -71,7 +71,7 @@ fun <T, K : Any, M : Metadata> CursorPagingCore<T>.saveStateToJson(
 }
 
 /** Metadata-aware counterpart of the plain [restoreStateFromJson] above. */
-fun <T, K : Any, M : Metadata> CursorPagingCore<T>.restoreStateFromJson(
+fun <T, K : Any, M : Metadata> CursorPagingCore<K, T>.restoreStateFromJson(
     jsonString: String,
     elementSerializer: KSerializer<T>,
     keySerializer: KSerializer<K>,
@@ -79,8 +79,8 @@ fun <T, K : Any, M : Metadata> CursorPagingCore<T>.restoreStateFromJson(
     json: Json = PagingCoreJson,
     silently: Boolean = false,
 ) {
-    val decoder: (JsonElement) -> Any = { element ->
-        json.decodeFromJsonElement(keySerializer, element) as Any
+    val decoder: (JsonElement) -> K = { element ->
+        json.decodeFromJsonElement(keySerializer, element)
     }
     val snapshotSerializer = CursorPagingCoreSnapshot.serializer(elementSerializer)
     val snapshot = json.decodeFromString(snapshotSerializer, jsonString)

@@ -52,7 +52,7 @@ import kotlinx.coroutines.flow.Flow
  *
  * Wiring a `PaginatorReactiveCache` to a paginator whose `load` already reads
  * from the same database (and that database is therefore the source of truth)
- * makes [com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache] (L2)
+ * makes the offset `PersistentPagingCache` (L2)
  * redundant — the database *is* L2. The `observe` extension logs a warning in
  * this configuration; remove the persistent cache to keep the data layers
  * coherent.

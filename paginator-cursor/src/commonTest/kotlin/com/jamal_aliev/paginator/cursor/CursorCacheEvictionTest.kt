@@ -1,5 +1,7 @@
 package com.jamal_aliev.paginator.cursor
 
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
+
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorContextWindowPagingCache
@@ -7,7 +9,6 @@ import com.jamal_aliev.paginator.cursor.cache.eviction.CursorMostRecentPagingCac
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorQueuedPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorTimeLimitedPagingCache
 import com.jamal_aliev.paginator.cursor.extension.plus
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -19,11 +20,17 @@ import kotlin.time.TestTimeSource
 
 class CursorCacheEvictionTest {
 
-    private fun successPage(id: Int, vararg items: String): SuccessPage<String> =
-        SuccessPage(page = id, data = items.toMutableList())
+    private fun successPage(
+        id: Int,
+        vararg items: String
+    ): CursorPageState.Success<String, String> =
+        CursorPageState.Success(
+            bookmark = CursorBookmark(null, "p$id", null),
+            data = items.toMutableList()
+        )
 
-    private fun bookmarkAt(i: Int, total: Int): CursorBookmark =
-        CursorBookmark(
+    private fun bookmarkAt(i: Int, total: Int): CursorBookmark<String> =
+        CursorBookmark<String>(
             prev = if (i == 0) null else "p${i - 1}",
             self = "p$i",
             next = if (i == total - 1) null else "p${i + 1}",
@@ -33,7 +40,7 @@ class CursorCacheEvictionTest {
 
     @Test
     fun lru_evicts_least_recently_used_when_capacity_exceeded() {
-        val c = CursorMostRecentPagingCache<String>(
+        val c = CursorMostRecentPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             maxSize = 2,
             protectContextWindow = false,
@@ -52,7 +59,7 @@ class CursorCacheEvictionTest {
 
     @Test
     fun lru_protects_context_window() {
-        val c = CursorMostRecentPagingCache<String>(
+        val c = CursorMostRecentPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             maxSize = 2,
             protectContextWindow = true,
@@ -76,7 +83,7 @@ class CursorCacheEvictionTest {
 
     @Test
     fun lru_just_added_is_not_immediately_evicted() {
-        val c = CursorMostRecentPagingCache<String>(
+        val c = CursorMostRecentPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             maxSize = 1,
             protectContextWindow = false,
@@ -91,7 +98,7 @@ class CursorCacheEvictionTest {
 
     @Test
     fun fifo_evicts_oldest_regardless_of_reads() {
-        val c = CursorQueuedPagingCache<String>(
+        val c = CursorQueuedPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             maxSize = 2,
             protectContextWindow = false,
@@ -109,7 +116,7 @@ class CursorCacheEvictionTest {
 
     @Test
     fun fifo_replacing_self_does_not_re_enter_queue() {
-        val c = CursorQueuedPagingCache<String>(
+        val c = CursorQueuedPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             maxSize = 2,
             protectContextWindow = false,
@@ -132,7 +139,7 @@ class CursorCacheEvictionTest {
 
     @Test
     fun slidingWindow_evicts_everything_outside_context() {
-        val c = CursorContextWindowPagingCache<String>(
+        val c = CursorContextWindowPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             margin = 0,
         )
@@ -158,7 +165,7 @@ class CursorCacheEvictionTest {
 
     @Test
     fun slidingWindow_respects_margin() {
-        val c = CursorContextWindowPagingCache<String>(
+        val c = CursorContextWindowPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             margin = 1,
         )
@@ -182,7 +189,7 @@ class CursorCacheEvictionTest {
     @Test
     fun ttl_evicts_expired_pages_on_next_set() {
         val time = TestTimeSource()
-        val c = CursorTimeLimitedPagingCache<String>(
+        val c = CursorTimeLimitedPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             ttl = 100.milliseconds,
             protectContextWindow = false,
@@ -200,7 +207,7 @@ class CursorCacheEvictionTest {
     @Test
     fun ttl_refreshOnAccess_keeps_entry_alive() {
         val time = TestTimeSource()
-        val c = CursorTimeLimitedPagingCache<String>(
+        val c = CursorTimeLimitedPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             ttl = 100.milliseconds,
             refreshOnAccess = true,
@@ -221,12 +228,12 @@ class CursorCacheEvictionTest {
 
     @Test
     fun plus_operator_composes_strategies_left_to_right() {
-        val outer = CursorMostRecentPagingCache<String>(
+        val outer = CursorMostRecentPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             maxSize = 3,
             protectContextWindow = false,
         )
-        val inner = CursorQueuedPagingCache<String>(
+        val inner = CursorQueuedPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             maxSize = 10,
             protectContextWindow = false,
@@ -241,7 +248,7 @@ class CursorCacheEvictionTest {
 
     @Test
     fun sliding_window_tolerates_missing_context_cursors() {
-        val c = CursorContextWindowPagingCache<String>(
+        val c = CursorContextWindowPagingCache<String, String>(
             cache = CursorInMemoryPagingCache(),
             margin = 0,
         )

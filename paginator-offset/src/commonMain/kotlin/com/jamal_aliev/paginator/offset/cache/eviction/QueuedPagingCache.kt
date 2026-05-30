@@ -1,13 +1,12 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
-import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
-import com.jamal_aliev.paginator.core.cache.PagingCache
-
-import com.jamal_aliev.paginator.offset.extension.withLeaf
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
+import com.jamal_aliev.paginator.offset.extension.withLeaf
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 /**
  * A [PagingCache] decorator that enforces a **FIFO (First In, First Out)** eviction policy.
@@ -56,7 +55,7 @@ class QueuedPagingCache<T>(
     /** Tracks page insertion order: head = oldest, tail = newest. */
     private val insertionOrder = mutableListOf<Int>()
 
-    override fun setState(state: PageState<T>, silently: Boolean) {
+    override fun setState(state: OffsetPageState<T>, silently: Boolean) {
         val isNew = cache.getStateOf(state.page) == null
         cache.setState(state, silently)
         if (isNew) {
@@ -65,7 +64,7 @@ class QueuedPagingCache<T>(
         performEviction(justAddedPage = state.page)
     }
 
-    override fun removeFromCache(page: Int): PageState<T>? {
+    override fun removeFromCache(page: Int): OffsetPageState<T>? {
         val result = cache.removeFromCache(page)
         if (result != null) insertionOrder.remove(page)
         return result

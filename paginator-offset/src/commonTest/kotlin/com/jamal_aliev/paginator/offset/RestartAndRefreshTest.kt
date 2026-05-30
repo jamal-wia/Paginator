@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.extension.refreshAll
 import com.jamal_aliev.paginator.offset.load.LoadResult
 import kotlinx.coroutines.test.runTest
@@ -98,7 +98,7 @@ class RestartAndRefreshTest {
     }
 
     @Test
-    fun `refresh with source error produces ErrorPage`() = runTest {
+    fun `refresh with source error produces Error`() = runTest {
         var shouldFail = false
         val paginator = MutablePaginator<String> { page ->
             if (shouldFail && page == 1) throw RuntimeException("refresh error")

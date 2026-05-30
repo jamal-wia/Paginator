@@ -9,9 +9,9 @@ import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorErrorPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorProgressPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorSuccessPage
 import com.jamal_aliev.paginator.cursor.load.CursorLoadResult
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 
@@ -23,9 +23,9 @@ import com.jamal_aliev.paginator.core.logger.PaginatorLogger
  * DSL entry point for a **read-only** [CursorPaginator].
  *
  * ```kotlin
- * val messages: CursorPaginator<Message> = cursorPaginator(capacity = 20) {
+ * val messages: CursorPaginator<String, Message> = cursorPaginator(capacity = 20) {
  *     load { cursor ->
- *         val page = api.loadMessages(cursor?.self as? String)
+ *         val page = api.loadMessages(cursor?.self)
  *         CursorLoadResult(
  *             data = page.items,
  *             bookmark = CursorBookmark(page.prevCursor, page.selfCursor, page.nextCursor),
@@ -34,21 +34,21 @@ import com.jamal_aliev.paginator.core.logger.PaginatorLogger
  * }
  * ```
  */
-inline fun <T> cursorPaginator(
+inline fun <K : Any, T> cursorPaginator(
     capacity: Int = DEFAULT_CAPACITY,
-    block: CursorPaginatorBuilder<T>.() -> Unit,
-): CursorPaginator<T> {
-    return CursorPaginatorBuilder<T>(capacity).apply(block).build()
+    block: CursorPaginatorBuilder<K, T>.() -> Unit,
+): CursorPaginator<K, T> {
+    return CursorPaginatorBuilder<K, T>(capacity).apply(block).build()
 }
 
 /**
  * DSL entry point for a [MutableCursorPaginator].
  */
-inline fun <T> mutableCursorPaginator(
+inline fun <K : Any, T> mutableCursorPaginator(
     capacity: Int = DEFAULT_CAPACITY,
-    block: MutableCursorPaginatorBuilder<T>.() -> Unit,
-): MutableCursorPaginator<T> {
-    return MutableCursorPaginatorBuilder<T>(capacity).apply(block).build()
+    block: MutableCursorPaginatorBuilder<K, T>.() -> Unit,
+): MutableCursorPaginator<K, T> {
+    return MutableCursorPaginatorBuilder<K, T>(capacity).apply(block).build()
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -56,51 +56,53 @@ inline fun <T> mutableCursorPaginator(
 // ──────────────────────────────────────────────────────────────────────────────
 
 @PaginatorDsl
-sealed class BaseCursorPaginatorBuilder<T> protected constructor(
+sealed class BaseCursorPaginatorBuilder<K : Any, T> protected constructor(
     @PublishedApi internal val capacity: Int,
 ) {
 
-    var cache: CursorPagingCache<T> = CursorInMemoryPagingCache<T>()
-    var persistentCache: CursorPersistentPagingCache<T>? = null
+    var cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>()
+    var persistentCache: CursorPersistentPagingCache<K, T>? = null
     var logger: PaginatorLogger? = null
     var recyclingBookmark: Boolean = false
-    var initialCursor: CursorBookmark? = null
+    var initialCursor: CursorBookmark<K>? = null
 
     @PublishedApi
-    internal var loadFn: (suspend CursorPaginator<T>.(cursor: CursorBookmark?) -> CursorLoadResult<T>)? =
+    internal var loadFn: (suspend CursorPaginator<K, T>.(cursor: CursorBookmark<K>?) -> CursorLoadResult<K, T>)? =
         null
 
     @PublishedApi
-    internal var bookmarks: List<CursorBookmark>? = null
+    internal var bookmarks: List<CursorBookmark<K>>? = null
 
     @PublishedApi
-    internal var initializersBuilder: CursorInitializersBuilder<T>? = null
+    internal var initializersBuilder: CursorInitializersBuilder<K, T>? = null
 
     /**
      * Sets the suspending [load] function used to fetch a page given an optional
      * cursor hint. **Required.**
      */
-    fun load(fn: suspend CursorPaginator<T>.(cursor: CursorBookmark?) -> CursorLoadResult<T>) {
+    fun load(fn: suspend CursorPaginator<K, T>.(cursor: CursorBookmark<K>?) -> CursorLoadResult<K, T>) {
         loadFn = fn
     }
 
     /** Replaces the bookmark list with the given [list]. Pass nothing to clear. */
-    fun bookmarks(list: List<CursorBookmark>) {
+    fun bookmarks(list: List<CursorBookmark<K>>) {
         bookmarks = list.toList()
     }
 
-    fun bookmarks(vararg cursors: CursorBookmark) {
+    fun bookmarks(vararg cursors: CursorBookmark<K>) {
         bookmarks = cursors.toList()
     }
 
-    fun initializers(block: CursorInitializersBuilder<T>.() -> Unit) {
+    fun initializers(block: CursorInitializersBuilder<K, T>.() -> Unit) {
         val builder =
-            initializersBuilder ?: CursorInitializersBuilder<T>().also { initializersBuilder = it }
+            initializersBuilder ?: CursorInitializersBuilder<K, T>().also {
+                initializersBuilder = it
+            }
         builder.block()
     }
 
     @PublishedApi
-    internal fun buildCore(): CursorPagingCore<T> {
+    internal fun buildCore(): CursorPagingCore<K, T> {
         return CursorPagingCore(
             cache = cache,
             persistentCache = persistentCache,
@@ -109,14 +111,14 @@ sealed class BaseCursorPaginatorBuilder<T> protected constructor(
     }
 
     @PublishedApi
-    internal fun resolveLoad(): suspend CursorPaginator<T>.(CursorBookmark?) -> CursorLoadResult<T> {
+    internal fun resolveLoad(): suspend CursorPaginator<K, T>.(CursorBookmark<K>?) -> CursorLoadResult<K, T> {
         return checkNotNull(loadFn) {
             "load { ... } block is required when building a cursor paginator"
         }
     }
 
     @PublishedApi
-    internal fun applyCommon(paginator: CursorPaginator<T>, core: CursorPagingCore<T>) {
+    internal fun applyCommon(paginator: CursorPaginator<K, T>, core: CursorPagingCore<K, T>) {
         paginator.recyclingBookmark = recyclingBookmark
         paginator.initialCursor = initialCursor
         logger?.let { paginator.logger = it }
@@ -132,24 +134,24 @@ sealed class BaseCursorPaginatorBuilder<T> protected constructor(
 //  Concrete builders
 // ──────────────────────────────────────────────────────────────────────────────
 
-class CursorPaginatorBuilder<T> @PublishedApi internal constructor(
+class CursorPaginatorBuilder<K : Any, T> @PublishedApi internal constructor(
     capacity: Int,
-) : BaseCursorPaginatorBuilder<T>(capacity) {
+) : BaseCursorPaginatorBuilder<K, T>(capacity) {
 
     @PublishedApi
-    internal fun build(): CursorPaginator<T> {
+    internal fun build(): CursorPaginator<K, T> {
         val load = resolveLoad()
         val core = buildCore()
         return CursorPaginator(core = core, load = load).also { applyCommon(it, core) }
     }
 }
 
-class MutableCursorPaginatorBuilder<T> @PublishedApi internal constructor(
+class MutableCursorPaginatorBuilder<K : Any, T> @PublishedApi internal constructor(
     capacity: Int,
-) : BaseCursorPaginatorBuilder<T>(capacity) {
+) : BaseCursorPaginatorBuilder<K, T>(capacity) {
 
     @PublishedApi
-    internal fun build(): MutableCursorPaginator<T> {
+    internal fun build(): MutableCursorPaginator<K, T> {
         val load = resolveLoad()
         val core = buildCore()
         return MutableCursorPaginator(core = core, load = load).also { applyCommon(it, core) }
@@ -161,25 +163,25 @@ class MutableCursorPaginatorBuilder<T> @PublishedApi internal constructor(
 // ──────────────────────────────────────────────────────────────────────────────
 
 @PaginatorDsl
-class CursorInitializersBuilder<T> @PublishedApi internal constructor() {
+class CursorInitializersBuilder<K : Any, T> @PublishedApi internal constructor() {
 
-    private var progress: InitializerProgressPage<T>? = null
-    private var success: InitializerSuccessPage<T>? = null
-    private var error: InitializerErrorPage<T>? = null
+    private var progress: InitializerCursorProgressPage<K, T>? = null
+    private var success: InitializerCursorSuccessPage<K, T>? = null
+    private var error: InitializerCursorErrorPage<K, T>? = null
 
-    fun progress(factory: InitializerProgressPage<T>) {
+    fun progress(factory: InitializerCursorProgressPage<K, T>) {
         progress = factory
     }
 
-    fun success(factory: InitializerSuccessPage<T>) {
+    fun success(factory: InitializerCursorSuccessPage<K, T>) {
         success = factory
     }
 
-    fun error(factory: InitializerErrorPage<T>) {
+    fun error(factory: InitializerCursorErrorPage<K, T>) {
         error = factory
     }
 
-    internal fun applyTo(core: CursorPagingCore<T>) {
+    internal fun applyTo(core: CursorPagingCore<K, T>) {
         progress?.let { core.initializerProgressPage = it }
         success?.let { core.initializerSuccessPage = it }
         error?.let { core.initializerErrorPage = it }

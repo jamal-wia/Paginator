@@ -1,14 +1,11 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.core.extension.isEmptyState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -23,11 +20,11 @@ class MutablePaginatorTest {
     @Test
     fun `test set get remove page state`() {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
-        val pageStates: MutableList<PageState<String>> =
+        val pageStates: MutableList<OffsetPageState<String>> =
             MutableList((100..500).random()) { index: Int ->
                 createRandomPageState(page = index, listOf("$index page"))
             }
-        pageStates.shuffled().forEach { pageState: PageState<String> ->
+        pageStates.shuffled().forEach { pageState: OffsetPageState<String> ->
             paginator.cache.setState(pageState, silently = true)
         }
 
@@ -35,10 +32,10 @@ class MutablePaginatorTest {
 
         assertEquals(pageStates, paginator.core.states)
         assertEquals(pageStates.map { it.page }, paginator.cache.pages)
-        pageStates.forEach { pageState: PageState<String> ->
+        pageStates.forEach { pageState: OffsetPageState<String> ->
             assertEquals(pageState, paginator[pageState.page])
         }
-        pageStates.forEach { pageState: PageState<String> ->
+        pageStates.forEach { pageState: OffsetPageState<String> ->
             val removed = paginator.removeState(pageState.page, silently = true)!!
             assertEquals(pageState.page, removed.page)
             assertEquals(pageState.data, removed.data)
@@ -54,7 +51,7 @@ class MutablePaginatorTest {
         }
         do {
             paginator.jump(BookmarkInt(page = 1))
-        } while (paginator[1] !is SuccessPage<*>)
+        } while (paginator[1] !is OffsetPageState.Success<*>)
         assertEquals(1, paginator.cache.size)
 
         do {
@@ -74,7 +71,7 @@ class MutablePaginatorTest {
         }
         do {
             paginator.jump(BookmarkInt(page = 10))
-        } while (paginator[10] !is SuccessPage<*>)
+        } while (paginator[10] !is OffsetPageState.Success<*>)
         assertEquals(1, paginator.cache.size)
 
         do {
@@ -94,15 +91,15 @@ class MutablePaginatorTest {
         }
         do {
             paginator.jump(BookmarkInt(page = 20))
-        } while (paginator[20] !is SuccessPage<*>)
+        } while (paginator[20] !is OffsetPageState.Success<*>)
         assertEquals(1, paginator.cache.size)
 
         do {
             paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        } while (paginator[40] !is SuccessPage<*>)
+        } while (paginator[40] !is OffsetPageState.Success<*>)
         do {
             paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
-        } while (paginator[1] !is SuccessPage<*>)
+        } while (paginator[1] !is OffsetPageState.Success<*>)
         assertEquals((1..40).toList(), paginator.cache.pages)
     }
 
@@ -112,15 +109,15 @@ class MutablePaginatorTest {
             core.resize(capacity = 1, resize = false, silently = true)
         }
         val data = listOf(
-            SuccessPage(page = 1, data = listOf("data of page")), // 0
-            SuccessPage(page = 2, data = listOf("data of page")), // 1
-            SuccessPage(page = 3, data = listOf("data of page")), // 2
-            SuccessPage(page = 11, data = listOf("data of page")), // 3
-            SuccessPage(page = 12, data = listOf("data of page")), // 4
-            SuccessPage(page = 13, data = listOf("data of page")), // 5
-            SuccessPage(page = 21, data = listOf("data of page")), // 6
-            SuccessPage(page = 22, data = listOf("data of page")), // 7
-            SuccessPage(page = 23, data = listOf("data of page")), // 8
+            OffsetPageState.Success(page = 1, data = listOf("data of page")), // 0
+            OffsetPageState.Success(page = 2, data = listOf("data of page")), // 1
+            OffsetPageState.Success(page = 3, data = listOf("data of page")), // 2
+            OffsetPageState.Success(page = 11, data = listOf("data of page")), // 3
+            OffsetPageState.Success(page = 12, data = listOf("data of page")), // 4
+            OffsetPageState.Success(page = 13, data = listOf("data of page")), // 5
+            OffsetPageState.Success(page = 21, data = listOf("data of page")), // 6
+            OffsetPageState.Success(page = 22, data = listOf("data of page")), // 7
+            OffsetPageState.Success(page = 23, data = listOf("data of page")), // 8
         )
 
         assertFalse(paginator.cache.isStarted)
@@ -215,15 +212,15 @@ class MutablePaginatorTest {
             core.resize(capacity = 1, resize = false, silently = true)
         }
         val data = listOf(
-            SuccessPage(page = 1, data = listOf("data of page")), // 0
-            SuccessPage(page = 2, data = listOf("data of page")), // 1
-            SuccessPage(page = 3, data = listOf("data of page")), // 2
-            SuccessPage(page = 11, data = listOf("data of page")), // 3
-            SuccessPage(page = 12, data = listOf("data of page")), // 4
-            SuccessPage(page = 13, data = listOf("data of page")), // 5
-            SuccessPage(page = 21, data = listOf("data of page")), // 6
-            SuccessPage(page = 22, data = listOf("data of page")), // 7
-            SuccessPage(page = 23, data = listOf("data of page")), // 8
+            OffsetPageState.Success(page = 1, data = listOf("data of page")), // 0
+            OffsetPageState.Success(page = 2, data = listOf("data of page")), // 1
+            OffsetPageState.Success(page = 3, data = listOf("data of page")), // 2
+            OffsetPageState.Success(page = 11, data = listOf("data of page")), // 3
+            OffsetPageState.Success(page = 12, data = listOf("data of page")), // 4
+            OffsetPageState.Success(page = 13, data = listOf("data of page")), // 5
+            OffsetPageState.Success(page = 21, data = listOf("data of page")), // 6
+            OffsetPageState.Success(page = 22, data = listOf("data of page")), // 7
+            OffsetPageState.Success(page = 23, data = listOf("data of page")), // 8
         )
         assertFalse(paginator.cache.isStarted)
         assertEquals(0, paginator.cache.size)
@@ -268,16 +265,16 @@ class MutablePaginatorTest {
         paginator.finalPage = 3
 
         // Jump to page 1
-        val page1: PageState<String> = paginator.jump(BookmarkInt(1)).second
+        val page1: OffsetPageState<String> = paginator.jump(BookmarkInt(1)).second
         assertTrue(page1.isSuccessState())
 
         // Go to page 2
-        val page2: PageState<String> = paginator.goNextPage()
+        val page2: OffsetPageState<String> = paginator.goNextPage()
         assertTrue(page2.isSuccessState())
         assertEquals(2, page2.page)
 
         // Go to page 3 (finalPage)
-        val page3: PageState<String> = paginator.goNextPage()
+        val page3: OffsetPageState<String> = paginator.goNextPage()
         assertTrue(page3.isSuccessState())
         assertEquals(3, page3.page)
 
@@ -300,12 +297,12 @@ class MutablePaginatorTest {
         paginator.finalPage = 5
 
         // Jump to page 3 should work
-        val page3: PageState<String> = paginator.jump(BookmarkInt(3)).second
+        val page3: OffsetPageState<String> = paginator.jump(BookmarkInt(3)).second
         assertTrue(page3.isSuccessState())
         assertEquals(3, page3.page)
 
         // Jump to page 5 (finalPage) should work
-        val page5: PageState<String> = paginator.jump(BookmarkInt(5)).second
+        val page5: OffsetPageState<String> = paginator.jump(BookmarkInt(5)).second
         assertTrue(page5.isSuccessState())
         assertEquals(5, page5.page)
 
@@ -334,7 +331,7 @@ class MutablePaginatorTest {
 
         // Jump to a high page number should work (page 100)
         val page100 = paginator.jump(BookmarkInt(100)).second
-        // Should be an empty SuccessPage since our source returns empty list for page > 10
+        // Should be an empty OffsetPageState.Success since our source returns empty list for page > 10
         assertTrue(page100.isEmptyState())
         assertEquals(100, page100.page)
 
@@ -359,11 +356,11 @@ private data object Source {
     }
 }
 
-private fun <T> createRandomPageState(page: Int, data: List<T>): PageState<T> {
+private fun <T> createRandomPageState(page: Int, data: List<T>): OffsetPageState<T> {
     return when ((0..100).random()) {
-        in 0..24 -> ProgressPage(page, data)
-        in 25..49 -> SuccessPage(page, emptyList())
-        in 50..75 -> ErrorPage(Exception(), page, data)
-        else -> SuccessPage(page, data)
+        in 0..24 -> OffsetPageState.Progress(page, data)
+        in 25..49 -> OffsetPageState.Success(page, emptyList())
+        in 50..75 -> OffsetPageState.Error(Exception(), page, data)
+        else -> OffsetPageState.Success(page, data)
     }
 }

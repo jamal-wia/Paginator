@@ -2,7 +2,7 @@ package com.jamal_aliev.paginator.cursor.extension
 
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 // ── Search ─────────────────────────────────────────────────────────────────
 
@@ -10,10 +10,11 @@ import com.jamal_aliev.paginator.core.page.PageState
  * Returns the first element across all cached pages that satisfies [predicate],
  * or `null` if no element matches.
  */
-inline fun <T> CursorPaginator<T>.find(predicate: (T) -> Boolean): T? = getElement(predicate)
+inline fun <K : Any, T> CursorPaginator<K, T>.find(predicate: (T) -> Boolean): T? =
+    getElement(predicate)
 
 /** Historical alias for [find]. */
-inline fun <T> CursorPaginator<T>.getElement(predicate: (T) -> Boolean): T? {
+inline fun <K : Any, T> CursorPaginator<K, T>.getElement(predicate: (T) -> Boolean): T? {
     for (state in core.states) {
         for (element in state.data) {
             if (predicate(element)) return element
@@ -26,9 +27,9 @@ inline fun <T> CursorPaginator<T>.getElement(predicate: (T) -> Boolean): T? {
  * Returns the first `(cursor, index)` pair whose element satisfies [predicate],
  * or `null` if none does.
  */
-inline fun <T> CursorPaginator<T>.indexOfFirst(
+inline fun <K : Any, T> CursorPaginator<K, T>.indexOfFirst(
     predicate: (T) -> Boolean,
-): Pair<CursorBookmark, Int>? {
+): Pair<CursorBookmark<K>, Int>? {
     for (cursor in core.cursors) {
         val state = cache.getStateOf(cursor.self) ?: continue
         val idx = state.data.indexOfFirst(predicate)
@@ -40,10 +41,10 @@ inline fun <T> CursorPaginator<T>.indexOfFirst(
 /**
  * Like [indexOfFirst] but restricted to a single page identified by [self].
  */
-inline fun <T> CursorPaginator<T>.indexOfFirst(
-    self: Any,
+inline fun <K : Any, T> CursorPaginator<K, T>.indexOfFirst(
+    self: K,
     predicate: (T) -> Boolean,
-): Pair<CursorBookmark, Int>? {
+): Pair<CursorBookmark<K>, Int>? {
     val cursor = cache.getCursorOf(self) ?: return null
     val state = cache.getStateOf(self) ?: return null
     val idx = state.data.indexOfFirst(predicate)
@@ -54,9 +55,9 @@ inline fun <T> CursorPaginator<T>.indexOfFirst(
 /**
  * Returns the last `(cursor, index)` pair whose element satisfies [predicate].
  */
-inline fun <T> CursorPaginator<T>.indexOfLast(
+inline fun <K : Any, T> CursorPaginator<K, T>.indexOfLast(
     predicate: (T) -> Boolean,
-): Pair<CursorBookmark, Int>? {
+): Pair<CursorBookmark<K>, Int>? {
     val cursors = core.cursors
     for (i in cursors.indices.reversed()) {
         val cursor = cursors[i]
@@ -68,7 +69,7 @@ inline fun <T> CursorPaginator<T>.indexOfLast(
 }
 
 /** Returns the last matching element, or `null` if none matches. */
-inline fun <T> CursorPaginator<T>.findLast(predicate: (T) -> Boolean): T? {
+inline fun <K : Any, T> CursorPaginator<K, T>.findLast(predicate: (T) -> Boolean): T? {
     val cursors = core.cursors
     for (i in cursors.indices.reversed()) {
         val state = cache.getStateOf(cursors[i].self) ?: continue
@@ -83,7 +84,7 @@ inline fun <T> CursorPaginator<T>.findLast(predicate: (T) -> Boolean): T? {
 
 // ── Predicates ─────────────────────────────────────────────────────────────
 
-inline fun <T> CursorPaginator<T>.any(predicate: (T) -> Boolean): Boolean {
+inline fun <K : Any, T> CursorPaginator<K, T>.any(predicate: (T) -> Boolean): Boolean {
     for (state in core.states) {
         for (element in state.data) {
             if (predicate(element)) return true
@@ -92,9 +93,10 @@ inline fun <T> CursorPaginator<T>.any(predicate: (T) -> Boolean): Boolean {
     return false
 }
 
-inline fun <T> CursorPaginator<T>.none(predicate: (T) -> Boolean): Boolean = !any(predicate)
+inline fun <K : Any, T> CursorPaginator<K, T>.none(predicate: (T) -> Boolean): Boolean =
+    !any(predicate)
 
-inline fun <T> CursorPaginator<T>.all(predicate: (T) -> Boolean): Boolean {
+inline fun <K : Any, T> CursorPaginator<K, T>.all(predicate: (T) -> Boolean): Boolean {
     for (state in core.states) {
         for (element in state.data) {
             if (!predicate(element)) return false
@@ -103,7 +105,7 @@ inline fun <T> CursorPaginator<T>.all(predicate: (T) -> Boolean): Boolean {
     return true
 }
 
-inline fun <T> CursorPaginator<T>.count(predicate: (T) -> Boolean = { true }): Int {
+inline fun <K : Any, T> CursorPaginator<K, T>.count(predicate: (T) -> Boolean = { true }): Int {
     var total = 0
     for (state in core.states) {
         for (element in state.data) {
@@ -115,12 +117,12 @@ inline fun <T> CursorPaginator<T>.count(predicate: (T) -> Boolean = { true }): I
 
 // ── Positional access ──────────────────────────────────────────────────────
 
-fun <T> CursorPaginator<T>.firstOrNull(): T? {
+fun <K : Any, T> CursorPaginator<K, T>.firstOrNull(): T? {
     for (state in core.states) if (state.data.isNotEmpty()) return state.data.first()
     return null
 }
 
-fun <T> CursorPaginator<T>.lastOrNull(): T? {
+fun <K : Any, T> CursorPaginator<K, T>.lastOrNull(): T? {
     val states = core.states
     for (i in states.indices.reversed()) {
         val data = states[i].data
@@ -134,7 +136,7 @@ fun <T> CursorPaginator<T>.lastOrNull(): T? {
  * or `null` if out of bounds. O(N) because there is no random access in the
  * cursor-based layout.
  */
-fun <T> CursorPaginator<T>.elementAtOrNull(globalIndex: Int): T? {
+fun <K : Any, T> CursorPaginator<K, T>.elementAtOrNull(globalIndex: Int): T? {
     if (globalIndex < 0) return null
     var skipped = 0
     for (state in core.states) {
@@ -147,7 +149,7 @@ fun <T> CursorPaginator<T>.elementAtOrNull(globalIndex: Int): T? {
 
 // ── Transformation ─────────────────────────────────────────────────────────
 
-fun <T> CursorPaginator<T>.flatten(): List<T> {
+fun <K : Any, T> CursorPaginator<K, T>.flatten(): List<T> {
     val states = core.states
     var totalSize = 0
     for (state in states) totalSize += state.data.size
@@ -156,7 +158,7 @@ fun <T> CursorPaginator<T>.flatten(): List<T> {
     return result
 }
 
-inline fun <T, R> CursorPaginator<T>.flatMap(transform: (T) -> Iterable<R>): List<R> {
+inline fun <K : Any, T, R> CursorPaginator<K, T>.flatMap(transform: (T) -> Iterable<R>): List<R> {
     val result = mutableListOf<R>()
     for (state in core.states) {
         for (element in state.data) result.addAll(transform(element))
@@ -164,8 +166,8 @@ inline fun <T, R> CursorPaginator<T>.flatMap(transform: (T) -> Iterable<R>): Lis
     return result
 }
 
-inline fun <T, R> CursorPaginator<T>.mapPages(
-    transform: (cursor: CursorBookmark, state: PageState<T>) -> R,
+inline fun <K : Any, T, R> CursorPaginator<K, T>.mapPages(
+    transform: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>) -> R,
 ): List<R> {
     val cursors = core.cursors
     val result = ArrayList<R>(cursors.size)
@@ -176,7 +178,7 @@ inline fun <T, R> CursorPaginator<T>.mapPages(
     return result
 }
 
-inline fun <T> CursorPaginator<T>.forEachIndexed(
+inline fun <K : Any, T> CursorPaginator<K, T>.forEachIndexed(
     action: (globalIndex: Int, element: T) -> Unit,
 ) {
     var index = 0
@@ -190,13 +192,13 @@ inline fun <T> CursorPaginator<T>.forEachIndexed(
 
 // ── Operators / properties ─────────────────────────────────────────────────
 
-operator fun <T> CursorPaginator<T>.contains(element: T): Boolean {
+operator fun <K : Any, T> CursorPaginator<K, T>.contains(element: T): Boolean {
     for (state in core.states) if (element in state.data) return true
     return false
 }
 
-val <T> CursorPaginator<T>.loadedItemsCount: Int
+val <K : Any, T> CursorPaginator<K, T>.loadedItemsCount: Int
     get() = count()
 
-val <T> CursorPaginator<T>.loadedPagesCount: Int
+val <K : Any, T> CursorPaginator<K, T>.loadedPagesCount: Int
     get() = core.size

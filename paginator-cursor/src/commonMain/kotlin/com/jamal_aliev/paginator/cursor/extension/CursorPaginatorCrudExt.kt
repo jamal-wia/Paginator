@@ -3,7 +3,7 @@ package com.jamal_aliev.paginator.cursor.extension
 import com.jamal_aliev.paginator.cursor.MutableCursorPaginator
 import com.jamal_aliev.paginator.cursor.MutableCursorPaginator.CursorBookmarkFactory
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 // ──────────────────────────────────────────────────────────────────────────
 //  Append / prepend / set / remove
@@ -14,13 +14,13 @@ import com.jamal_aliev.paginator.core.page.PageState
  *
  * Returns `false` if the cache is empty and the element could not be appended.
  */
-fun <T> MutableCursorPaginator<T>.addElement(
+fun <K : Any, T> MutableCursorPaginator<K, T>.addElement(
     element: T,
     silently: Boolean = false,
-    bookmarkFactory: CursorBookmarkFactory? = null,
-    initPageState: ((previous: CursorBookmark, data: List<T>) -> PageState<T>)? = null,
+    bookmarkFactory: CursorBookmarkFactory<K>? = null,
+    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? = null,
 ): Boolean {
-    val tail: CursorBookmark = core.tailCursor() ?: return false
+    val tail: CursorBookmark<K> = core.tailCursor() ?: return false
     val tailData: List<T> = cache.getStateOf(tail.self)?.data ?: return false
     addElement(
         element = element,
@@ -36,13 +36,13 @@ fun <T> MutableCursorPaginator<T>.addElement(
 /**
  * Inserts [element] into the page identified by [self] at [index].
  */
-fun <T> MutableCursorPaginator<T>.addElement(
+fun <K : Any, T> MutableCursorPaginator<K, T>.addElement(
     element: T,
-    self: Any,
+    self: K,
     index: Int,
     silently: Boolean = false,
-    bookmarkFactory: CursorBookmarkFactory? = null,
-    initPageState: ((previous: CursorBookmark, data: List<T>) -> PageState<T>)? = null,
+    bookmarkFactory: CursorBookmarkFactory<K>? = null,
+    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? = null,
 ) {
     addAllElements(
         elements = listOf(element),
@@ -59,13 +59,13 @@ fun <T> MutableCursorPaginator<T>.addElement(
  *
  * Overflow is cascaded via `addAllElements`.
  */
-fun <T> MutableCursorPaginator<T>.prependElement(
+fun <K : Any, T> MutableCursorPaginator<K, T>.prependElement(
     element: T,
     silently: Boolean = false,
-    bookmarkFactory: CursorBookmarkFactory? = null,
-    initPageState: ((previous: CursorBookmark, data: List<T>) -> PageState<T>)? = null,
+    bookmarkFactory: CursorBookmarkFactory<K>? = null,
+    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? = null,
 ): Boolean {
-    val head: CursorBookmark = core.headCursor() ?: return false
+    val head: CursorBookmark<K> = core.headCursor() ?: return false
     addAllElements(
         elements = listOf(element),
         targetSelf = head.self,
@@ -80,7 +80,7 @@ fun <T> MutableCursorPaginator<T>.prependElement(
 /**
  * Replaces the first element matching [predicate] with [element].
  */
-inline fun <T> MutableCursorPaginator<T>.setElement(
+inline fun <K : Any, T> MutableCursorPaginator<K, T>.setElement(
     element: T,
     silently: Boolean = false,
     predicate: (T) -> Boolean,
@@ -97,7 +97,7 @@ inline fun <T> MutableCursorPaginator<T>.setElement(
 /**
  * Removes the first element matching [predicate] from anywhere in the cache.
  */
-fun <T> MutableCursorPaginator<T>.removeElement(predicate: (T) -> Boolean): T? {
+fun <K : Any, T> MutableCursorPaginator<K, T>.removeElement(predicate: (T) -> Boolean): T? {
     val (cursor, idx) = indexOfFirst(predicate) ?: return null
     return removeElement(self = cursor.self, index = idx)
 }
@@ -105,8 +105,11 @@ fun <T> MutableCursorPaginator<T>.removeElement(predicate: (T) -> Boolean): T? {
 /**
  * Removes the first element matching [predicate] from the page identified by [self].
  */
-fun <T> MutableCursorPaginator<T>.removeElement(self: Any, predicate: (T) -> Boolean): T? {
-    val state: PageState<T> = cache.getStateOf(self) ?: return null
+fun <K : Any, T> MutableCursorPaginator<K, T>.removeElement(
+    self: K,
+    predicate: (T) -> Boolean
+): T? {
+    val state: CursorPageState<K, T> = cache.getStateOf(self) ?: return null
     for ((index, element) in state.data.withIndex()) {
         if (predicate(element)) {
             return removeElement(self = self, index = index)
@@ -119,9 +122,9 @@ fun <T> MutableCursorPaginator<T>.removeElement(self: Any, predicate: (T) -> Boo
 //  Swap / move / insertBefore / insertAfter / bulk transforms
 // ──────────────────────────────────────────────────────────────────────────
 
-fun <T> MutableCursorPaginator<T>.swapElements(
-    aSelf: Any, aIndex: Int,
-    bSelf: Any, bIndex: Int,
+fun <K : Any, T> MutableCursorPaginator<K, T>.swapElements(
+    aSelf: K, aIndex: Int,
+    bSelf: K, bIndex: Int,
     silently: Boolean = false,
 ) {
     if (aSelf == bSelf && aIndex == bIndex) return
@@ -136,11 +139,11 @@ fun <T> MutableCursorPaginator<T>.swapElements(
     if (!silently) core.snapshot()
 }
 
-fun <T> MutableCursorPaginator<T>.moveElement(
-    fromSelf: Any, fromIndex: Int,
-    toSelf: Any, toIndex: Int,
+fun <K : Any, T> MutableCursorPaginator<K, T>.moveElement(
+    fromSelf: K, fromIndex: Int,
+    toSelf: K, toIndex: Int,
     silently: Boolean = false,
-    bookmarkFactory: CursorBookmarkFactory? = null,
+    bookmarkFactory: CursorBookmarkFactory<K>? = null,
 ) {
     if (fromSelf == toSelf && fromIndex == toIndex) return
 
@@ -168,7 +171,7 @@ fun <T> MutableCursorPaginator<T>.moveElement(
     if (!silently) core.snapshot()
 }
 
-inline fun <T> MutableCursorPaginator<T>.insertBefore(
+inline fun <K : Any, T> MutableCursorPaginator<K, T>.insertBefore(
     element: T,
     silently: Boolean = false,
     predicate: (T) -> Boolean,
@@ -183,7 +186,7 @@ inline fun <T> MutableCursorPaginator<T>.insertBefore(
     return true
 }
 
-inline fun <T> MutableCursorPaginator<T>.insertAfter(
+inline fun <K : Any, T> MutableCursorPaginator<K, T>.insertAfter(
     element: T,
     silently: Boolean = false,
     predicate: (T) -> Boolean,
@@ -198,7 +201,7 @@ inline fun <T> MutableCursorPaginator<T>.insertAfter(
     return true
 }
 
-inline fun <T> MutableCursorPaginator<T>.removeAll(
+inline fun <K : Any, T> MutableCursorPaginator<K, T>.removeAll(
     silently: Boolean = false,
     predicate: (T) -> Boolean,
 ): Int {
@@ -216,12 +219,12 @@ inline fun <T> MutableCursorPaginator<T>.removeAll(
     return removed
 }
 
-inline fun <T> MutableCursorPaginator<T>.retainAll(
+inline fun <K : Any, T> MutableCursorPaginator<K, T>.retainAll(
     silently: Boolean = false,
     predicate: (T) -> Boolean,
 ): Int = removeAll(silently = silently) { !predicate(it) }
 
-inline fun <T> MutableCursorPaginator<T>.distinctBy(
+inline fun <K : Any, T> MutableCursorPaginator<K, T>.distinctBy(
     silently: Boolean = false,
     crossinline selector: (T) -> Any?,
 ): Int {
@@ -229,7 +232,7 @@ inline fun <T> MutableCursorPaginator<T>.distinctBy(
     return removeAll(silently = silently) { !seen.add(selector(it)) }
 }
 
-inline fun <T> MutableCursorPaginator<T>.updateAll(
+inline fun <K : Any, T> MutableCursorPaginator<K, T>.updateAll(
     silently: Boolean = false,
     transform: (T) -> T,
 ) {
@@ -240,7 +243,7 @@ inline fun <T> MutableCursorPaginator<T>.updateAll(
     )
 }
 
-inline fun <T> MutableCursorPaginator<T>.updateWhere(
+inline fun <K : Any, T> MutableCursorPaginator<K, T>.updateWhere(
     silently: Boolean = false,
     predicate: (T) -> Boolean,
     transform: (T) -> T,

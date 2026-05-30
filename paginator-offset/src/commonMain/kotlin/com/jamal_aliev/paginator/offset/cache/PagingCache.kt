@@ -1,7 +1,7 @@
-package com.jamal_aliev.paginator.core.cache
+package com.jamal_aliev.paginator.offset.cache
 
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 /**
  * A minimal interface exposing only the cache operations needed by eviction strategies.
@@ -44,16 +44,16 @@ interface PagingCache<T> {
     var endContextPage: Int
 
     /** Stores a page state in the cache (replaces existing if present). */
-    fun setState(state: PageState<T>, silently: Boolean = false)
+    fun setState(state: OffsetPageState<T>, silently: Boolean = false)
 
     /** Retrieves the cached state for [page], or `null` if not cached. */
-    fun getStateOf(page: Int): PageState<T>?
+    fun getStateOf(page: Int): OffsetPageState<T>?
 
     /** Returns a single element at [index] within [page], or `null` if not found. */
     fun getElement(page: Int, index: Int): T?
 
     /** Removes [page] from the cache and returns its state, or `null` if absent. */
-    fun removeFromCache(page: Int): PageState<T>?
+    fun removeFromCache(page: Int): OffsetPageState<T>?
 
     /** Removes all pages from the cache. */
     fun clear()

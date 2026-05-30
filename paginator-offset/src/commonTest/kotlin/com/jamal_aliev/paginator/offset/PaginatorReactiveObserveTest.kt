@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.cache.reactive.InitialSyncPolicy
 import com.jamal_aliev.paginator.core.cache.reactive.InsertPosition
 import com.jamal_aliev.paginator.core.cache.reactive.PaginatorReactiveCache
 import com.jamal_aliev.paginator.core.cache.reactive.ReactiveEvent
 import com.jamal_aliev.paginator.core.cache.reactive.UnknownItemPolicy
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.extension.observe
 import com.jamal_aliev.paginator.offset.load.LoadResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi

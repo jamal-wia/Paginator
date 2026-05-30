@@ -8,14 +8,13 @@ import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import com.jamal_aliev.paginator.compose.cursor.internal.rememberCursorPaginatorDataItemCount
+import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.compose.cursor.internal.rememberCursorPaginatorDataItemCount
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.prefetch.CursorLoadGuard
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
-import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
-import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 
 /**
  * Holder that owns the prefetch controller and live header/footer counts for a `LazyColumn`
@@ -107,13 +106,13 @@ fun LazyListScope.paginated(
 
 /** Cursor-paginator counterpart of [Paginator.rememberPaginated]. */
 @Composable
-fun <T> CursorPaginator<T>.rememberPaginated(
+fun <K : Any, T> CursorPaginator<K, T>.rememberPaginated(
     state: LazyListState,
     options: PrefetchOptions = PrefetchOptions(),
     restartKey: Any? = null,
     onPrefetchError: ((Exception) -> Unit)? = null,
-    loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
-): PaginatedLazyListHolder<CursorPaginatorPrefetchController<T>> {
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
+): PaginatedLazyListHolder<CursorPaginatorPrefetchController<K, T>> {
     val controller = rememberPrefetchController(
         prefetchDistance = options.prefetchDistance,
         enableBackwardPrefetch = options.enableBackwardPrefetch,
@@ -121,7 +120,12 @@ fun <T> CursorPaginator<T>.rememberPaginated(
         silentlyResult = options.silentlyResult,
         enabled = options.enabled,
         cancelOnDispose = options.cancelOnDispose,
-        loadGuard = { cursor: CursorBookmark, st: PageState<T>? -> loadGuard(cursor, st) },
+        loadGuard = { cursor: CursorBookmark<K>, st: CursorPageState<K, T>? ->
+            loadGuard(
+                cursor,
+                st
+            )
+        },
         onPrefetchError = onPrefetchError,
     )
     val holder = remember(controller) { PaginatedLazyListHolder(controller) }

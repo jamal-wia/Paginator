@@ -11,14 +11,13 @@ import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import com.jamal_aliev.paginator.compose.cursor.internal.rememberCursorPaginatorDataItemCount
+import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.compose.cursor.internal.rememberCursorPaginatorDataItemCount
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.prefetch.CursorLoadGuard
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
-import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
-import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 
 /** `LazyStaggeredGrid` analogue of [PaginatedLazyListHolder] — see that type for the contract. */
 @Stable
@@ -91,7 +90,7 @@ class PaginatedLazyStaggeredGridScope @PublishedApi internal constructor(
 }
 
 /** `items(List<T>, …)` shortcut for [PaginatedLazyStaggeredGridScope]. */
-inline fun <T> PaginatedLazyStaggeredGridScope.items(
+inline fun <K : Any, T> PaginatedLazyStaggeredGridScope.items(
     items: List<T>,
     noinline key: ((item: T) -> Any)? = null,
     noinline contentType: (item: T) -> Any? = { null },
@@ -106,7 +105,7 @@ inline fun <T> PaginatedLazyStaggeredGridScope.items(
 )
 
 /** `itemsIndexed(List<T>, …)` shortcut for [PaginatedLazyStaggeredGridScope]. */
-inline fun <T> PaginatedLazyStaggeredGridScope.itemsIndexed(
+inline fun <K : Any, T> PaginatedLazyStaggeredGridScope.itemsIndexed(
     items: List<T>,
     noinline key: ((index: Int, item: T) -> Any)? = null,
     crossinline contentType: (index: Int, item: T) -> Any? = { _, _ -> null },
@@ -137,13 +136,13 @@ fun LazyStaggeredGridScope.paginated(
 
 /** Cursor-paginator counterpart of [Paginator.rememberPaginated] for staggered grids. */
 @Composable
-fun <T> CursorPaginator<T>.rememberPaginated(
+fun <K : Any, T> CursorPaginator<K, T>.rememberPaginated(
     state: LazyStaggeredGridState,
     options: PrefetchOptions = PrefetchOptions(),
     restartKey: Any? = null,
     onPrefetchError: ((Exception) -> Unit)? = null,
-    loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
-): PaginatedLazyStaggeredGridHolder<CursorPaginatorPrefetchController<T>> {
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
+): PaginatedLazyStaggeredGridHolder<CursorPaginatorPrefetchController<K, T>> {
     val controller = rememberPrefetchController(
         prefetchDistance = options.prefetchDistance,
         enableBackwardPrefetch = options.enableBackwardPrefetch,
@@ -151,7 +150,12 @@ fun <T> CursorPaginator<T>.rememberPaginated(
         silentlyResult = options.silentlyResult,
         enabled = options.enabled,
         cancelOnDispose = options.cancelOnDispose,
-        loadGuard = { cursor: CursorBookmark, st: PageState<T>? -> loadGuard(cursor, st) },
+        loadGuard = { cursor: CursorBookmark<K>, st: CursorPageState<K, T>? ->
+            loadGuard(
+                cursor,
+                st
+            )
+        },
         onPrefetchError = onPrefetchError,
     )
     val holder = remember(controller) { PaginatedLazyStaggeredGridHolder(controller) }

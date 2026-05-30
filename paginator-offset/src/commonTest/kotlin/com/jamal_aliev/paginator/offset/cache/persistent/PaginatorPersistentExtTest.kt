@@ -1,15 +1,14 @@
 package com.jamal_aliev.paginator.offset.cache.persistent
 
-import com.jamal_aliev.paginator.core.cache.PagingCache
-import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.PagingCore
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
 import com.jamal_aliev.paginator.offset.extension.warmUpFromPersistent
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -27,15 +26,15 @@ import kotlin.test.assertTrue
 class PaginatorPersistentExtTest {
 
     private class InMemoryPersistentCache<T> : PersistentPagingCache<T> {
-        val store = mutableMapOf<Int, PageState<T>>()
+        val store = mutableMapOf<Int, OffsetPageState<T>>()
 
-        override suspend fun save(state: PageState<T>) {
+        override suspend fun save(state: OffsetPageState<T>) {
             store[state.page] = state.copy(data = state.data.toMutableList())
         }
 
-        override suspend fun load(page: Int): PageState<T>? = store[page]
+        override suspend fun load(page: Int): OffsetPageState<T>? = store[page]
 
-        override suspend fun loadAll(): List<PageState<T>> = store.values.toList()
+        override suspend fun loadAll(): List<OffsetPageState<T>> = store.values.toList()
 
         override suspend fun remove(page: Int) {
             store.remove(page)
@@ -200,9 +199,9 @@ class PaginatorPersistentExtTest {
     @Test
     fun `warmUpFromPersistent populates L1 with every persisted page`() = runTest {
         val persistent = InMemoryPersistentCache<String>()
-        persistent.save(PageState.SuccessPage(1, mutableListOf("a", "b")))
-        persistent.save(PageState.SuccessPage(2, mutableListOf("c", "d")))
-        persistent.save(PageState.SuccessPage(3, mutableListOf("e", "f")))
+        persistent.save(OffsetPageState.Success(1, mutableListOf("a", "b")))
+        persistent.save(OffsetPageState.Success(2, mutableListOf("c", "d")))
+        persistent.save(OffsetPageState.Success(3, mutableListOf("e", "f")))
 
         val p = paginator(persistent = persistent)
         val inserted = p.warmUpFromPersistent()
@@ -216,13 +215,13 @@ class PaginatorPersistentExtTest {
     @Test
     fun `warmUpFromPersistent does not overwrite pages already in L1`() = runTest {
         val persistent = InMemoryPersistentCache<String>()
-        persistent.save(PageState.SuccessPage(1, mutableListOf("persisted")))
-        persistent.save(PageState.SuccessPage(2, mutableListOf("fresh")))
+        persistent.save(OffsetPageState.Success(1, mutableListOf("persisted")))
+        persistent.save(OffsetPageState.Success(2, mutableListOf("fresh")))
 
         val p = paginator(persistent = persistent)
         // Seed L1 manually with a different value for page 1.
         p.cache.setState(
-            PageState.SuccessPage(1, mutableListOf("in-memory")),
+            OffsetPageState.Success(1, mutableListOf("in-memory")),
             silently = true,
         )
 
@@ -241,8 +240,8 @@ class PaginatorPersistentExtTest {
     fun `warmUpFromPersistent followed by jump into warmed page does not call source`() =
         runTest {
             val persistent = InMemoryPersistentCache<String>()
-            persistent.save(PageState.SuccessPage(1, mutableListOf("a", "b", "c")))
-            persistent.save(PageState.SuccessPage(2, mutableListOf("d", "e", "f")))
+            persistent.save(OffsetPageState.Success(1, mutableListOf("a", "b", "c")))
+            persistent.save(OffsetPageState.Success(2, mutableListOf("d", "e", "f")))
 
             val sourceCalls = mutableListOf<Int>()
             val p = paginator(persistent = persistent, sourceCallTracker = sourceCalls)
@@ -265,8 +264,8 @@ class PaginatorPersistentExtTest {
     @Test
     fun `warmUpFromPersistent with pageRange emits a snapshot`() = runTest {
         val persistent = InMemoryPersistentCache<String>()
-        persistent.save(PageState.SuccessPage(1, mutableListOf("a", "b", "c")))
-        persistent.save(PageState.SuccessPage(2, mutableListOf("d", "e", "f")))
+        persistent.save(OffsetPageState.Success(1, mutableListOf("a", "b", "c")))
+        persistent.save(OffsetPageState.Success(2, mutableListOf("d", "e", "f")))
 
         val p = paginator(persistent = persistent)
         p.warmUpFromPersistent(pageRange = 1..2)
@@ -279,7 +278,7 @@ class PaginatorPersistentExtTest {
     @Test
     fun `warmUpFromPersistent without pageRange emits no snapshot`() = runTest {
         val persistent = InMemoryPersistentCache<String>()
-        persistent.save(PageState.SuccessPage(1, mutableListOf("a")))
+        persistent.save(OffsetPageState.Success(1, mutableListOf("a")))
 
         val p = paginator(persistent = persistent)
         p.warmUpFromPersistent()
@@ -293,7 +292,7 @@ class PaginatorPersistentExtTest {
         val persistent = InMemoryPersistentCache<String>()
         repeat(5) { idx ->
             val page = idx + 1
-            persistent.save(PageState.SuccessPage(page, mutableListOf("p$page")))
+            persistent.save(OffsetPageState.Success(page, mutableListOf("p$page")))
         }
 
         val lru = MostRecentPagingCache<String>(maxSize = 3, protectContextWindow = false)
@@ -309,8 +308,8 @@ class PaginatorPersistentExtTest {
     @Test
     fun `warmUpFromPersistent does not mark pages as affected`() = runTest {
         val persistent = InMemoryPersistentCache<String>()
-        persistent.save(PageState.SuccessPage(1, mutableListOf("a")))
-        persistent.save(PageState.SuccessPage(2, mutableListOf("b")))
+        persistent.save(OffsetPageState.Success(1, mutableListOf("a")))
+        persistent.save(OffsetPageState.Success(2, mutableListOf("b")))
 
         val p = paginator(persistent = persistent)
         p.warmUpFromPersistent()

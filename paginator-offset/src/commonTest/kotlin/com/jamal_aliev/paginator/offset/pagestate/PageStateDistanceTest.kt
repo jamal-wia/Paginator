@@ -1,10 +1,10 @@
-package com.jamal_aliev.paginator.core.pagestate
+package com.jamal_aliev.paginator.offset.pagestate
 
-import com.jamal_aliev.paginator.core.extension.far
-import com.jamal_aliev.paginator.core.extension.gap
-import com.jamal_aliev.paginator.core.extension.near
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+
+import com.jamal_aliev.paginator.offset.extension.far
+import com.jamal_aliev.paginator.offset.extension.gap
+import com.jamal_aliev.paginator.offset.extension.near
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -12,8 +12,8 @@ import kotlin.test.assertTrue
 
 class PageStateDistanceTest {
 
-    private fun state(page: Int): PageState<String> =
-        SuccessPage(page = page, data = listOf("data"))
+    private fun state(page: Int): OffsetPageState<String> =
+        OffsetPageState.Success(page = page, data = listOf("data"))
 
     @Test
     fun `gap returns zero for same page`() {

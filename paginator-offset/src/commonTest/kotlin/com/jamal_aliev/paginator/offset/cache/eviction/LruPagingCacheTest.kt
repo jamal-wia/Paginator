@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -24,8 +24,8 @@ class MostRecentPagingCacheTest {
     private fun successPage(
         page: Int,
         data: List<String> = listOf("item_$page")
-    ): PageState.SuccessPage<String> {
-        return PageState.SuccessPage(page = page, data = data)
+    ): OffsetPageState.Success<String> {
+        return OffsetPageState.Success(page = page, data = data)
     }
 
     // -- 1. Eviction in LRU order --
@@ -143,9 +143,9 @@ class MostRecentPagingCacheTest {
 
     @Test
     fun `evictionListener is called with correct page state`() {
-        val evicted = mutableListOf<PageState<String>>()
+        val evicted = mutableListOf<OffsetPageState<String>>()
         val core = createCore(maxSize = 2)
-        core.evictionListener = CacheEvictionListener { evicted.add(it) }
+        core.evictionListener = CacheEvictionListener { evicted.add(it as OffsetPageState<String>) }
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
@@ -317,7 +317,7 @@ class MostRecentPagingCacheTest {
     fun `evictionListener called for each evicted page`() {
         val evicted = mutableListOf<Int>()
         val core = createCore(maxSize = 2)
-        core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
+        core.evictionListener = CacheEvictionListener { evicted.add((it as OffsetPageState).page) }
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)

@@ -1,12 +1,12 @@
 package com.jamal_aliev.paginator.offset.extension
 
-import com.jamal_aliev.paginator.offset.Paginator
 import com.jamal_aliev.paginator.core.exception.LoadGuardedException
 import com.jamal_aliev.paginator.core.exception.LockedException.RefreshWasLockedException
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.offset.initializer.InitializerErrorPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerProgressPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 /**
  * Refreshes **all** currently cached pages by reloading them from the source in parallel.
@@ -26,7 +26,7 @@ import com.jamal_aliev.paginator.core.page.PageState
 suspend fun <T> Paginator<T>.refreshAll(
     loadingSilently: Boolean = false,
     finalSilently: Boolean = false,
-    loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+    loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
     enableCacheFlow: Boolean = this.core.enableCacheFlow,
     initProgressState: InitializerProgressPage<T> = this.core.initializerProgressPage,
     initSuccessState: InitializerSuccessPage<T> = this.core.initializerSuccessPage,

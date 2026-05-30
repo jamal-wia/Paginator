@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.cursor
 
-import com.jamal_aliev.paginator.cursor.MutableCursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.extension.addElement
 import com.jamal_aliev.paginator.cursor.extension.flatten
@@ -22,7 +21,7 @@ class MutableCursorPaginatorTest {
     private suspend fun populate(
         backend: FakeCursorBackend = FakeCursorBackend(),
         pageCount: Int = 5,
-    ): MutableCursorPaginator<String> {
+    ): MutableCursorPaginator<String, String> {
         val p = mutableCursorPaginatorOf(backend)
         p.restart(silentlyLoading = true, silentlyResult = true)
         repeat(pageCount - 1) {
@@ -162,7 +161,7 @@ class MutableCursorPaginatorTest {
             targetSelf = "p0",
             index = 0,
             bookmarkFactory = { idx, previous ->
-                CursorBookmark(prev = previous.self, self = "overflow$idx", next = null)
+                CursorBookmark<String>(prev = previous.self, self = "overflow$idx", next = null)
             },
         )
         assertEquals(2, p.loadedPagesCount, "factory should have spawned a new tail page")
@@ -238,7 +237,7 @@ class MutableCursorPaginatorTest {
 
         assertFailsWith<IllegalStateException> {
             p.transaction {
-                val mp = this as MutableCursorPaginator<String>
+                val mp = this as MutableCursorPaginator<String, String>
                 mp.setElement(element = "MUTATED", self = "p0", index = 0, silently = true)
                 error("force rollback")
             }
@@ -251,7 +250,7 @@ class MutableCursorPaginatorTest {
     fun transaction_success_keeps_changes() = runTest {
         val p = populate()
         p.transaction {
-            val mp = this as MutableCursorPaginator<String>
+            val mp = this as MutableCursorPaginator<String, String>
             mp.setElement(element = "KEPT", self = "p0", index = 0, silently = true)
         }
         assertEquals("KEPT", p.cache.getStateOf("p0")!!.data[0])

@@ -1,12 +1,12 @@
 package com.jamal_aliev.paginator.cursor
 
-import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
-import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.core.extension.isSuccessState
-import com.jamal_aliev.paginator.cursor.load.CursorLoadResult
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
+import com.jamal_aliev.paginator.cursor.load.CursorLoadResult
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
 
@@ -31,23 +31,23 @@ import kotlinx.atomicfu.atomic
  *
  * @param T The type of elements contained in each page.
  */
-open class MutableCursorPaginator<T>(
-    core: CursorPagingCore<T> = CursorPagingCore(),
-    load: suspend CursorPaginator<T>.(cursor: CursorBookmark?) -> CursorLoadResult<T>,
-) : CursorPaginator<T>(core, load) {
+open class MutableCursorPaginator<K : Any, T>(
+    core: CursorPagingCore<K, T> = CursorPagingCore(),
+    load: suspend CursorPaginator<K, T>.(cursor: CursorBookmark<K>?) -> CursorLoadResult<K, T>,
+) : CursorPaginator<K, T>(core, load) {
 
     /**
-     * Factory producing fresh [CursorBookmark] instances for tail pages created
+     * Factory producing fresh [CursorBookmark<K>] instances for tail pages created
      * by overflow cascade in [addAllElements].
      *
      * @param overflowIndex Sequential counter for this cascade run (0-based).
      * @param previous The immediate predecessor bookmark of the synthesised page.
      */
-    fun interface CursorBookmarkFactory {
-        fun create(overflowIndex: Int, previous: CursorBookmark): CursorBookmark
+    fun interface CursorBookmarkFactory<K : Any> {
+        fun create(overflowIndex: Int, previous: CursorBookmark<K>): CursorBookmark<K>
     }
 
-    private val _affectedSelves: AtomicRef<Set<Any>> = atomic(emptySet())
+    private val _affectedSelves: AtomicRef<Set<K>> = atomic(emptySet())
 
     /**
      * Read-only snapshot of page `self` keys modified by CRUD operations that have not
@@ -58,7 +58,7 @@ open class MutableCursorPaginator<T>(
      *
      * Mirrors [MutablePaginator.affectedPages] but keyed by `self` instead of `page: Int`.
      */
-    val affectedSelves: Set<Any>
+    val affectedSelves: Set<K>
         get() = _affectedSelves.value
 
     /**
@@ -70,14 +70,14 @@ open class MutableCursorPaginator<T>(
     val hasPendingFlush: Boolean
         get() = core.persistentCache != null && _affectedSelves.value.isNotEmpty()
 
-    private fun markAffected(self: Any) {
+    private fun markAffected(self: K) {
         while (true) {
             val current = _affectedSelves.value
             if (_affectedSelves.compareAndSet(current, current + self)) return
         }
     }
 
-    private fun markAffectedAll(selves: Set<Any>) {
+    private fun markAffectedAll(selves: Set<K>) {
         if (selves.isEmpty()) return
         while (true) {
             val current = _affectedSelves.value
@@ -85,7 +85,7 @@ open class MutableCursorPaginator<T>(
         }
     }
 
-    private fun drainAffectedSelves(): Set<Any> = _affectedSelves.getAndSet(emptySet())
+    private fun drainAffectedSelves(): Set<K> = _affectedSelves.getAndSet(emptySet())
 
     /**
      * Removes the page identified by [selfToRemove] from the cache and re-links
@@ -97,14 +97,14 @@ open class MutableCursorPaginator<T>(
      *
      * @return The removed [PageState], or `null` if [selfToRemove] was not in the cache.
      */
-    fun removeState(selfToRemove: Any, silently: Boolean = false): PageState<T>? {
+    fun removeState(selfToRemove: K, silently: Boolean = false): CursorPageState<K, T>? {
         logger.debug(LogComponent.MUTATION) { "removeState: self=$selfToRemove" }
 
-        val removedCursor: CursorBookmark = cache.getCursorOf(selfToRemove) ?: return null
-        val removedState: PageState<T> = cache.getStateOf(selfToRemove) ?: return null
+        val removedCursor: CursorBookmark<K> = cache.getCursorOf(selfToRemove) ?: return null
+        val removedState: CursorPageState<K, T> = cache.getStateOf(selfToRemove) ?: return null
 
-        val prevCursor: CursorBookmark? = removedCursor.prev?.let { cache.getCursorOf(it) }
-        val nextCursor: CursorBookmark? = removedCursor.next?.let { cache.getCursorOf(it) }
+        val prevCursor: CursorBookmark<K>? = removedCursor.prev?.let { cache.getCursorOf(it) }
+        val nextCursor: CursorBookmark<K>? = removedCursor.next?.let { cache.getCursorOf(it) }
 
         // Drop the page itself.
         cache.removeFromCache(selfToRemove)
@@ -134,7 +134,7 @@ open class MutableCursorPaginator<T>(
 
     fun setElement(
         element: T,
-        self: Any,
+        self: K,
         index: Int,
         silently: Boolean = false,
         isDirty: Boolean = false,
@@ -161,7 +161,7 @@ open class MutableCursorPaginator<T>(
     }
 
     fun removeElement(
-        self: Any,
+        self: K,
         index: Int,
         silently: Boolean = false,
         isDirty: Boolean = false,
@@ -217,12 +217,12 @@ open class MutableCursorPaginator<T>(
      */
     fun addAllElements(
         elements: List<T>,
-        targetSelf: Any,
+        targetSelf: K,
         index: Int,
         silently: Boolean = false,
         isDirty: Boolean = false,
-        bookmarkFactory: CursorBookmarkFactory? = null,
-        initPageState: ((previous: CursorBookmark, data: List<T>) -> PageState<T>)? = null,
+        bookmarkFactory: CursorBookmarkFactory<K>? = null,
+        initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? = null,
     ) {
         logger.debug(LogComponent.MUTATION) {
             "addAllElements: targetSelf=$targetSelf index=$index count=${elements.size} isDirty=$isDirty"
@@ -241,17 +241,17 @@ open class MutableCursorPaginator<T>(
 
     private fun cascadeAddAll(
         elements: List<T>,
-        targetSelf: Any,
+        targetSelf: K,
         index: Int,
         overflowCounter: Int,
-        bookmarkFactory: CursorBookmarkFactory?,
-        initPageState: ((previous: CursorBookmark, data: List<T>) -> PageState<T>)?,
+        bookmarkFactory: CursorBookmarkFactory<K>?,
+        initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)?,
     ) {
         markAffected(targetSelf)
 
-        val targetCursor: CursorBookmark = cache.getCursorOf(targetSelf)
+        val targetCursor: CursorBookmark<K> = cache.getCursorOf(targetSelf)
             ?: throw IndexOutOfBoundsException("self=$targetSelf was not created")
-        val targetState: PageState<T> = cache.getStateOf(targetSelf)
+        val targetState: CursorPageState<K, T> = cache.getStateOf(targetSelf)
             ?: throw IndexOutOfBoundsException("self=$targetSelf was not created")
 
         val dataOfTarget: MutableList<T> = requireNotNull(
@@ -271,8 +271,8 @@ open class MutableCursorPaginator<T>(
 
         if (extras.isNullOrEmpty()) return
 
-        val nextCursor: CursorBookmark? = cache.walkForward(targetCursor)
-        val nextState: PageState<T>? = nextCursor?.self?.let { cache.getStateOf(it) }
+        val nextCursor: CursorBookmark<K>? = cache.walkForward(targetCursor)
+        val nextState: CursorPageState<K, T>? = nextCursor?.self?.let { cache.getStateOf(it) }
 
         when {
             nextCursor != null && nextState != null && nextState::class == targetState::class -> {
@@ -288,7 +288,7 @@ open class MutableCursorPaginator<T>(
 
             nextCursor == null && bookmarkFactory != null -> {
                 // Option (b): synthesise a brand-new tail page for the overflow.
-                val newCursor: CursorBookmark = bookmarkFactory
+                val newCursor: CursorBookmark<K> = bookmarkFactory
                     .create(overflowCounter, targetCursor)
                     .copy(prev = targetCursor.self)
                 // Update current target's `next` link to point at the new cursor.
@@ -296,7 +296,8 @@ open class MutableCursorPaginator<T>(
                 cache.setState(updatedTarget, targetState, silently = true)
 
                 val initialData: MutableList<T> = extras.toMutableList()
-                val newState: PageState<T> = initPageState?.invoke(updatedTarget, initialData)
+                val newState: CursorPageState<K, T> =
+                    initPageState?.invoke(updatedTarget, initialData)
                     ?: targetState.copy(data = initialData)
                 cache.setState(newCursor, newState, silently = true)
 
@@ -320,15 +321,15 @@ open class MutableCursorPaginator<T>(
      * from [providerElement] removes the element; otherwise it replaces it.
      */
     inline fun replaceAllElements(
-        providerElement: (current: T, pageState: PageState<T>, index: Int) -> T?,
+        providerElement: (current: T, pageState: CursorPageState<K, T>, index: Int) -> T?,
         silently: Boolean = false,
-        predicate: (current: T, pageState: PageState<T>, index: Int) -> Boolean,
+        predicate: (current: T, pageState: CursorPageState<K, T>, index: Int) -> Boolean,
     ) {
         // Snapshot the cursors so we iterate over a stable list even if mutations
         // reshape the cache mid-flight (e.g. `removeElement` eliding an empty page).
-        val cursorsSnapshot: List<CursorBookmark> = core.cursors.toList()
+        val cursorsSnapshot: List<CursorBookmark<K>> = core.cursors.toList()
         for (cursor in cursorsSnapshot) {
-            val pageState: PageState<T> = cache.getStateOf(cursor.self) ?: continue
+            val pageState: CursorPageState<K, T> = cache.getStateOf(cursor.self) ?: continue
             var index = 0
             while (index < pageState.data.size) {
                 val current = pageState.data[index]
@@ -358,7 +359,7 @@ open class MutableCursorPaginator<T>(
         if (!silently) core.snapshot()
     }
 
-    private fun snapshotIfSelfVisible(self: Any) {
+    private fun snapshotIfSelfVisible(self: K) {
         val visible = core.snapshotSelves()
         if (self in visible) core.snapshot()
     }
@@ -366,12 +367,12 @@ open class MutableCursorPaginator<T>(
     // ── Persistent (L2) flush ───────────────────────────────────────────────
 
     suspend fun flush() {
-        val pc: CursorPersistentPagingCache<T> = core.persistentCache ?: return
-        val selvesToFlush: Set<Any> = drainAffectedSelves()
+        val pc: CursorPersistentPagingCache<K, T> = core.persistentCache ?: return
+        val selvesToFlush: Set<K> = drainAffectedSelves()
         if (selvesToFlush.isEmpty()) return
 
-        val toSave = mutableListOf<Pair<CursorBookmark, PageState<T>>>()
-        val toRemove = mutableListOf<Any>()
+        val toSave = mutableListOf<Pair<CursorBookmark<K>, CursorPageState<K, T>>>()
+        val toRemove = mutableListOf<K>()
 
         for (self in selvesToFlush) {
             val state = cache.getStateOf(self)
@@ -391,7 +392,7 @@ open class MutableCursorPaginator<T>(
 
     // ── Transaction override (auto-persist on success) ──────────────────────
 
-    override suspend fun <R> transaction(block: suspend CursorPaginator<T>.() -> R): R {
+    override suspend fun <R> transaction(block: suspend CursorPaginator<K, T>.() -> R): R {
         val savedAffected = drainAffectedSelves()
         try {
             val result = super.transaction(block)
@@ -406,11 +407,11 @@ open class MutableCursorPaginator<T>(
 
     // ── Operators ───────────────────────────────────────────────────────────
 
-    operator fun minusAssign(self: Any) {
+    operator fun minusAssign(self: K) {
         removeState(self)
     }
 
-    operator fun plusAssign(entry: Pair<CursorBookmark, PageState<T>>) {
+    operator fun plusAssign(entry: Pair<CursorBookmark<K>, CursorPageState<K, T>>) {
         core.setState(entry.first, entry.second)
         markAffected(entry.first.self)
     }

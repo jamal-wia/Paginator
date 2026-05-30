@@ -1,16 +1,16 @@
 package com.jamal_aliev.paginator.cursor.cache
 
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.CursorPagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 /**
  * L1 cache interface for [com.jamal_aliev.paginator.cursor.CursorPaginator].
  *
  * The cache is a **doubly-linked collection** keyed by
- * [CursorBookmark.self]: each entry stores the [PageState] and the full
- * [CursorBookmark] (with `prev`/`next` links). This mirrors how the
+ * [CursorBookmark<K>.self]: each entry stores the [PageState] and the full
+ * [CursorBookmark<K>] (with `prev`/`next` links). This mirrors how the
  * offset-based [PagingCache] keys entries by `page: Int`, but ordering is
  * obtained by walking `next`/`prev` links rather than by numeric comparison.
  *
@@ -18,7 +18,7 @@ import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
  * @see CursorChainablePagingCache
  * @see CursorInMemoryPagingCache
  */
-interface CursorPagingCache<T> {
+interface CursorPagingCache<K : Any, T> {
 
     var logger: PaginatorLogger?
 
@@ -33,31 +33,31 @@ interface CursorPagingCache<T> {
      * server-side link changes) still appear in the list, appended after the main
      * chain in undefined order.
      */
-    val cursors: List<CursorBookmark>
+    val cursors: List<CursorBookmark<K>>
 
     /** `true` if the context window has been initialised. */
     val isStarted: Boolean
 
     /** The left (head-side) boundary of the current context window. `null` = not started. */
-    var startContextCursor: CursorBookmark?
+    var startContextCursor: CursorBookmark<K>?
 
     /** The right (tail-side) boundary of the current context window. `null` = not started. */
-    var endContextCursor: CursorBookmark?
+    var endContextCursor: CursorBookmark<K>?
 
     /** Stores a page state under the [cursor]'s `self` key (replacing existing if present). */
-    fun setState(cursor: CursorBookmark, state: PageState<T>, silently: Boolean = false)
+    fun setState(cursor: CursorBookmark<K>, state: CursorPageState<K, T>, silently: Boolean = false)
 
     /** Retrieves the cached state for the page identified by [self], or `null`. */
-    fun getStateOf(self: Any): PageState<T>?
+    fun getStateOf(self: K): CursorPageState<K, T>?
 
-    /** Retrieves the cached [CursorBookmark] for the page identified by [self], or `null`. */
-    fun getCursorOf(self: Any): CursorBookmark?
+    /** Retrieves the cached [CursorBookmark<K>] for the page identified by [self], or `null`. */
+    fun getCursorOf(self: K): CursorBookmark<K>?
 
     /** Returns a single element at [index] within the page identified by [self], or `null`. */
-    fun getElement(self: Any, index: Int): T?
+    fun getElement(self: K, index: Int): T?
 
     /** Removes the page identified by [self] from the cache and returns its state, or `null`. */
-    fun removeFromCache(self: Any): PageState<T>?
+    fun removeFromCache(self: K): CursorPageState<K, T>?
 
     /** Removes every page from the cache. */
     fun clear()
@@ -66,20 +66,20 @@ interface CursorPagingCache<T> {
     fun release(capacity: Int = DEFAULT_CAPACITY, silently: Boolean = false)
 
     /** The first cached bookmark in head-to-tail order, or `null` if empty. */
-    fun head(): CursorBookmark?
+    fun head(): CursorBookmark<K>?
 
     /** The last cached bookmark in head-to-tail order, or `null` if empty. */
-    fun tail(): CursorBookmark?
+    fun tail(): CursorBookmark<K>?
 
     /**
      * Returns the cached cursor that [from] links to via `from.next`, or `null` if
      * `from.next` is missing from the cache (or `from.next == null`).
      */
-    fun walkForward(from: CursorBookmark): CursorBookmark?
+    fun walkForward(from: CursorBookmark<K>): CursorBookmark<K>?
 
     /**
      * Returns the cached cursor that [from] links to via `from.prev`, or `null` if
      * `from.prev` is missing from the cache (or `from.prev == null`).
      */
-    fun walkBackward(from: CursorBookmark): CursorBookmark?
+    fun walkBackward(from: CursorBookmark<K>): CursorBookmark<K>?
 }

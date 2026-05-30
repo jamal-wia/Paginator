@@ -14,7 +14,7 @@ import com.jamal_aliev.paginator.view.core.internal.attachScrollPreservation
  * Behaviour, parameters, and constraints are identical — see the page-based overload's KDoc,
  * including the `preserveScroll` / `scrollKey` pair.
  */
-public fun CursorPaginatorPrefetchController<*>.bindToRecyclerView(
+public fun CursorPaginatorPrefetchController<*, *>.bindToRecyclerView(
     recyclerView: RecyclerView,
     lifecycleOwner: LifecycleOwner,
     dataItemCount: () -> Int,
@@ -39,7 +39,7 @@ public fun CursorPaginatorPrefetchController<*>.bindToRecyclerView(
  * Cursor-paginator [Int]-overload of [bindToRecyclerView]. See the lambda overload's KDoc and
  * the page-based [PaginatorPrefetchController.bindToRecyclerView] for the full contract.
  */
-public fun CursorPaginatorPrefetchController<*>.bindToRecyclerView(
+public fun CursorPaginatorPrefetchController<*, *>.bindToRecyclerView(
     recyclerView: RecyclerView,
     lifecycleOwner: LifecycleOwner,
     dataItemCount: () -> Int,

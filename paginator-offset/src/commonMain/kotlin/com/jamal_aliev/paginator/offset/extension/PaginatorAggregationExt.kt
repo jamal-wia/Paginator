@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator.offset.extension
 
 import com.jamal_aliev.paginator.offset.Paginator
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 // ──────────────────────────────────────────────────────────────────────────────
 //  Search
@@ -25,7 +25,7 @@ inline fun <T> Paginator<T>.find(predicate: (T) -> Boolean): T? = getElement(pre
 inline fun <T> Paginator<T>.getElement(
     predicate: (T) -> Boolean,
 ): T? {
-    this.smartForEach { _, _, pageState: PageState<T> ->
+    this.smartForEach { _, _, pageState: OffsetPageState<T> ->
         for (element in pageState.data) {
             if (predicate(element)) {
                 return element
@@ -110,7 +110,7 @@ inline fun <T> Paginator<T>.indexOfLast(
  * Iterates pages in descending page order, scanning each page right-to-left.
  */
 inline fun <T> Paginator<T>.findLast(predicate: (T) -> Boolean): T? {
-    val states: List<PageState<T>> = core.states
+    val states: List<OffsetPageState<T>> = core.states
     for (i in states.indices.reversed()) {
         val data: List<T> = states[i].data
         for (j in data.indices.reversed()) {
@@ -191,7 +191,7 @@ fun <T> Paginator<T>.firstOrNull(): T? {
  * non-empty page exists.
  */
 fun <T> Paginator<T>.lastOrNull(): T? {
-    val states: List<PageState<T>> = core.states
+    val states: List<OffsetPageState<T>> = core.states
     for (i in states.indices.reversed()) {
         val data: List<T> = states[i].data
         if (data.isNotEmpty()) return data.last()
@@ -227,7 +227,7 @@ fun <T> Paginator<T>.elementAtOrNull(globalIndex: Int): T? {
  * Useful as the input to a UI list adapter (e.g. `LazyColumn(items = paginator.flatten())`).
  */
 fun <T> Paginator<T>.flatten(): List<T> {
-    val states: List<PageState<T>> = core.states
+    val states: List<OffsetPageState<T>> = core.states
     var totalSize = 0
     for (page in states) totalSize += page.data.size
     val result: ArrayList<T> = ArrayList(totalSize)
@@ -250,12 +250,12 @@ inline fun <T, R> Paginator<T>.flatMap(transform: (T) -> Iterable<R>): List<R> {
 }
 
 /**
- * Maps each cached [PageState] through [transform] and returns the results in page order.
+ * Maps each cached [OffsetPageState] through [transform] and returns the results in page order.
  *
  * Use this when you need page-level metadata (page number, metadata, error state)
  * rather than the elements themselves.
  */
-inline fun <T, R> Paginator<T>.mapPages(transform: (PageState<T>) -> R): List<R> {
+inline fun <T, R> Paginator<T>.mapPages(transform: (OffsetPageState<T>) -> R): List<R> {
     return core.states.map(transform)
 }
 

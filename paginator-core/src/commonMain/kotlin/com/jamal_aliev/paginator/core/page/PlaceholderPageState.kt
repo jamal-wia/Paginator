@@ -1,105 +1,19 @@
 package com.jamal_aliev.paginator.core.page
 
-import com.jamal_aliev.paginator.core.load.Metadata
+/**
+ * Strategy-agnostic marker for a page state that also exposes a parallel list of [placeholders]
+ * (e.g. skeleton/shimmer items rendered while real data loads).
+ *
+ * The concrete placeholder classes live in the strategy modules — see
+ * `OffsetPlaceholder{Error,Progress,Success}Page` in `paginator-offset` and
+ * `CursorPlaceholder{Error,Progress,Success}Page` in `paginator-cursor` — each extending its
+ * strategy's concrete [PageState] class and implementing this marker. Match on
+ * `is PlaceholderPageState<*>` when you only need access to [placeholders].
+ *
+ * @param R the placeholder element type (may differ from the page's data element type).
+ */
+interface PlaceholderPageState<R> {
 
-sealed interface PlaceholderPageState<R> {
-
+    /** The placeholder items associated with this page state. */
     val placeholders: List<R>
-
-    class PlaceholderErrorPage<T, R>(
-        exception: Exception,
-        page: Int,
-        data: List<T>,
-        override val placeholders: List<R>,
-        metadata: Metadata? = null,
-        id: Long = nextId(),
-    ) : PageState.ErrorPage<T>(exception, page, data, metadata, id), PlaceholderPageState<R> {
-
-        override fun copy(
-            page: Int,
-            data: List<T>,
-            metadata: Metadata?,
-            id: Long
-        ): PlaceholderErrorPage<T, R> {
-            return PlaceholderErrorPage(exception, page, data, placeholders, metadata, id)
-        }
-
-        override fun copy(
-            exception: Exception,
-            page: Int,
-            data: List<T>,
-            metadata: Metadata?,
-            id: Long,
-        ): PlaceholderErrorPage<T, R> {
-            return PlaceholderErrorPage(exception, page, data, placeholders, metadata, id)
-        }
-
-        fun copy(
-            exception: Exception = this.exception,
-            page: Int = this.page,
-            data: List<T> = this.data,
-            placeholders: List<R> = this.placeholders,
-            metadata: Metadata? = this.metadata,
-            id: Long = this.id,
-        ): PlaceholderErrorPage<T, R> {
-            return PlaceholderErrorPage(exception, page, data, placeholders, metadata, id)
-        }
-    }
-
-    class PlaceholderProgressPage<T, R>(
-        page: Int,
-        data: List<T>,
-        override val placeholders: List<R>,
-        metadata: Metadata? = null,
-        id: Long = nextId(),
-    ) : PageState.ProgressPage<T>(page, data, metadata, id), PlaceholderPageState<R> {
-
-        override fun copy(
-            page: Int,
-            data: List<T>,
-            metadata: Metadata?,
-            id: Long
-        ): PlaceholderProgressPage<T, R> {
-            return PlaceholderProgressPage(page, data, placeholders, metadata, id)
-        }
-
-        fun copy(
-            page: Int = this.page,
-            data: List<T> = this.data,
-            placeholders: List<R> = this.placeholders,
-            metadata: Metadata? = this.metadata,
-            id: Long = this.id,
-        ): PlaceholderProgressPage<T, R> {
-            return PlaceholderProgressPage(page, data, placeholders, metadata, id)
-        }
-    }
-
-    class PlaceholderSuccessPage<T, R>(
-        page: Int,
-        data: List<T>,
-        override val placeholders: List<R>,
-        metadata: Metadata? = null,
-        id: Long = nextId(),
-    ) : PageState.SuccessPage<T>(page, data, metadata, id), PlaceholderPageState<R> {
-
-        override fun copy(
-            page: Int,
-            data: List<T>,
-            metadata: Metadata?,
-            id: Long
-        ): PlaceholderSuccessPage<T, R> {
-            return PlaceholderSuccessPage(page, data, placeholders, metadata, id)
-        }
-
-        fun copy(
-            page: Int = this.page,
-            data: List<T> = this.data,
-            placeholders: List<R> = this.placeholders,
-            metadata: Metadata? = this.metadata,
-            id: Long = this.id,
-        ): PlaceholderSuccessPage<T, R> {
-            return PlaceholderSuccessPage(page, data, placeholders, metadata, id)
-        }
-    }
-
 }

@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator.cursor.serialization
 
+import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.serialization.PagingCoreJson
 import com.jamal_aliev.paginator.cursor.CursorPaginator
-import com.jamal_aliev.paginator.core.load.Metadata
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -12,14 +12,14 @@ import kotlinx.serialization.json.JsonElement
  *
  * Thread-safe: acquires the navigation mutex internally.
  */
-suspend fun <T, K : Any> CursorPaginator<T>.saveStateToJson(
+suspend fun <T, K : Any> CursorPaginator<K, T>.saveStateToJson(
     elementSerializer: KSerializer<T>,
     keySerializer: KSerializer<K>,
     json: Json = PagingCoreJson,
     contextOnly: Boolean = false,
 ): String {
     @Suppress("UNCHECKED_CAST")
-    val encoder: (Any) -> JsonElement = { raw ->
+    val encoder: (K) -> JsonElement = { raw ->
         json.encodeToJsonElement(keySerializer, raw as K)
     }
     val snapshot: CursorPaginatorSnapshot<T> = saveState(encoder, contextOnly)
@@ -32,15 +32,15 @@ suspend fun <T, K : Any> CursorPaginator<T>.saveStateToJson(
  * Restores [CursorPaginator] state from a JSON string previously produced by
  * [saveStateToJson].
  */
-suspend fun <T, K : Any> CursorPaginator<T>.restoreStateFromJson(
+suspend fun <T, K : Any> CursorPaginator<K, T>.restoreStateFromJson(
     jsonString: String,
     elementSerializer: KSerializer<T>,
     keySerializer: KSerializer<K>,
     json: Json = PagingCoreJson,
     silently: Boolean = false,
 ) {
-    val decoder: (JsonElement) -> Any = { element ->
-        json.decodeFromJsonElement(keySerializer, element) as Any
+    val decoder: (JsonElement) -> K = { element ->
+        json.decodeFromJsonElement(keySerializer, element)
     }
     val snapshotSerializer: KSerializer<CursorPaginatorSnapshot<T>> =
         CursorPaginatorSnapshot.serializer(elementSerializer)
@@ -50,7 +50,7 @@ suspend fun <T, K : Any> CursorPaginator<T>.restoreStateFromJson(
 }
 
 /** Metadata-aware counterpart of the plain [saveStateToJson]. */
-suspend fun <T, K : Any, M : Metadata> CursorPaginator<T>.saveStateToJson(
+suspend fun <T, K : Any, M : Metadata> CursorPaginator<K, T>.saveStateToJson(
     elementSerializer: KSerializer<T>,
     keySerializer: KSerializer<K>,
     metadataSerializer: KSerializer<M>,
@@ -58,7 +58,7 @@ suspend fun <T, K : Any, M : Metadata> CursorPaginator<T>.saveStateToJson(
     contextOnly: Boolean = false,
 ): String {
     @Suppress("UNCHECKED_CAST")
-    val encoder: (Any) -> JsonElement = { raw ->
+    val encoder: (K) -> JsonElement = { raw ->
         json.encodeToJsonElement(keySerializer, raw as K)
     }
 
@@ -71,7 +71,7 @@ suspend fun <T, K : Any, M : Metadata> CursorPaginator<T>.saveStateToJson(
 }
 
 /** Metadata-aware counterpart of the plain [restoreStateFromJson]. */
-suspend fun <T, K : Any, M : Metadata> CursorPaginator<T>.restoreStateFromJson(
+suspend fun <T, K : Any, M : Metadata> CursorPaginator<K, T>.restoreStateFromJson(
     jsonString: String,
     elementSerializer: KSerializer<T>,
     keySerializer: KSerializer<K>,
@@ -79,8 +79,8 @@ suspend fun <T, K : Any, M : Metadata> CursorPaginator<T>.restoreStateFromJson(
     json: Json = PagingCoreJson,
     silently: Boolean = false,
 ) {
-    val decoder: (JsonElement) -> Any = { element ->
-        json.decodeFromJsonElement(keySerializer, element) as Any
+    val decoder: (JsonElement) -> K = { element ->
+        json.decodeFromJsonElement(keySerializer, element)
     }
     val snapshotSerializer = CursorPaginatorSnapshot.serializer(elementSerializer)
     val snapshot = json.decodeFromString(snapshotSerializer, jsonString)

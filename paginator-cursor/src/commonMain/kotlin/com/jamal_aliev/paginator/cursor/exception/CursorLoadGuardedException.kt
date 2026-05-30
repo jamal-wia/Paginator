@@ -14,7 +14,7 @@ import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
  * @param attemptedCursor The bookmark whose load was rejected by the guard.
  */
 class CursorLoadGuardedException(
-    val attemptedCursor: CursorBookmark,
+    val attemptedCursor: CursorBookmark<*>,
 ) : LoadGuardedBaseException(
     attemptedKey = attemptedCursor.self,
     message = "Load guard rejected loading of cursor ${attemptedCursor.self}",

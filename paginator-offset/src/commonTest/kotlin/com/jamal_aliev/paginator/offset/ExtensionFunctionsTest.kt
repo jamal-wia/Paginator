@@ -10,7 +10,7 @@ import com.jamal_aliev.paginator.offset.extension.setElement
 import com.jamal_aliev.paginator.offset.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.offset.extension.walkForwardWhile
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -194,7 +194,7 @@ class ExtensionFunctionsTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
         // Add a non-consecutive page
         paginator.cache.setState(
-            state = PageState.SuccessPage(
+            state = OffsetPageState.Success(
                 page = 10,
                 data = mutableListOf("x", "y", "z")
             ),

@@ -1,10 +1,10 @@
 package com.jamal_aliev.paginator.offset.prefetch
 
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.offset.initializer.InitializerErrorPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerProgressPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -86,7 +86,7 @@ import kotlinx.coroutines.launch
  *   scroll".
  * @param enableBackwardPrefetch When `true`, scrolling toward the beginning
  *   of the list also triggers [Paginator.goPreviousPage].
- * @param silentlyLoading If `true`, the [PageState.ProgressPage] emitted
+ * @param silentlyLoading If `true`, the [OffsetPageState.Progress] emitted
  *   during prefetch loading is **not** pushed to the snapshot flow. Default
  *   is `false` so that an append-indicator bound to
  *   `PaginatorUiState.Content.appendState` renders the loading state
@@ -97,9 +97,9 @@ import kotlinx.coroutines.launch
  *   the new data immediately.
  * @param loadGuard Optional guard callback passed to navigation functions.
  * @param enableCacheFlow Forwarded to navigation functions.
- * @param initProgressState Factory for [PageState.ProgressPage] during loading.
- * @param initSuccessState Factory for [PageState.SuccessPage] on success.
- * @param initErrorState Factory for [PageState.ErrorPage] on failure.
+ * @param initProgressState Factory for [OffsetPageState.Progress] during loading.
+ * @param initSuccessState Factory for [OffsetPageState.Success] on success.
+ * @param initErrorState Factory for [OffsetPageState.Error] on failure.
  * @param onPrefetchError Optional callback invoked when a prefetch fails with
  *   an exception (excluding [CancellationException]). Useful for logging or
  *   analytics. If `null`, errors are silently ignored.
@@ -114,7 +114,7 @@ class PaginatorPrefetchController<T>(
     var enableBackwardPrefetch: Boolean = false,
     var silentlyLoading: Boolean = false,
     var silentlyResult: Boolean = false,
-    var loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+    var loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
     var enableCacheFlow: Boolean = paginator.core.enableCacheFlow,
     var initProgressState: InitializerProgressPage<T> = paginator.core.initializerProgressPage,
     var initSuccessState: InitializerSuccessPage<T> = paginator.core.initializerSuccessPage,

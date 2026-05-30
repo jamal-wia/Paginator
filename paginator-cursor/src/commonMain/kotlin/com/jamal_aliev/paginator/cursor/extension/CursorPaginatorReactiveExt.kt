@@ -93,7 +93,7 @@ import kotlinx.coroutines.launch
  * @throws IllegalStateException if another observe() Job is still active on
  *   this paginator.
  */
-fun <T, ID : Any> MutableCursorPaginator<T>.observe(
+fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.observe(
     scope: CoroutineScope,
     source: CursorPaginatorReactiveCache<T, ID>,
     initialSync: InitialSyncPolicy = InitialSyncPolicy.RefreshAll,
@@ -174,7 +174,7 @@ fun <T, ID : Any> MutableCursorPaginator<T>.observe(
  * Centralised so that [CursorReactiveEvent.Batch] can recurse through here
  * (wrapped in a transaction) without duplicating the dispatch table.
  */
-private suspend fun <T, ID : Any> MutableCursorPaginator<T>.applyEvent(
+private suspend fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.applyEvent(
     source: CursorPaginatorReactiveCache<T, ID>,
     event: CursorReactiveEvent<T, ID>,
     unknownItem: UnknownItemPolicy,
@@ -209,7 +209,7 @@ private suspend fun <T, ID : Any> MutableCursorPaginator<T>.applyEvent(
             }
             transaction {
                 @Suppress("UNCHECKED_CAST")
-                val self = this as MutableCursorPaginator<T>
+                val self = this as MutableCursorPaginator<K, T>
                 self.removeElement { source.identity(it) == identityKey }
                 val landed = self.insertAt(source, event.item, event.position)
                 check(landed) {
@@ -228,7 +228,7 @@ private suspend fun <T, ID : Any> MutableCursorPaginator<T>.applyEvent(
             if (event.events.isEmpty()) return
             transaction {
                 @Suppress("UNCHECKED_CAST")
-                val self = this as MutableCursorPaginator<T>
+                val self = this as MutableCursorPaginator<K, T>
                 event.events.forEach { child ->
                     self.applyEvent(source, child, unknownItem)
                 }
@@ -244,7 +244,7 @@ private suspend fun <T, ID : Any> MutableCursorPaginator<T>.applyEvent(
  * `self`, or the cache is empty for [CursorInsertPosition.Head] /
  * [CursorInsertPosition.Tail]).
  */
-private fun <T, ID : Any> MutableCursorPaginator<T>.insertAt(
+private fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.insertAt(
     source: CursorPaginatorReactiveCache<T, ID>,
     item: T,
     position: CursorInsertPosition<ID>,
@@ -256,10 +256,14 @@ private fun <T, ID : Any> MutableCursorPaginator<T>.insertAt(
             // Unlike the offset paginator, cursor pages cannot be synthesised by
             // index — the `self` key is server-provided. Treat a missing target
             // page as "out of window" → false, so the UnknownItemPolicy decides.
-            if (cache.getStateOf(position.self) == null) return false
+            // The reactive insert-position key is opaque (`Any`); cast it to the
+            // paginator's key type — safe because `K` is erased at runtime.
+            @Suppress("UNCHECKED_CAST")
+            val targetSelf: K = position.self as K
+            if (cache.getStateOf(targetSelf) == null) return false
             addAllElements(
                 elements = listOf(item),
-                targetSelf = position.self,
+                targetSelf = targetSelf,
                 index = position.index,
             )
             true
@@ -277,7 +281,7 @@ private fun <T, ID : Any> MutableCursorPaginator<T>.insertAt(
  * Applies [UnknownItemPolicy] when an event references an item not present
  * in the cache.
  */
-private suspend fun <T> MutableCursorPaginator<T>.handleUnknown(policy: UnknownItemPolicy) {
+private suspend fun <K : Any, T> MutableCursorPaginator<K, T>.handleUnknown(policy: UnknownItemPolicy) {
     when (policy) {
         UnknownItemPolicy.Drop -> Unit
         UnknownItemPolicy.RefreshAll -> refreshAll()
@@ -295,5 +299,5 @@ private suspend fun <T> MutableCursorPaginator<T>.handleUnknown(policy: UnknownI
 // subscriptions release their map slot and the paginator becomes eligible
 // for GC once the caller drops it.
 
-private val activeReactiveSubscriptions: AtomicRef<Map<MutableCursorPaginator<*>, Job>> =
+private val activeReactiveSubscriptions: AtomicRef<Map<MutableCursorPaginator<*, *>, Job>> =
     atomic(emptyMap())

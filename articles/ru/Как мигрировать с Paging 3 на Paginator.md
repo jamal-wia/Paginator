@@ -56,7 +56,7 @@ dependencies {
 | `pagingData.insertSeparators { … }`                 | `Flow<PaginatorUiState<T>>.interweave(weaver)`                                                                      |
 | `pagingDataAdapter.refresh()`                       | `paginator.restart()` (всё) или `paginator.refresh(pages)` (точечно)                                                |
 | `PagingSource.invalidate()`                         | `paginator.core.markDirty(page)` или `paginator.restart()`                                                          |
-| ключ-строка в `PagingSource<String, T>` (GraphQL)   | `mutableCursorPaginator<T> { load { cursor -> CursorLoadResult(…) } }`                                              |
+| ключ-строка в `PagingSource<String, T>` (GraphQL)   | `mutableCursorPaginator<String, T> { load { cursor -> CursorLoadResult(…) } }`                                      |
 
 Дальше разберём каждый блок по отдельности.
 
@@ -498,7 +498,7 @@ Slack/Reddit/Instagram-style API, чат с `next_cursor`), переезд ло�
 сериализацию.
 
 ```kotlin
-val messages = mutableCursorPaginator<Message>(capacity = 50) {
+val messages = mutableCursorPaginator<String, Message>(capacity = 50) {
     load { cursor ->
         val page = api.getMessages(cursor?.self as? String)
         CursorLoadResult(

@@ -30,7 +30,7 @@ private fun LazyListState.readScrollSignal(): ScrollSignal {
  */
 @OptIn(PaginatorInternalApi::class)
 @Composable
-fun CursorPaginatorPrefetchController<*>.BindToLazyList(
+fun CursorPaginatorPrefetchController<*, *>.BindToLazyList(
     listState: LazyListState,
     dataItemCount: Int,
     headerCount: Int = 0,

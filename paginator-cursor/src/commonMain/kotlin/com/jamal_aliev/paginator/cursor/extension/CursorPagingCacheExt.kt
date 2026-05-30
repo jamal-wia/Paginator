@@ -14,7 +14,7 @@ import com.jamal_aliev.paginator.cursor.cache.eviction.CursorChainablePagingCach
  * [com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache]), [inner] is
  * returned directly.
  */
-operator fun <T> CursorPagingCache<T>.plus(inner: CursorPagingCache<T>): CursorPagingCache<T> =
+operator fun <K : Any, T> CursorPagingCache<K, T>.plus(inner: CursorPagingCache<K, T>): CursorPagingCache<K, T> =
     withLeaf(inner)
 
 /**
@@ -22,5 +22,5 @@ operator fun <T> CursorPagingCache<T>.plus(inner: CursorPagingCache<T>): CursorP
  * the bottom of this cursor-cache's delegation chain with [newLeaf]. If [this]
  * is not a [CursorChainablePagingCache], [newLeaf] is returned directly.
  */
-fun <T> CursorPagingCache<T>.withLeaf(newLeaf: CursorPagingCache<T>): CursorPagingCache<T> =
-    if (this is CursorChainablePagingCache<T>) this.replaceLeaf(newLeaf) else newLeaf
+fun <K : Any, T> CursorPagingCache<K, T>.withLeaf(newLeaf: CursorPagingCache<K, T>): CursorPagingCache<K, T> =
+    if (this is CursorChainablePagingCache<K, T>) this.replaceLeaf(newLeaf) else newLeaf

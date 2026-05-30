@@ -1,7 +1,12 @@
-package com.jamal_aliev.paginator.core.interweave
+package com.jamal_aliev.paginator.offset.interweave
 
-import com.jamal_aliev.paginator.core.page.PageState
+
+import com.jamal_aliev.paginator.core.interweave.Interweaver
+import com.jamal_aliev.paginator.core.interweave.WovenEntry
+import com.jamal_aliev.paginator.core.interweave.interweave
+import com.jamal_aliev.paginator.core.interweave.interweaver
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -34,24 +39,37 @@ class InterweaveFlowTest {
 
     @Test
     fun `Loading passes through structurally`() {
-        val state: PaginatorUiState<Row> = PaginatorUiState.Loading(page = 1)
+        val state: PaginatorUiState<Row> =
+            PaginatorUiState.Loading(OffsetPageState.Progress(page = 1, data = emptyList()))
         val woven = state.interweave(rowWeaver())
-        assertEquals(PaginatorUiState.Loading(page = 1), woven)
+        assertIs<PaginatorUiState.Loading<WovenEntry<Row, String>>>(woven)
+        assertEquals(1, (woven.state as OffsetPageState<*>).page)
     }
 
     @Test
     fun `Empty passes through structurally`() {
-        val state: PaginatorUiState<Row> = PaginatorUiState.Empty(page = 2)
+        val state: PaginatorUiState<Row> =
+            PaginatorUiState.Empty(OffsetPageState.Success(page = 2, data = emptyList()))
         val woven = state.interweave(rowWeaver())
-        assertEquals(PaginatorUiState.Empty(page = 2), woven)
+        assertIs<PaginatorUiState.Empty<WovenEntry<Row, String>>>(woven)
+        assertEquals(2, (woven.state as OffsetPageState<*>).page)
     }
 
     @Test
     fun `Error passes through structurally`() {
         val boom = RuntimeException("boom")
-        val state: PaginatorUiState<Row> = PaginatorUiState.Error(page = 3, exception = boom)
+        val state: PaginatorUiState<Row> =
+            PaginatorUiState.Error(
+                OffsetPageState.Error(
+                    exception = boom,
+                    page = 3,
+                    data = emptyList()
+                )
+            )
         val woven = state.interweave(rowWeaver())
-        assertEquals(PaginatorUiState.Error(page = 3, exception = boom), woven)
+        assertIs<PaginatorUiState.Error<WovenEntry<Row, String>>>(woven)
+        assertEquals(3, (woven.state as OffsetPageState<*>).page)
+        assertSame(boom, woven.state.exception)
     }
 
     @Test
@@ -74,7 +92,7 @@ class InterweaveFlowTest {
 
     @Test
     fun `Content wraps prependState data into WovenEntry Data`() {
-        val prepend = PageState.ProgressPage(page = 1, data = listOf(Row(10, "A"), Row(11, "A")))
+        val prepend = OffsetPageState.Progress(page = 1, data = listOf(Row(10, "A"), Row(11, "A")))
         val state: PaginatorUiState<Row> = PaginatorUiState.Content(
             prependState = prepend,
             items = listOf(Row(10, "A"), Row(11, "A"), Row(12, "B")),
@@ -83,7 +101,7 @@ class InterweaveFlowTest {
         val woven = state.interweave(rowWeaver())
         val content = assertIs<PaginatorUiState.Content<WovenEntry<Row, String>>>(woven)
         val wrappedPrepend = content.prependState
-        assertIs<PageState.ProgressPage<WovenEntry<Row, String>>>(wrappedPrepend)
+        assertIs<OffsetPageState.Progress<WovenEntry<Row, String>>>(wrappedPrepend)
         assertEquals(2, wrappedPrepend.data.size)
         wrappedPrepend.data.forEach { assertIs<WovenEntry.Data<Row>>(it) }
         // preserved identity fields:
@@ -92,9 +110,9 @@ class InterweaveFlowTest {
     }
 
     @Test
-    fun `Content wraps appendState data and preserves ErrorPage exception`() {
+    fun `Content wraps appendState data and preserves Error exception`() {
         val boom = IllegalStateException("x")
-        val append = PageState.ErrorPage<Row>(
+        val append = OffsetPageState.Error<Row>(
             exception = boom,
             page = 4,
             data = listOf(Row(40, "Z")),
@@ -107,7 +125,7 @@ class InterweaveFlowTest {
         val woven = state.interweave(rowWeaver())
         val content = assertIs<PaginatorUiState.Content<WovenEntry<Row, String>>>(woven)
         val wrappedAppend = content.appendState
-        assertIs<PageState.ErrorPage<WovenEntry<Row, String>>>(wrappedAppend)
+        assertIs<OffsetPageState.Error<WovenEntry<Row, String>>>(wrappedAppend)
         assertSame(boom, wrappedAppend.exception)
         assertEquals(append.page, wrappedAppend.page)
         assertEquals(append.id, wrappedAppend.id)
@@ -119,7 +137,7 @@ class InterweaveFlowTest {
     fun `flow operator maps every emission`() = runTest {
         val source = flowOf<PaginatorUiState<Row>>(
             PaginatorUiState.Idle,
-            PaginatorUiState.Loading(page = 1),
+            PaginatorUiState.Loading(OffsetPageState.Progress(page = 1, data = emptyList())),
             PaginatorUiState.Content(
                 prependState = null,
                 items = listOf(Row(1, "A"), Row(2, "B")),
@@ -129,7 +147,7 @@ class InterweaveFlowTest {
         val emissions = source.interweave(rowWeaver()).toList()
         assertEquals(3, emissions.size)
         assertSame(PaginatorUiState.Idle, emissions[0])
-        assertEquals(PaginatorUiState.Loading(page = 1), emissions[1])
+        assertIs<PaginatorUiState.Loading<WovenEntry<Row, String>>>(emissions[1])
         val content = assertIs<PaginatorUiState.Content<WovenEntry<Row, String>>>(emissions[2])
         assertEquals(3, content.items.size)
     }

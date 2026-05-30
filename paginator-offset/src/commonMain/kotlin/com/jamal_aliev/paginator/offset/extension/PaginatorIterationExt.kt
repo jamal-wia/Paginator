@@ -1,15 +1,15 @@
 package com.jamal_aliev.paginator.offset.extension
 
 import com.jamal_aliev.paginator.offset.Paginator
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 /**
- * Iterates through each [PageState] in the paginator and performs the given [action] on it.
+ * Iterates through each [OffsetPageState] in the paginator and performs the given [action] on it.
  *
- * @param action The action to be performed on each [PageState].
+ * @param action The action to be performed on each [OffsetPageState].
  */
 inline fun <T> Paginator<T>.forEach(
-    action: (PageState<T>) -> Unit,
+    action: (OffsetPageState<T>) -> Unit,
 ) {
     for (state in this) {
         action(state)
@@ -17,7 +17,7 @@ inline fun <T> Paginator<T>.forEach(
 }
 
 /**
- * Iterates safely over all [PageState] items contained in this [Paginator],
+ * Iterates safely over all [OffsetPageState] items contained in this [Paginator],
  * allowing full control over how iteration starts, progresses, and stops.
  *
  * This function provides customizable strategies for:
@@ -29,25 +29,25 @@ inline fun <T> Paginator<T>.forEach(
  *   Defaults to `0` (beginning of the list).
  * @param step A function that defines how to compute the next index value.
  *   Defaults to incrementing by 1.
- * @param actionAndContinue A callback invoked for each visited [PageState].
+ * @param actionAndContinue A callback invoked for each visited [OffsetPageState].
  *   Receives the full list of states, the current index, and the current state.
  *   Returns `true` to continue iterating, or `false` to stop.
  *
  * @return The original list of page states after iteration completes.
  */
 inline fun <T> Paginator<T>.smartForEach(
-    initialIndex: (list: List<PageState<T>>) -> Int = { 0 },
+    initialIndex: (list: List<OffsetPageState<T>>) -> Int = { 0 },
     step: (index: Int) -> Int = { it + 1 },
     actionAndContinue: (
-        states: List<PageState<T>>,
+        states: List<OffsetPageState<T>>,
         index: Int,
-        currentState: PageState<T>,
+        currentState: OffsetPageState<T>,
     ) -> Boolean,
-): List<PageState<T>> {
-    val states: List<PageState<T>> = this.core.states
+): List<OffsetPageState<T>> {
+    val states: List<OffsetPageState<T>> = this.core.states
     var index = initialIndex.invoke(states)
     while (0 <= index && index < states.size) {
-        val currentState: PageState<T> = states[index]
+        val currentState: OffsetPageState<T> = states[index]
         if (!actionAndContinue.invoke(states, index, currentState)) {
             break
         }
@@ -62,17 +62,17 @@ inline fun <T> Paginator<T>.smartForEach(
  *
  * @param pivotState The initial page from which forward traversal begins.
  * @param predicate A condition that each traversed page must satisfy.
- * @return The last [PageState] encountered while moving forward that still satisfies [predicate],
+ * @return The last [OffsetPageState] encountered while moving forward that still satisfies [predicate],
  *   or `null` if the starting page is null or fails the predicate.
  */
 inline fun <T> Paginator<T>.walkForwardWhile(
-    pivotState: PageState<T>?,
-    predicate: (PageState<T>) -> Boolean = { true },
-): PageState<T>? {
+    pivotState: OffsetPageState<T>?,
+    predicate: (OffsetPageState<T>) -> Boolean = { true },
+): OffsetPageState<T>? {
     return core.walkWhile(
         pivotState = pivotState,
         next = { currentPage: Int -> currentPage + 1 },
-        predicate = { state: PageState<T> -> predicate.invoke(state) },
+        predicate = { state: OffsetPageState<T> -> predicate.invoke(state) },
     )
 }
 
@@ -82,16 +82,16 @@ inline fun <T> Paginator<T>.walkForwardWhile(
  *
  * @param pivotState The initial page from which backward traversal begins.
  * @param predicate A condition that each traversed page must satisfy.
- * @return The last [PageState] encountered while moving backward that still satisfies [predicate],
+ * @return The last [OffsetPageState] encountered while moving backward that still satisfies [predicate],
  *   or `null` if the starting page is null or fails the predicate.
  */
 inline fun <T> Paginator<T>.walkBackwardWhile(
-    pivotState: PageState<T>?,
-    predicate: (PageState<T>) -> Boolean = { true },
-): PageState<T>? {
+    pivotState: OffsetPageState<T>?,
+    predicate: (OffsetPageState<T>) -> Boolean = { true },
+): OffsetPageState<T>? {
     return core.walkWhile(
         pivotState = pivotState,
         next = { currentPage: Int -> currentPage - 1 },
-        predicate = { state: PageState<T> -> predicate.invoke(state) },
+        predicate = { state: OffsetPageState<T> -> predicate.invoke(state) },
     )
 }

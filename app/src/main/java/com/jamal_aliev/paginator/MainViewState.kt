@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator
 
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 data class MainViewState(
     val isInitialLoading: Boolean = true,
     val isRefreshing: Boolean = false,
-    val data: List<PageState<String>> = emptyList(),
+    val data: List<OffsetPageState<String>> = emptyList(),
     val currentPage: Int = 0,
     val startContextPage: Int = 0,
     val endContextPage: Int = 0,

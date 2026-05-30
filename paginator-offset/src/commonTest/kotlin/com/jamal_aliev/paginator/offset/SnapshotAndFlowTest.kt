@@ -1,8 +1,8 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -41,9 +41,18 @@ class SnapshotAndFlowTest {
     fun `scan skips gaps in range`() = runTest {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = 1, resize = false, silently = true)
-        paginator.cache.setState(SuccessPage(page = 1, data = mutableListOf("a")), silently = true)
-        paginator.cache.setState(SuccessPage(page = 3, data = mutableListOf("c")), silently = true)
-        paginator.cache.setState(SuccessPage(page = 5, data = mutableListOf("e")), silently = true)
+        paginator.cache.setState(
+            OffsetPageState.Success(page = 1, data = mutableListOf("a")),
+            silently = true
+        )
+        paginator.cache.setState(
+            OffsetPageState.Success(page = 3, data = mutableListOf("c")),
+            silently = true
+        )
+        paginator.cache.setState(
+            OffsetPageState.Success(page = 5, data = mutableListOf("e")),
+            silently = true
+        )
 
         val result = paginator.core.scan(1..5)
         // scan uses continue (not break), so it collects all cached pages in range
@@ -67,7 +76,7 @@ class SnapshotAndFlowTest {
             val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
 
             val received =
-                mutableListOf<List<com.jamal_aliev.paginator.core.page.PageState<String>>>()
+                mutableListOf<List<OffsetPageState<String>>>()
             val job = paginator.core.snapshot
                 .onEach { received += it }
                 .launchIn(this)
@@ -131,7 +140,7 @@ class SnapshotAndFlowTest {
         val paginator = createPopulatedPaginator(pageCount = 3, capacity = 3)
         paginator.core.snapshot(1..3)
 
-        val received = mutableListOf<List<com.jamal_aliev.paginator.core.page.PageState<String>>>()
+        val received = mutableListOf<List<OffsetPageState<String>>>()
         val job = paginator.core.snapshot
             .onEach { received += it }
             .launchIn(this)
@@ -158,7 +167,7 @@ class SnapshotAndFlowTest {
         assertTrue(initial.isEmpty())
 
         // Add state and trigger flow
-        paginator.cache.setState(SuccessPage(page = 1, data = mutableListOf("a")))
+        paginator.cache.setState(OffsetPageState.Success(page = 1, data = mutableListOf("a")))
         paginator.core.repeatCacheFlow()
         val updated = flow.first()
         assertEquals(1, updated.size)

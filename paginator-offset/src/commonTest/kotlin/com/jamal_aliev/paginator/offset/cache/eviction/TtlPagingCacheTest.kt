@@ -1,7 +1,7 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -36,8 +36,8 @@ class TimeLimitedPagingCacheTest {
     private fun successPage(
         page: Int,
         data: List<String> = listOf("item_$page")
-    ): PageState.SuccessPage<String> {
-        return PageState.SuccessPage(page = page, data = data)
+    ): OffsetPageState.Success<String> {
+        return OffsetPageState.Success(page = page, data = data)
     }
 
     // -- 1. Pages evicted after TTL --
@@ -173,7 +173,7 @@ class TimeLimitedPagingCacheTest {
         val ts = TestTimeSource()
         val (core, _) = createCore(ttlMs = 500, timeSource = ts)
         val evicted = mutableListOf<Int>()
-        core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
+        core.evictionListener = CacheEvictionListener { evicted.add((it as OffsetPageState).page) }
 
         core.setState(successPage(1), silently = true)
         ts += 600.milliseconds

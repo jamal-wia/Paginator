@@ -1,13 +1,12 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
-import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
-import com.jamal_aliev.paginator.core.cache.PagingCache
-
-import com.jamal_aliev.paginator.offset.extension.withLeaf
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
+import com.jamal_aliev.paginator.offset.extension.withLeaf
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 /**
  * A [PagingCache] decorator that enforces an **LRU (Least Recently Used)** eviction policy.
@@ -68,13 +67,13 @@ class MostRecentPagingCache<T>(
     /** Tracks page access order: head = least recent, tail = most recent. */
     private val accessOrder = mutableListOf<Int>()
 
-    override fun setState(state: PageState<T>, silently: Boolean) {
+    override fun setState(state: OffsetPageState<T>, silently: Boolean) {
         cache.setState(state, silently)
         touchPage(state.page)
         performEviction(justAddedPage = state.page)
     }
 
-    override fun getStateOf(page: Int): PageState<T>? {
+    override fun getStateOf(page: Int): OffsetPageState<T>? {
         val result = cache.getStateOf(page)
         if (result != null) touchPage(page)
         return result
@@ -86,7 +85,7 @@ class MostRecentPagingCache<T>(
         return result
     }
 
-    override fun removeFromCache(page: Int): PageState<T>? {
+    override fun removeFromCache(page: Int): OffsetPageState<T>? {
         val result = cache.removeFromCache(page)
         accessOrder.remove(page)
         return result

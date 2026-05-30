@@ -7,7 +7,7 @@ import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cursor.extension.withLeaf
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 /**
  * A [CursorPagingCache] decorator that keeps **only** pages within the current
@@ -19,13 +19,13 @@ import com.jamal_aliev.paginator.core.page.PageState
  * @param margin Number of linked pages to keep beyond each edge of the context
  *   window. Default is `0` (strict window).
  */
-class CursorContextWindowPagingCache<T>(
-    private val cache: CursorPagingCache<T> = CursorInMemoryPagingCache<T>(),
+class CursorContextWindowPagingCache<K : Any, T>(
+    private val cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>(),
     val margin: Int = 0,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : CursorPagingCache<T> by cache, CursorChainablePagingCache<T> {
+) : CursorPagingCache<K, T> by cache, CursorChainablePagingCache<K, T> {
 
-    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): CursorContextWindowPagingCache<T> =
+    override fun replaceLeaf(newLeaf: CursorPagingCache<K, T>): CursorContextWindowPagingCache<K, T> =
         CursorContextWindowPagingCache(
             cache = cache.withLeaf(newLeaf),
             margin = margin,
@@ -36,7 +36,11 @@ class CursorContextWindowPagingCache<T>(
         require(margin >= 0) { "margin must be >= 0, was $margin" }
     }
 
-    override fun setState(cursor: CursorBookmark, state: PageState<T>, silently: Boolean) {
+    override fun setState(
+        cursor: CursorBookmark<K>,
+        state: CursorPageState<K, T>,
+        silently: Boolean
+    ) {
         cache.setState(cursor, state, silently)
         performEviction(justAdded = cursor.self)
     }
@@ -44,7 +48,7 @@ class CursorContextWindowPagingCache<T>(
     private fun performEviction(justAdded: Any) {
         if (!cache.isStarted) return
 
-        val keep: Set<Any> = keepSelves()
+        val keep: Set<K> = keepSelves()
 
         val toEvict = cache.cursors.asSequence()
             .map { it.self }
@@ -62,14 +66,14 @@ class CursorContextWindowPagingCache<T>(
         }
     }
 
-    private fun keepSelves(): Set<Any> {
-        val result = HashSet<Any>()
+    private fun keepSelves(): Set<K> {
+        val result = HashSet<K>()
         val start = cache.startContextCursor ?: return result
         val end = cache.endContextCursor ?: return result
-        val visited = HashSet<Any>()
+        val visited = HashSet<K>()
 
         // Walk inside the window from start → end
-        var current: CursorBookmark? = start
+        var current: CursorBookmark<K>? = start
         while (current != null && visited.add(current.self)) {
             result.add(current.self)
             if (current.self == end.self) break
@@ -78,7 +82,7 @@ class CursorContextWindowPagingCache<T>(
 
         // Extend `margin` steps past each edge
         var leftwardMargin = margin
-        var leftEdge: CursorBookmark? = cache.walkBackward(start)
+        var leftEdge: CursorBookmark<K>? = cache.walkBackward(start)
         while (leftEdge != null && leftwardMargin > 0) {
             if (!result.add(leftEdge.self)) break
             leftwardMargin--
@@ -86,7 +90,7 @@ class CursorContextWindowPagingCache<T>(
         }
 
         var rightwardMargin = margin
-        var rightEdge: CursorBookmark? = cache.walkForward(end)
+        var rightEdge: CursorBookmark<K>? = cache.walkForward(end)
         while (rightEdge != null && rightwardMargin > 0) {
             if (!result.add(rightEdge.self)) break
             rightwardMargin--

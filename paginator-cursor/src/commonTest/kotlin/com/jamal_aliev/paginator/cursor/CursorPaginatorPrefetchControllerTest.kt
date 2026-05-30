@@ -24,11 +24,11 @@ class CursorPaginatorPrefetchControllerTest {
         totalPages: Int = 10,
         capacity: Int = 10,
         loadedPages: Int = 3,
-    ): CursorPaginator<String> {
+    ): CursorPaginator<String, String> {
         val backend = FakeCursorBackend(FakeCursorBackend.defaultPages(totalPages, capacity))
         val paginator = cursorPaginatorOf(backend, capacity = capacity)
         paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = backend.head.self, next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = backend.head.self, next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )
@@ -43,11 +43,11 @@ class CursorPaginatorPrefetchControllerTest {
         totalPages: Int = 10,
         capacity: Int = 10,
         anchorIndex: Int = 5,
-    ): CursorPaginator<String> {
+    ): CursorPaginator<String, String> {
         val backend = FakeCursorBackend(FakeCursorBackend.defaultPages(totalPages, capacity))
         val paginator = cursorPaginatorOf(backend, capacity = capacity)
         paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = "p$anchorIndex", next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = "p$anchorIndex", next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )
@@ -332,7 +332,7 @@ class CursorPaginatorPrefetchControllerTest {
         val backend = FakeCursorBackend(FakeCursorBackend.defaultPages(10, 10))
         val paginator = cursorPaginatorOf(backend, capacity = 10)
         paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = "p0", next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = "p0", next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )
@@ -353,7 +353,7 @@ class CursorPaginatorPrefetchControllerTest {
         val backend = FakeCursorBackend(FakeCursorBackend.defaultPages(10, 10))
         val paginator = cursorPaginatorOf(backend, capacity = 10)
         paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = "p5", next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = "p5", next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )

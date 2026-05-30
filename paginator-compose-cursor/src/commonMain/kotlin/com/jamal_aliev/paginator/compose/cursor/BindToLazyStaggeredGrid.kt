@@ -45,7 +45,7 @@ private fun LazyStaggeredGridState.readScrollSignal(): ScrollSignal {
  */
 @OptIn(PaginatorInternalApi::class)
 @Composable
-fun CursorPaginatorPrefetchController<*>.BindToLazyStaggeredGrid(
+fun CursorPaginatorPrefetchController<*, *>.BindToLazyStaggeredGrid(
     gridState: LazyStaggeredGridState,
     dataItemCount: Int,
     headerCount: Int = 0,

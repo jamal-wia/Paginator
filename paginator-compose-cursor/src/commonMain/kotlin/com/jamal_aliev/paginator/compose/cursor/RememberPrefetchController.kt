@@ -5,11 +5,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.prefetch.DefaultPrefetchDistance
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.extension.prefetchController
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchController
 
 
@@ -17,10 +17,10 @@ import com.jamal_aliev.paginator.cursor.prefetch.CursorPaginatorPrefetchControll
  * Cursor-paginator counterpart of [Paginator.rememberPrefetchController].
  *
  * Behaviour, lifecycle, and hot-update semantics are identical — the only difference is the
- * [loadGuard] signature, which receives a [CursorBookmark] instead of a page number.
+ * [loadGuard] signature, which receives a [CursorBookmark<K>] instead of a page number.
  */
 @Composable
-fun <T> CursorPaginator<T>.rememberPrefetchController(
+fun <K : Any, T> CursorPaginator<K, T>.rememberPrefetchController(
     prefetchDistance: Int = DefaultPrefetchDistance,
     enableBackwardPrefetch: Boolean = false,
     silentlyLoading: Boolean = false,
@@ -28,9 +28,9 @@ fun <T> CursorPaginator<T>.rememberPrefetchController(
     enabled: Boolean = true,
     cancelOnDispose: Boolean = true,
     enableCacheFlow: Boolean = core.enableCacheFlow,
-    loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
+    loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
     onPrefetchError: ((Exception) -> Unit)? = null,
-): CursorPaginatorPrefetchController<T> {
+): CursorPaginatorPrefetchController<K, T> {
     val paginator = this
     val scope = rememberCoroutineScope()
     val controller = remember(paginator, scope) {

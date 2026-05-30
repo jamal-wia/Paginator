@@ -14,5 +14,5 @@ import kotlinx.coroutines.flow.Flow
  * they classify the snapshot solely by `PageState` type and data payload — so
  * the cursor paginator re-uses them without modification.
  */
-val <T> CursorPaginator<T>.uiState: Flow<PaginatorUiState<T>>
+val <K : Any, T> CursorPaginator<K, T>.uiState: Flow<PaginatorUiState<T>>
     get() = core.snapshot.asUiState(isStarted = { core.isStarted })

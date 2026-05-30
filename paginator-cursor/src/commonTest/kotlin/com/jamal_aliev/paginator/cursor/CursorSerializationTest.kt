@@ -1,9 +1,8 @@
 package com.jamal_aliev.paginator.cursor
 
-import com.jamal_aliev.paginator.cursor.CursorPagingCore
-import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.core.extension.isSuccessState
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.serialization.restoreStateFromJson
 import com.jamal_aliev.paginator.cursor.serialization.saveStateToJson
 import kotlinx.coroutines.test.runTest
@@ -15,19 +14,18 @@ import kotlin.test.assertTrue
 
 class CursorSerializationTest {
 
-    private fun populatedCore(): CursorPagingCore<String> {
-        val core = CursorPagingCore<String>(initialCapacity = 3)
+    private fun populatedCore(): CursorPagingCore<String, String> {
+        val core = CursorPagingCore<String, String>(initialCapacity = 3)
         val selves = listOf("p0", "p1", "p2", "p3")
         selves.forEachIndexed { idx, self ->
-            val bookmark = CursorBookmark(
+            val bookmark = CursorBookmark<String>(
                 prev = if (idx == 0) null else selves[idx - 1],
                 self = self,
                 next = if (idx == selves.lastIndex) null else selves[idx + 1],
             )
-            val state = SuccessPage(
-                page = idx + 1,
-                data = MutableList(3) { "${self}_item$it" },
-            )
+            val state = CursorPageState.Success(
+                bookmark = bookmark,
+                data = MutableList(3) { "${self}_item$it" })
             core.cache.setState(bookmark, state, silently = true)
         }
         core.startContextCursor = core.cache.getCursorOf("p1")
@@ -40,7 +38,7 @@ class CursorSerializationTest {
         val core = populatedCore()
         val json = core.saveStateToJson(String.serializer(), String.serializer())
 
-        val restored = CursorPagingCore<String>(initialCapacity = 3)
+        val restored = CursorPagingCore<String, String>(initialCapacity = 3)
         restored.restoreStateFromJson(json, String.serializer(), String.serializer())
 
         // Same number of pages.
@@ -73,7 +71,7 @@ class CursorSerializationTest {
             contextOnly = true,
         )
 
-        val restored = CursorPagingCore<String>(initialCapacity = 3)
+        val restored = CursorPagingCore<String, String>(initialCapacity = 3)
         restored.restoreStateFromJson(json, String.serializer(), String.serializer())
         // Context window was p1..p2, so only those two should survive.
         assertEquals(listOf("p1", "p2"), restored.cursors.map { it.self })
@@ -85,7 +83,7 @@ class CursorSerializationTest {
         val paginator = cursorPaginatorOf(backend)
         paginator.restart(silentlyLoading = true, silentlyResult = true)
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        paginator.bookmarks.add(CursorBookmark(prev = null, self = "p3", next = null))
+        paginator.bookmarks.add(CursorBookmark<String>(prev = null, self = "p3", next = null))
         paginator.recyclingBookmark = true
         paginator.lockRefresh = true
 

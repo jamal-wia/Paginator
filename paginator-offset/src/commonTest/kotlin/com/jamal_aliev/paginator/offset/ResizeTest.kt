@@ -1,4 +1,5 @@
 package com.jamal_aliev.paginator.offset
+
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

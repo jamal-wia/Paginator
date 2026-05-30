@@ -7,11 +7,11 @@ import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cursor.extension.withLeaf
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 /**
  * A [CursorPagingCache] decorator that enforces an **LRU (Least Recently Used)**
- * eviction policy, keyed by [CursorBookmark.self].
+ * eviction policy, keyed by [CursorBookmark<K>.self].
  *
  * When the number of cached pages exceeds [maxSize], the page that has been
  * accessed least recently (either written via [setState] or read via [getStateOf] /
@@ -21,14 +21,14 @@ import com.jamal_aliev.paginator.core.page.PageState
  * [endContextCursor] (walking `next`) are protected from eviction when
  * [protectContextWindow] is `true`.
  */
-class CursorMostRecentPagingCache<T>(
-    private val cache: CursorPagingCache<T> = CursorInMemoryPagingCache<T>(),
+class CursorMostRecentPagingCache<K : Any, T>(
+    private val cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : CursorPagingCache<T> by cache, CursorChainablePagingCache<T> {
+) : CursorPagingCache<K, T> by cache, CursorChainablePagingCache<K, T> {
 
-    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): CursorMostRecentPagingCache<T> =
+    override fun replaceLeaf(newLeaf: CursorPagingCache<K, T>): CursorMostRecentPagingCache<K, T> =
         CursorMostRecentPagingCache(
             cache = cache.withLeaf(newLeaf),
             maxSize = maxSize,
@@ -41,27 +41,31 @@ class CursorMostRecentPagingCache<T>(
     }
 
     /** Access order: head = least recent, tail = most recent. Stores `self` keys. */
-    private val accessOrder = mutableListOf<Any>()
+    private val accessOrder = mutableListOf<K>()
 
-    override fun setState(cursor: CursorBookmark, state: PageState<T>, silently: Boolean) {
+    override fun setState(
+        cursor: CursorBookmark<K>,
+        state: CursorPageState<K, T>,
+        silently: Boolean
+    ) {
         cache.setState(cursor, state, silently)
         touch(cursor.self)
         performEviction(justAdded = cursor.self)
     }
 
-    override fun getStateOf(self: Any): PageState<T>? {
+    override fun getStateOf(self: K): CursorPageState<K, T>? {
         val result = cache.getStateOf(self)
         if (result != null) touch(self)
         return result
     }
 
-    override fun getElement(self: Any, index: Int): T? {
+    override fun getElement(self: K, index: Int): T? {
         val result = cache.getElement(self, index)
         if (result != null) touch(self)
         return result
     }
 
-    override fun removeFromCache(self: Any): PageState<T>? {
+    override fun removeFromCache(self: K): CursorPageState<K, T>? {
         val result = cache.removeFromCache(self)
         accessOrder.remove(self)
         return result
@@ -77,14 +81,14 @@ class CursorMostRecentPagingCache<T>(
         accessOrder.clear()
     }
 
-    private fun touch(self: Any) {
+    private fun touch(self: K) {
         accessOrder.remove(self)
         accessOrder.add(self)
     }
 
-    private fun performEviction(justAdded: Any) {
+    private fun performEviction(justAdded: K) {
         while (cache.size > maxSize) {
-            val protectedSet: Set<Any>? =
+            val protectedSet: Set<K>? =
                 if (protectContextWindow && cache.isStarted) protectedSelves() else null
 
             val victim = accessOrder.firstOrNull { self ->
@@ -104,11 +108,11 @@ class CursorMostRecentPagingCache<T>(
         }
     }
 
-    private fun protectedSelves(): Set<Any> {
-        val result = HashSet<Any>()
+    private fun protectedSelves(): Set<K> {
+        val result = HashSet<K>()
         var current = cache.startContextCursor
         val end = cache.endContextCursor
-        val visited = HashSet<Any>()
+        val visited = HashSet<K>()
         while (current != null && visited.add(current.self)) {
             result.add(current.self)
             if (end != null && current.self == end.self) break

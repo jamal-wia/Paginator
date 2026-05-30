@@ -2,14 +2,11 @@ package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.core.extension.asUiState
 import com.jamal_aliev.paginator.core.extension.toUiState
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.extension.uiState
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -27,55 +24,69 @@ class PaginatorUiStateTest {
 
     @Test
     fun `empty list with isStarted=false returns Idle`() {
-        val state = emptyList<PageState<String>>().toUiState(isStarted = false)
+        val state = emptyList<OffsetPageState<String>>().toUiState(isStarted = false)
         assertSame(PaginatorUiState.Idle, state)
     }
 
     @Test
     fun `empty list with isStarted=true returns Idle`() {
-        val state = emptyList<PageState<String>>().toUiState(isStarted = true)
+        val state = emptyList<OffsetPageState<String>>().toUiState(isStarted = true)
         assertSame(PaginatorUiState.Idle, state)
     }
 
     @Test
     fun `non-empty list with isStarted=false returns Idle`() {
-        val list = listOf(SuccessPage(page = 1, data = mutableListOf("a")))
+        val list = listOf(OffsetPageState.Success(page = 1, data = mutableListOf("a")))
         val state = list.toUiState(isStarted = false)
         assertSame(PaginatorUiState.Idle, state)
     }
 
     @Test
-    fun `single ProgressPage with empty data returns Loading`() {
-        val list = listOf<PageState<String>>(ProgressPage(page = 1, data = mutableListOf()))
-        val state = list.toUiState(isStarted = true)
-        assertEquals(PaginatorUiState.Loading(page = 1), state)
-    }
-
-    @Test
-    fun `single SuccessPage with empty data returns Empty`() {
-        val list = listOf<PageState<String>>(SuccessPage(page = 1, data = mutableListOf()))
-        val state = list.toUiState(isStarted = true)
-        assertEquals(PaginatorUiState.Empty(page = 1), state)
-    }
-
-    @Test
-    fun `single ErrorPage with empty data returns Error`() {
-        val exception = Exception("boom")
-        val list = listOf<PageState<String>>(
-            ErrorPage(exception = exception, page = 1, data = mutableListOf())
+    fun `single Progress with empty data returns Loading`() {
+        val list = listOf<OffsetPageState<String>>(
+            OffsetPageState.Progress(
+                page = 1,
+                data = mutableListOf()
+            )
         )
         val state = list.toUiState(isStarted = true)
-        assertEquals(PaginatorUiState.Error(page = 1, exception = exception), state)
+        assertIs<PaginatorUiState.Loading<String>>(state)
+        assertEquals(1, (state.state as OffsetPageState<*>).page)
     }
 
     @Test
-    fun `single ProgressPage with carried data returns Content exposing that data`() {
-        val progress = ProgressPage(page = 1, data = mutableListOf("carried"))
-        val list: List<PageState<String>> = listOf(progress)
+    fun `single Success with empty data returns Empty`() {
+        val list = listOf<OffsetPageState<String>>(
+            OffsetPageState.Success(
+                page = 1,
+                data = mutableListOf()
+            )
+        )
+        val state = list.toUiState(isStarted = true)
+        assertIs<PaginatorUiState.Empty<String>>(state)
+        assertEquals(1, (state.state as OffsetPageState<*>).page)
+    }
+
+    @Test
+    fun `single Error with empty data returns Error`() {
+        val exception = Exception("boom")
+        val list = listOf<OffsetPageState<String>>(
+            OffsetPageState.Error(exception = exception, page = 1, data = mutableListOf())
+        )
+        val state = list.toUiState(isStarted = true)
+        assertIs<PaginatorUiState.Error<String>>(state)
+        assertEquals(1, (state.state as OffsetPageState<*>).page)
+        assertSame(exception, state.state.exception)
+    }
+
+    @Test
+    fun `single Progress with carried data returns Content exposing that data`() {
+        val progress = OffsetPageState.Progress(page = 1, data = mutableListOf("carried"))
+        val list: List<OffsetPageState<String>> = listOf(progress)
         val state = list.toUiState(isStarted = true)
         assertIs<PaginatorUiState.Content<String>>(state)
-        // Data carried forward by the paginator into a ProgressPage (e.g. when a
-        // partially-filled SuccessPage is reloaded) flows through to items so it
+        // Data carried forward by the paginator into a OffsetPageState.Progress (e.g. when a
+        // partially-filled OffsetPageState.Success is reloaded) flows through to items so it
         // stays visible while the reload is in flight.
         assertEquals(listOf("carried"), state.items)
         assertSame(progress, state.prependState)
@@ -83,17 +94,17 @@ class PaginatorUiStateTest {
     }
 
     @Test
-    fun `single ErrorPage with carried data returns Content exposing that data`() {
-        val error = ErrorPage<String>(
+    fun `single Error with carried data returns Content exposing that data`() {
+        val error = OffsetPageState.Error<String>(
             exception = Exception("boom"),
             page = 1,
             data = mutableListOf("carried"),
         )
-        val list: List<PageState<String>> = listOf(error)
+        val list: List<OffsetPageState<String>> = listOf(error)
         val state = list.toUiState(isStarted = true)
         assertIs<PaginatorUiState.Content<String>>(state)
-        // Data carried forward by the paginator into an ErrorPage (e.g. when a
-        // reload of a partially-filled SuccessPage fails) flows through to items
+        // Data carried forward by the paginator into an OffsetPageState.Error (e.g. when a
+        // reload of a partially-filled OffsetPageState.Success fails) flows through to items
         // so the last known items stay visible alongside the error indicator.
         assertEquals(listOf("carried"), state.items)
         assertSame(error, state.prependState)
@@ -101,9 +112,9 @@ class PaginatorUiStateTest {
     }
 
     @Test
-    fun `single SuccessPage returns Content with null boundaries`() {
-        val success = SuccessPage(page = 1, data = mutableListOf("a", "b"))
-        val list: List<PageState<String>> = listOf(success)
+    fun `single Success returns Content with null boundaries`() {
+        val success = OffsetPageState.Success(page = 1, data = mutableListOf("a", "b"))
+        val list: List<OffsetPageState<String>> = listOf(success)
         val state = list.toUiState(isStarted = true)
         assertIs<PaginatorUiState.Content<String>>(state)
         assertEquals(listOf("a", "b"), state.items)
@@ -112,11 +123,11 @@ class PaginatorUiStateTest {
     }
 
     @Test
-    fun `multiple SuccessPages aggregates items with null boundaries`() {
-        val list: List<PageState<String>> = listOf(
-            SuccessPage(page = 1, data = mutableListOf("a")),
-            SuccessPage(page = 2, data = mutableListOf("b", "c")),
-            SuccessPage(page = 3, data = mutableListOf("d")),
+    fun `multiple Successs aggregates items with null boundaries`() {
+        val list: List<OffsetPageState<String>> = listOf(
+            OffsetPageState.Success(page = 1, data = mutableListOf("a")),
+            OffsetPageState.Success(page = 2, data = mutableListOf("b", "c")),
+            OffsetPageState.Success(page = 3, data = mutableListOf("d")),
         )
         val state = list.toUiState(isStarted = true)
         assertIs<PaginatorUiState.Content<String>>(state)
@@ -127,9 +138,9 @@ class PaginatorUiStateTest {
 
     @Test
     fun `leading non-success becomes prependState`() {
-        val progress = ProgressPage<String>(page = 0, data = mutableListOf())
-        val success = SuccessPage(page = 1, data = mutableListOf("a", "b"))
-        val list: List<PageState<String>> = listOf(progress, success)
+        val progress = OffsetPageState.Progress<String>(page = 0, data = mutableListOf())
+        val success = OffsetPageState.Success(page = 1, data = mutableListOf("a", "b"))
+        val list: List<OffsetPageState<String>> = listOf(progress, success)
         val state = list.toUiState(isStarted = true)
         assertIs<PaginatorUiState.Content<String>>(state)
         assertEquals(listOf("a", "b"), state.items)
@@ -139,9 +150,9 @@ class PaginatorUiStateTest {
 
     @Test
     fun `trailing non-success becomes appendState`() {
-        val success = SuccessPage(page = 1, data = mutableListOf("a"))
-        val progress = ProgressPage<String>(page = 2, data = mutableListOf())
-        val list: List<PageState<String>> = listOf(success, progress)
+        val success = OffsetPageState.Success(page = 1, data = mutableListOf("a"))
+        val progress = OffsetPageState.Progress<String>(page = 2, data = mutableListOf())
+        val list: List<OffsetPageState<String>> = listOf(success, progress)
         val state = list.toUiState(isStarted = true)
         assertIs<PaginatorUiState.Content<String>>(state)
         assertEquals(listOf("a"), state.items)
@@ -151,17 +162,17 @@ class PaginatorUiStateTest {
 
     @Test
     fun `both boundaries non-success merge carried data into items`() {
-        val topError = ErrorPage<String>(
+        val topError = OffsetPageState.Error<String>(
             exception = Exception("prev-failed"),
             page = 0,
             data = mutableListOf("prev-carried"),
         )
-        val mid = SuccessPage(page = 1, data = mutableListOf("a", "b"))
-        val bottomProgress = ProgressPage<String>(
+        val mid = OffsetPageState.Success(page = 1, data = mutableListOf("a", "b"))
+        val bottomProgress = OffsetPageState.Progress<String>(
             page = 2,
             data = mutableListOf("next-carried"),
         )
-        val list: List<PageState<String>> = listOf(topError, mid, bottomProgress)
+        val list: List<OffsetPageState<String>> = listOf(topError, mid, bottomProgress)
         val state = list.toUiState(isStarted = true)
         assertIs<PaginatorUiState.Content<String>>(state)
         assertEquals(listOf("prev-carried", "a", "b", "next-carried"), state.items)
@@ -170,11 +181,11 @@ class PaginatorUiStateTest {
     }
 
     @Test
-    fun `empty SuccessPage in the middle does not contribute data`() {
-        val a = SuccessPage(page = 1, data = mutableListOf("a"))
-        val emptyMid = SuccessPage(page = 2, data = mutableListOf<String>())
-        val c = SuccessPage(page = 3, data = mutableListOf("c"))
-        val list: List<PageState<String>> = listOf(a, emptyMid, c)
+    fun `empty Success in the middle does not contribute data`() {
+        val a = OffsetPageState.Success(page = 1, data = mutableListOf("a"))
+        val emptyMid = OffsetPageState.Success(page = 2, data = mutableListOf<String>())
+        val c = OffsetPageState.Success(page = 3, data = mutableListOf("c"))
+        val list: List<OffsetPageState<String>> = listOf(a, emptyMid, c)
         val state = list.toUiState(isStarted = true)
         assertIs<PaginatorUiState.Content<String>>(state)
         assertEquals(listOf("a", "c"), state.items)
@@ -188,20 +199,20 @@ class PaginatorUiStateTest {
 
     @Test
     fun `asUiState reads isStarted provider on every emission`() = runTest {
-        val source = MutableStateFlow<List<PageState<String>>>(emptyList())
+        val source = MutableStateFlow<List<OffsetPageState<String>>>(emptyList())
         var started = false
         val flow = source.asUiState(isStarted = { started })
 
         assertSame(PaginatorUiState.Idle, flow.first())
 
         started = true
-        source.value = listOf(SuccessPage(page = 1, data = mutableListOf("a")))
+        source.value = listOf(OffsetPageState.Success(page = 1, data = mutableListOf("a")))
         val content = flow.first()
         assertIs<PaginatorUiState.Content<String>>(content)
         assertEquals(listOf("a"), content.items)
 
         started = false
-        source.value = listOf(SuccessPage(page = 1, data = mutableListOf("b")))
+        source.value = listOf(OffsetPageState.Success(page = 1, data = mutableListOf("b")))
         assertSame(PaginatorUiState.Idle, flow.first())
     }
 
@@ -235,7 +246,8 @@ class PaginatorUiStateTest {
         paginator.jump(BookmarkInt(1))
 
         val state = paginator.uiState.first()
-        assertEquals(PaginatorUiState.Empty(page = 1), state)
+        assertIs<PaginatorUiState.Empty<String>>(state)
+        assertEquals(1, (state.state as OffsetPageState<*>).page)
     }
 
     @Test
@@ -244,27 +256,27 @@ class PaginatorUiStateTest {
         val paginator = MutablePaginator<String> { throw failure }
         paginator.core.resize(capacity = 5, resize = false, silently = true)
 
-        // jump() catches load exceptions and writes them back as an ErrorPage; it does not throw.
+        // jump() catches load exceptions and writes them back as an OffsetPageState.Error; it does not throw.
         paginator.jump(BookmarkInt(1))
 
         val state = paginator.uiState.first()
-        assertIs<PaginatorUiState.Error>(state)
-        assertEquals(1, state.page)
-        assertSame(failure, state.exception)
+        assertIs<PaginatorUiState.Error<String>>(state)
+        assertEquals(1, (state.state as OffsetPageState<*>).page)
+        assertSame(failure, state.state.exception)
     }
 
     @Test
     fun `uiState keeps carried items while refreshing a loaded page`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3)
 
-        // Manually place a ProgressPage that carries the previously loaded data and trigger
+        // Manually place a OffsetPageState.Progress that carries the previously loaded data and trigger
         // a snapshot emission via core.setState (the cache-level setState does not emit
         // a snapshot). This mimics what Paginator.goNextPage / refresh do internally while
         // a reload is in flight.
         val current = paginator.cache.getStateOf(1)!!
         val carried: List<String> = current.data.toList()
         paginator.core.setState(
-            state = ProgressPage(page = 1, data = current.data.toMutableList()),
+            state = OffsetPageState.Progress(page = 1, data = current.data.toMutableList()),
             silently = false,
         )
 
@@ -272,17 +284,17 @@ class PaginatorUiStateTest {
         assertIs<PaginatorUiState.Content<String>>(state)
         // Previously loaded items must stay visible while the page reloads.
         assertEquals(carried, state.items)
-        assertIs<ProgressPage<String>>(state.prependState)
-        assertIs<ProgressPage<String>>(state.appendState)
+        assertIs<OffsetPageState.Progress<String>>(state.prependState)
+        assertIs<OffsetPageState.Progress<String>>(state.appendState)
     }
 
     @Test
-    fun `uiState keeps carried items when reloading a partial SuccessPage fails`() = runTest {
-        // Scenario: page 1 loads with fewer items than capacity (partial SuccessPage).
+    fun `uiState keeps carried items when reloading a partial Success fails`() = runTest {
+        // Scenario: page 1 loads with fewer items than capacity (partial OffsetPageState.Success).
         // When goNextPage is called, the paginator detects the partial fill and reloads
-        // page 1. During the reload, Paginator creates a ProgressPage with the previously
+        // page 1. During the reload, Paginator creates a OffsetPageState.Progress with the previously
         // loaded data carried over (see Paginator.kt:642). If the reload throws, the
-        // catch branch of loadOrGetPageState (Paginator.kt:1170-1174) creates an ErrorPage
+        // catch branch of loadOrGetPageState (Paginator.kt:1170-1174) creates an OffsetPageState.Error
         // from the same pre-loading cachedState, so the carried data survives the failure.
         // PaginatorUiState.Content.items must expose those carried items so the UI
         // keeps showing them next to the error indicator.
@@ -296,16 +308,16 @@ class PaginatorUiStateTest {
         paginator.core.resize(capacity = 5, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1))
-        // page 1 is now a partially-filled SuccessPage (2 items, capacity 5).
+        // page 1 is now a partially-filled OffsetPageState.Success (2 items, capacity 5).
 
         paginator.goNextPage()
         // page 1 was reloaded in place; the reload failed and Paginator wrote an
-        // ErrorPage(page = 1, data = [carried items]).
+        // OffsetPageState.Error(page = 1, data = [carried items]).
 
         val state = paginator.uiState.first()
         assertIs<PaginatorUiState.Content<String>>(state)
         assertEquals(partialItems, state.items)
-        val boundary = assertIs<ErrorPage<String>>(state.appendState)
+        val boundary = assertIs<OffsetPageState.Error<String>>(state.appendState)
         assertEquals(1, boundary.page)
         assertSame(failure, boundary.exception)
         assertEquals(partialItems, boundary.data)
@@ -331,7 +343,7 @@ class PaginatorUiStateTest {
         paginator.core.resize(capacity = 3, resize = false, silently = true)
 
         paginator.jump(BookmarkInt(1))
-        // goNextPage() catches load exceptions and writes them back as an ErrorPage; it does not throw.
+        // goNextPage() catches load exceptions and writes them back as an OffsetPageState.Error; it does not throw.
         paginator.goNextPage()
 
         val state = paginator.uiState.first()
@@ -339,7 +351,7 @@ class PaginatorUiStateTest {
         assertEquals(listOf("p1_0", "p1_1", "p1_2"), state.items)
         assertNull(state.prependState)
         val append = state.appendState
-        assertIs<ErrorPage<String>>(append)
+        assertIs<OffsetPageState.Error<String>>(append)
         assertEquals(2, append.page)
         assertSame(failure, append.exception)
     }

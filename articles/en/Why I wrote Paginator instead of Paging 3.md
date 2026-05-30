@@ -193,7 +193,7 @@ same serialization. The only difference is addressing — instead of a page numb
 `prev / self / next` is used:
 
 ```kotlin
-val messages = mutableCursorPaginator<Message> {
+val messages = mutableCursorPaginator<String, Message> {
     load { cursor ->
         val page = api.getMessages(cursor?.self as? String)
         CursorLoadResult(

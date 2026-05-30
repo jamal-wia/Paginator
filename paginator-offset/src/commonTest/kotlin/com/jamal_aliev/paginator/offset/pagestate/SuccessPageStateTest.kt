@@ -1,10 +1,10 @@
-package com.jamal_aliev.paginator.core.pagestate
+package com.jamal_aliev.paginator.offset.pagestate
+
 
 import com.jamal_aliev.paginator.core.extension.isEmptyState
 import com.jamal_aliev.paginator.core.extension.isRealSuccessState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,15 +17,15 @@ import kotlin.test.assertTrue
 class SuccessPageStateTest {
 
     @Test
-    fun `test the integrity of stored data for SuccessPage`() {
+    fun `test the integrity of stored data for Success`() {
         val samplePageNumber = 3
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
 
-        val successPageState: SuccessPage<String> =
-            SuccessPage(
+        val successPageState: OffsetPageState.Success<String> =
+            OffsetPageState.Success(
                 page = samplePageNumber,
                 data = sampleListOfData
             )
@@ -34,7 +34,7 @@ class SuccessPageStateTest {
         assertEquals(sampleListOfData, successPageState.data)
 
         assertNotNull(
-            SuccessPage<String>(
+            OffsetPageState.Success<String>(
                 page = 1,
                 data = emptyList()
             )
@@ -42,14 +42,14 @@ class SuccessPageStateTest {
     }
 
     @Test
-    fun `test hashCode for SuccessPage`() {
+    fun `test hashCode for Success`() {
         val page = 4
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
-        val successPageState: PageState<String> =
-            SuccessPage(
+        val successPageState: OffsetPageState<String> =
+            OffsetPageState.Success(
                 page = page,
                 data = sampleListOfData
             )
@@ -57,18 +57,18 @@ class SuccessPageStateTest {
     }
 
     @Test
-    fun `test compareTo for SuccessPage`() {
+    fun `test compareTo for Success`() {
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
-        val successPageState1: PageState<String> =
-            SuccessPage(
+        val successPageState1: OffsetPageState<String> =
+            OffsetPageState.Success(
                 page = 1,
                 data = sampleListOfData
             )
-        val successPageState2: PageState<String> =
-            SuccessPage(
+        val successPageState2: OffsetPageState<String> =
+            OffsetPageState.Success(
                 page = 2,
                 data = sampleListOfData
             )
@@ -77,14 +77,14 @@ class SuccessPageStateTest {
     }
 
     @Test
-    fun `test copy for SuccessPage`() {
-        val originalSuccessPageState: SuccessPage<String> =
-            SuccessPage(
+    fun `test copy for Success`() {
+        val originalSuccessPageState: OffsetPageState.Success<String> =
+            OffsetPageState.Success(
                 page = 1,
                 data = listOf("a", "b", "c")
             )
 
-        val copiedSuccessPageState: SuccessPage<String> =
+        val copiedSuccessPageState: OffsetPageState.Success<String> =
             originalSuccessPageState.copy()
 
         assertNotSame(originalSuccessPageState, copiedSuccessPageState)
@@ -95,7 +95,7 @@ class SuccessPageStateTest {
         assertFalse(originalSuccessPageState < copiedSuccessPageState)
         assertFalse(originalSuccessPageState > copiedSuccessPageState)
 
-        val modifiedSuccessPageState: SuccessPage<String> =
+        val modifiedSuccessPageState: OffsetPageState.Success<String> =
             originalSuccessPageState.copy(
                 page = 3,
                 data = listOf("x", "y", "z")
@@ -108,7 +108,7 @@ class SuccessPageStateTest {
         assertNotEquals(originalSuccessPageState.toString(), modifiedSuccessPageState.toString())
         assertTrue(originalSuccessPageState < modifiedSuccessPageState)
 
-        val emptySuccessPageState:PageState<String> =
+        val emptySuccessPageState: OffsetPageState<String> =
             originalSuccessPageState.copy(
                 data = emptyList()
             )
@@ -124,13 +124,13 @@ class SuccessPageStateTest {
     }
 
     @Test
-    fun `test true using isSuccessState for SuccessPage`() {
+    fun `test true using isSuccessState for Success`() {
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
-        val successPageState: SuccessPage<String> =
-            SuccessPage(
+        val successPageState: OffsetPageState.Success<String> =
+            OffsetPageState.Success(
                 page = 1,
                 data = sampleListOfData
             )
@@ -138,16 +138,16 @@ class SuccessPageStateTest {
     }
 
     @Test
-    fun `test using isRealSuccessState for SuccessPage`() {
+    fun `test using isRealSuccessState for Success`() {
         val sampleListOfData: List<String> =
             MutableList(Random.nextInt(from = 1, until = 100)) { index: Int ->
                 return@MutableList "Num of index $index"
             }
-        val successPageState: SuccessPage<String> =
-            SuccessPage(
+        val successPageState: OffsetPageState.Success<String> =
+            OffsetPageState.Success(
                 page = 1,
                 data = sampleListOfData
             )
-        assertTrue(successPageState.isRealSuccessState(SuccessPage::class))
+        assertTrue(successPageState.isRealSuccessState(OffsetPageState.Success::class))
     }
 }

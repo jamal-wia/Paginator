@@ -1,9 +1,9 @@
-package com.jamal_aliev.paginator.core.pagestate
+package com.jamal_aliev.paginator.offset.pagestate
+
 
 import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isRealErrorState
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ErrorPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 class ErrorPageStateTest {
 
     @Test
-    fun `test the integrity of stored data for ErrorPage`() {
+    fun `test the integrity of stored data for Error`() {
         val sampleException = Exception("Test error")
         val samplePageNumber = 3
         val sampleListOfData: List<String> =
@@ -23,8 +23,8 @@ class ErrorPageStateTest {
                 return@MutableList "Num of index $index"
             }
 
-        val errorPageState: ErrorPage<String> =
-            ErrorPage(
+        val errorPageState: OffsetPageState.Error<String> =
+            OffsetPageState.Error(
                 exception = sampleException,
                 page = samplePageNumber,
                 data = sampleListOfData
@@ -36,10 +36,10 @@ class ErrorPageStateTest {
     }
 
     @Test
-    fun `test hashCode for ErrorPage`() {
+    fun `test hashCode for Error`() {
         val page = 4
-        val errorPageState: PageState<String> =
-            ErrorPage(
+        val errorPageState: OffsetPageState<String> =
+            OffsetPageState.Error(
                 exception = Exception("Error"),
                 page = page,
                 data = emptyList()
@@ -48,15 +48,15 @@ class ErrorPageStateTest {
     }
 
     @Test
-    fun `test compareTo for ErrorPage`() {
-        val errorPageState1: PageState<String> =
-            ErrorPage(
+    fun `test compareTo for Error`() {
+        val errorPageState1: OffsetPageState<String> =
+            OffsetPageState.Error(
                 exception = Exception("First error"),
                 page = 1,
                 data = emptyList()
             )
-        val errorPageState2: PageState<String> =
-            ErrorPage(
+        val errorPageState2: OffsetPageState<String> =
+            OffsetPageState.Error(
                 exception = Exception("Second error"),
                 page = 2,
                 data = emptyList()
@@ -66,15 +66,15 @@ class ErrorPageStateTest {
     }
 
     @Test
-    fun `test copy for ErrorPage and preserving the exception`() {
-        val originalErrorPageState: ErrorPage<String> =
-            ErrorPage(
+    fun `test copy for Error and preserving the exception`() {
+        val originalErrorPageState: OffsetPageState.Error<String> =
+            OffsetPageState.Error(
                 exception = Exception("Original error"),
                 page = 1,
                 data = listOf("a", "b", "c")
             )
 
-        val copiedErrorPageState: ErrorPage<String> =
+        val copiedErrorPageState: OffsetPageState.Error<String> =
             originalErrorPageState.copy()
 
         assertNotSame(originalErrorPageState, copiedErrorPageState)
@@ -86,7 +86,7 @@ class ErrorPageStateTest {
         assertFalse(originalErrorPageState < copiedErrorPageState)
         assertFalse(originalErrorPageState > copiedErrorPageState)
 
-        val modifiedErrorPageState: ErrorPage<String> =
+        val modifiedErrorPageState: OffsetPageState.Error<String> =
             originalErrorPageState.copy(
                 exception = Exception("New error"),
                 page = 3,
@@ -103,9 +103,9 @@ class ErrorPageStateTest {
     }
 
     @Test
-    fun `test true using isErrorState for ErrorPage`() {
-        val errorPageState: ErrorPage<String> =
-            ErrorPage(
+    fun `test true using isErrorState for Error`() {
+        val errorPageState: OffsetPageState.Error<String> =
+            OffsetPageState.Error(
                 exception = Exception("Test error"),
                 page = 1,
                 data = emptyList()
@@ -114,13 +114,13 @@ class ErrorPageStateTest {
     }
 
     @Test
-    fun `test using isRealErrorState for ErrorPage`() {
-        val errorPageState: ErrorPage<String> =
-            ErrorPage(
+    fun `test using isRealErrorState for Error`() {
+        val errorPageState: OffsetPageState.Error<String> =
+            OffsetPageState.Error(
                 exception = Exception("Test error"),
                 page = 1,
                 data = emptyList()
             )
-        assertTrue(errorPageState.isRealErrorState(ErrorPage::class))
+        assertTrue(errorPageState.isRealErrorState(OffsetPageState.Error::class))
     }
 }

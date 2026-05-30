@@ -2,7 +2,7 @@ package com.jamal_aliev.paginator.cursor.cache
 
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 /**
  * A default [CursorPagingCache] implementation providing key-based storage
@@ -15,32 +15,32 @@ import com.jamal_aliev.paginator.core.page.PageState
  *
  * @param T The type of elements contained in each page.
  */
-class CursorInMemoryPagingCache<T> : CursorPagingCache<T> {
+class CursorInMemoryPagingCache<K : Any, T> : CursorPagingCache<K, T> {
 
     override var logger: PaginatorLogger? = null
 
-    private val states = hashMapOf<Any, PageState<T>>()
-    private val bookmarks = hashMapOf<Any, CursorBookmark>()
+    private val states = hashMapOf<K, CursorPageState<K, T>>()
+    private val bookmarks = hashMapOf<K, CursorBookmark<K>>()
 
     override val size: Int get() = states.size
 
-    override val cursors: List<CursorBookmark>
+    override val cursors: List<CursorBookmark<K>>
         get() {
             if (bookmarks.isEmpty()) return emptyList()
-            val result = ArrayList<CursorBookmark>(bookmarks.size)
-            val visited = HashSet<Any>(bookmarks.size)
+            val result = ArrayList<CursorBookmark<K>>(bookmarks.size)
+            val visited = HashSet<K>(bookmarks.size)
 
             // Start from the canonical head (prev == null) to get a deterministic order.
             // Fall back to any entry whose `prev` is missing from the cache (orphan chain head).
-            val startFromPrevNull: CursorBookmark? =
+            val startFromPrevNull: CursorBookmark<K>? =
                 bookmarks.values.firstOrNull { it.prev == null }
-            val startFromMissingPrev: CursorBookmark? = bookmarks.values.firstOrNull { b ->
+            val startFromMissingPrev: CursorBookmark<K>? = bookmarks.values.firstOrNull { b ->
                 b.prev != null && !bookmarks.containsKey(b.prev)
             }
-            val primaryStart: CursorBookmark? = startFromPrevNull ?: startFromMissingPrev
+            val primaryStart: CursorBookmark<K>? = startFromPrevNull ?: startFromMissingPrev
 
             if (primaryStart != null) {
-                var cursor: CursorBookmark? = primaryStart
+                var cursor: CursorBookmark<K>? = primaryStart
                 while (cursor != null && visited.add(cursor.self)) {
                     result.add(cursor)
                     val nextSelf = cursor.next ?: break
@@ -56,25 +56,29 @@ class CursorInMemoryPagingCache<T> : CursorPagingCache<T> {
             return result
         }
 
-    override var startContextCursor: CursorBookmark? = null
+    override var startContextCursor: CursorBookmark<K>? = null
 
-    override var endContextCursor: CursorBookmark? = null
+    override var endContextCursor: CursorBookmark<K>? = null
 
     override val isStarted: Boolean
         get() = startContextCursor != null && endContextCursor != null
 
-    override fun setState(cursor: CursorBookmark, state: PageState<T>, silently: Boolean) {
+    override fun setState(
+        cursor: CursorBookmark<K>,
+        state: CursorPageState<K, T>,
+        silently: Boolean
+    ) {
         states[cursor.self] = state
         bookmarks[cursor.self] = cursor
     }
 
-    override fun getStateOf(self: Any): PageState<T>? = states[self]
+    override fun getStateOf(self: K): CursorPageState<K, T>? = states[self]
 
-    override fun getCursorOf(self: Any): CursorBookmark? = bookmarks[self]
+    override fun getCursorOf(self: K): CursorBookmark<K>? = bookmarks[self]
 
-    override fun getElement(self: Any, index: Int): T? = states[self]?.data?.get(index)
+    override fun getElement(self: K, index: Int): T? = states[self]?.data?.get(index)
 
-    override fun removeFromCache(self: Any): PageState<T>? {
+    override fun removeFromCache(self: K): CursorPageState<K, T>? {
         bookmarks.remove(self)
         return states.remove(self)
     }
@@ -90,15 +94,15 @@ class CursorInMemoryPagingCache<T> : CursorPagingCache<T> {
         endContextCursor = null
     }
 
-    override fun head(): CursorBookmark? = cursors.firstOrNull()
+    override fun head(): CursorBookmark<K>? = cursors.firstOrNull()
 
-    override fun tail(): CursorBookmark? {
+    override fun tail(): CursorBookmark<K>? {
         // Walking tail is cheaper than materialising `cursors` when the chain is contiguous:
         // follow `next` from the head until we hit a sentinel or a missing link.
-        val headCursor: CursorBookmark = bookmarks.values.firstOrNull { it.prev == null }
+        val headCursor: CursorBookmark<K> = bookmarks.values.firstOrNull { it.prev == null }
             ?: return cursors.lastOrNull()
-        var current: CursorBookmark = headCursor
-        val visited = HashSet<Any>()
+        var current: CursorBookmark<K> = headCursor
+        val visited = HashSet<K>()
         visited.add(current.self)
         while (true) {
             val nextSelf = current.next ?: return current
@@ -108,13 +112,13 @@ class CursorInMemoryPagingCache<T> : CursorPagingCache<T> {
         }
     }
 
-    override fun walkForward(from: CursorBookmark): CursorBookmark? {
-        val nextSelf: Any = from.next ?: return null
+    override fun walkForward(from: CursorBookmark<K>): CursorBookmark<K>? {
+        val nextSelf: K = from.next ?: return null
         return bookmarks[nextSelf]
     }
 
-    override fun walkBackward(from: CursorBookmark): CursorBookmark? {
-        val prevSelf: Any = from.prev ?: return null
+    override fun walkBackward(from: CursorBookmark<K>): CursorBookmark<K>? {
+        val prevSelf: K = from.prev ?: return null
         return bookmarks[prevSelf]
     }
 

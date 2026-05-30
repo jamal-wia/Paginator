@@ -21,7 +21,7 @@ public class PrefetchBinding<C> internal constructor(
 
 
 /** Cursor-paginator counterpart of [Paginator.bindPrefetchToRecyclerView]. */
-public fun <T> CursorPaginator<T>.bindPrefetchToRecyclerView(
+public fun <K : Any, T> CursorPaginator<K, T>.bindPrefetchToRecyclerView(
     recyclerView: RecyclerView,
     lifecycleOwner: LifecycleOwner,
     dataItemCount: () -> Int,
@@ -29,11 +29,11 @@ public fun <T> CursorPaginator<T>.bindPrefetchToRecyclerView(
     footerCount: () -> Int = { 0 },
     options: PrefetchOptions = PrefetchOptions(),
     enableCacheFlow: Boolean = core.enableCacheFlow,
-    loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
     preserveScroll: Boolean = false,
     scrollKey: String? = null,
-): PrefetchBinding<CursorPaginatorPrefetchController<T>> {
+): PrefetchBinding<CursorPaginatorPrefetchController<K, T>> {
     val controller = prefetchController(
         lifecycleOwner = lifecycleOwner,
         options = options,
@@ -55,7 +55,7 @@ public fun <T> CursorPaginator<T>.bindPrefetchToRecyclerView(
 }
 
 /** Cursor-paginator [Int]-overload of [bindPrefetchToRecyclerView]. */
-public fun <T> CursorPaginator<T>.bindPrefetchToRecyclerView(
+public fun <K : Any, T> CursorPaginator<K, T>.bindPrefetchToRecyclerView(
     recyclerView: RecyclerView,
     lifecycleOwner: LifecycleOwner,
     dataItemCount: () -> Int,
@@ -63,11 +63,11 @@ public fun <T> CursorPaginator<T>.bindPrefetchToRecyclerView(
     footerCount: Int = 0,
     options: PrefetchOptions = PrefetchOptions(),
     enableCacheFlow: Boolean = core.enableCacheFlow,
-    loadGuard: CursorLoadGuard<T> = CursorLoadGuard.allowAll(),
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
     onPrefetchError: ((Exception) -> Unit)? = null,
     preserveScroll: Boolean = false,
     scrollKey: String? = null,
-): PrefetchBinding<CursorPaginatorPrefetchController<T>> = bindPrefetchToRecyclerView(
+): PrefetchBinding<CursorPaginatorPrefetchController<K, T>> = bindPrefetchToRecyclerView(
     recyclerView = recyclerView,
     lifecycleOwner = lifecycleOwner,
     dataItemCount = dataItemCount,

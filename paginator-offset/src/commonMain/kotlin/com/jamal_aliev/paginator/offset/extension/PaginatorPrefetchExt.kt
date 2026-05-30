@@ -1,10 +1,10 @@
 package com.jamal_aliev.paginator.offset.extension
 
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.offset.initializer.InitializerErrorPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerProgressPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
 import kotlinx.coroutines.CoroutineScope
 
@@ -19,15 +19,15 @@ import kotlinx.coroutines.CoroutineScope
  * @param scope [CoroutineScope] for launching prefetch coroutines.
  * @param prefetchDistance Number of items from the edge at which prefetch fires.
  * @param enableBackwardPrefetch If `true`, scrolling up also prefetches via [Paginator.goPreviousPage].
- * @param silentlyLoading If `true`, no [PageState.ProgressPage] snapshot is emitted during
+ * @param silentlyLoading If `true`, no [OffsetPageState.Progress] snapshot is emitted during
  *   prefetch loading. Default `false` so an append-indicator bound to
  *   `PaginatorUiState.Content.appendState` shows automatically.
  * @param silentlyResult If `true`, no snapshot is emitted when the prefetched page arrives.
  * @param loadGuard Guard callback forwarded to navigation functions.
  * @param enableCacheFlow Forwarded to navigation functions.
- * @param initProgressState Factory for [PageState.ProgressPage].
- * @param initSuccessState Factory for [PageState.SuccessPage].
- * @param initErrorState Factory for [PageState.ErrorPage].
+ * @param initProgressState Factory for [OffsetPageState.Progress].
+ * @param initSuccessState Factory for [OffsetPageState.Success].
+ * @param initErrorState Factory for [OffsetPageState.Error].
  * @param onPrefetchError Optional callback invoked when a prefetch fails.
  * @return A new [PaginatorPrefetchController] ready to receive [PaginatorPrefetchController.onScroll] calls.
  */
@@ -37,7 +37,7 @@ fun <T> Paginator<T>.prefetchController(
     enableBackwardPrefetch: Boolean = false,
     silentlyLoading: Boolean = false,
     silentlyResult: Boolean = false,
-    loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+    loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
     enableCacheFlow: Boolean = core.enableCacheFlow,
     initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
     initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,

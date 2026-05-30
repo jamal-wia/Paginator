@@ -45,7 +45,7 @@ internal class DataItemCountTracker(
     }
 
     companion object {
-        fun forCursorPaginator(paginator: CursorPaginator<*>): Flow<Int> =
+        fun forCursorPaginator(paginator: CursorPaginator<*, *>): Flow<Int> =
             paginator.uiState.map { dataItemCountOf(it) }
 
         private fun dataItemCountOf(state: PaginatorUiState<*>): Int =

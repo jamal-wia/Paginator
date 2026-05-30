@@ -1,16 +1,15 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.core.cache.persistent.PersistentPagingCache
-import com.jamal_aliev.paginator.core.extension.far
 import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.core.logger.LogComponent
+import com.jamal_aliev.paginator.core.logger.debug
+import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
+import com.jamal_aliev.paginator.offset.extension.far
 import com.jamal_aliev.paginator.offset.extension.smartForEach
 import com.jamal_aliev.paginator.offset.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.offset.extension.walkForwardWhile
 import com.jamal_aliev.paginator.offset.load.LoadResult
-import com.jamal_aliev.paginator.core.logger.LogComponent
-import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
 
@@ -29,10 +28,10 @@ import kotlinx.atomicfu.atomic
  * [addAllElements]) cast [PageState.data] to [MutableList] directly. This is safe as long as
  * `data` is always constructed as a `MutableList` (which is guaranteed by [Paginator]'s
  * internal [loadOrGetPageState] via `.toMutableList()`).
- * If you call [core].setState directly with a [PageState] whose `data` was created via `listOf()`
+ * If you call [core].setState directly with a [OffsetPageState] whose `data` was created via `listOf()`
  * or another immutable factory, subsequent element-level mutations will throw
  * [UnsupportedOperationException]. Always use `mutableListOf()` or `.toMutableList()` when
- * constructing [PageState] instances passed to [MutablePaginator].
+ * constructing [OffsetPageState] instances passed to [MutablePaginator].
  *
  * @param T The type of elements contained in each page.
  * @param load A suspending lambda that loads data for a given page number.
@@ -117,22 +116,23 @@ open class MutablePaginator<T>(
      *
      * @param pageToRemove The page number whose state should be removed.
      * @param silently If true, removal will not trigger a snapshot update.
-     * @return The removed page state ([PageState<T>]), or null if the page was not found.
+     * @return The removed page state ([OffsetPageState<T>]), or null if the page was not found.
      */
     fun removeState(
         pageToRemove: Int,
         silently: Boolean = false,
-    ): PageState<T>? {
+    ): OffsetPageState<T>? {
         logger.debug(LogComponent.MUTATION) { "removeState: page=$pageToRemove" }
 
         fun collapse(startPage: Int, compression: Int) {
-            var currentState: PageState<T> = checkNotNull(
+            var currentState: OffsetPageState<T> = checkNotNull(
                 value = cache.removeFromCache(startPage)
             ) { "it's impossible to start collapse from this page" }
             var remaining: Int = compression
             while (remaining > 0) {
-                val collapsedState: PageState<T> = currentState.copy(page = currentState.page - 1)
-                val pageState: PageState<T> = cache.getStateOf(currentState.page - 1) ?: break
+                val collapsedState: OffsetPageState<T> =
+                    currentState.copy(page = currentState.page - 1)
+                val pageState: OffsetPageState<T> = cache.getStateOf(currentState.page - 1) ?: break
                 cache.setState(state = collapsedState, silently = true)
                 currentState = pageState
                 remaining--
@@ -157,7 +157,7 @@ open class MutablePaginator<T>(
 
         val pagesBefore = cache.pages.filter { it >= pageToRemove }.toSet()
 
-        var pageStateWillRemove: PageState<T>?
+        var pageStateWillRemove: OffsetPageState<T>?
         if (!cache.isStarted) {
             pageStateWillRemove = cache.removeFromCache(pageToRemove)
         } else {
@@ -165,17 +165,17 @@ open class MutablePaginator<T>(
             var indexOfPageWillRemove = -1
             var indexOfStartContext = -1
             var haveRemoved = false
-            var previousPageState: PageState<T>? = null
+            var previousPageState: OffsetPageState<T>? = null
             smartForEach(
-                initialIndex = { states: List<PageState<T>> ->
+                initialIndex = { states: List<OffsetPageState<T>> ->
                     indexOfPageWillRemove =
-                        states.binarySearch { state: PageState<T> ->
+                        states.binarySearch { state: OffsetPageState<T> ->
                             state.compareTo(pageStateWillRemove)
                         }
                     indexOfStartContext = indexOfPageWillRemove
                     return@smartForEach indexOfPageWillRemove
                 }
-            ) { states: List<PageState<T>>, index: Int, currentState: PageState<T> ->
+            ) { states: List<OffsetPageState<T>>, index: Int, currentState: OffsetPageState<T> ->
                 previousPageState = previousPageState ?: currentState
                 if (previousPageState far currentState) {
                     // pages example: 1,2,3 gap 11,12,13
@@ -290,7 +290,7 @@ open class MutablePaginator<T>(
         isDirty: Boolean = false,
     ): T {
         logger.debug(LogComponent.MUTATION) { "removeElement: page=$page index=$index isDirty=$isDirty" }
-        val pageState: PageState<T> = requireNotNull(
+        val pageState: OffsetPageState<T> = requireNotNull(
             value = cache.getStateOf(page)
         ) { "page-$page was not created" }
         markAffected(page)
@@ -355,7 +355,7 @@ open class MutablePaginator<T>(
      * @param index The zero-based position within the page's data list where elements are inserted.
      * @param silently If `true`, the change will **not** trigger a snapshot emission.
      * @param isDirty If `true`, marks the page as dirty.
-     * @param initPageState Optional factory to create a new [PageState] for overflow pages.
+     * @param initPageState Optional factory to create a new [OffsetPageState] for overflow pages.
      * @throws IndexOutOfBoundsException If [targetPage] is not in the cache and [initPageState] is `null`.
      */
     fun addAllElements(
@@ -364,13 +364,13 @@ open class MutablePaginator<T>(
         index: Int,
         silently: Boolean = false,
         isDirty: Boolean = false,
-        initPageState: ((page: Int, data: List<T>) -> PageState<T>)? = null
+        initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = null
     ) {
         logger.debug(LogComponent.MUTATION) {
             "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty"
         }
         markAffected(targetPage)
-        val targetState: PageState<T> =
+        val targetState: OffsetPageState<T> =
             (cache.getStateOf(targetPage)
                 ?: initPageState?.invoke(targetPage, mutableListOf())
                     ?.also { cache.setState(state = it, silently = true) })
@@ -396,7 +396,7 @@ open class MutablePaginator<T>(
         }
 
         if (!extraElements.isNullOrEmpty()) {
-            val nextPageState: PageState<T>? = cache.getStateOf(targetPage + 1)
+            val nextPageState: OffsetPageState<T>? = cache.getStateOf(targetPage + 1)
             if ((nextPageState != null && nextPageState::class == targetState::class)
                 ||
                 (nextPageState == null && initPageState != null)
@@ -439,7 +439,7 @@ open class MutablePaginator<T>(
                     }
 
                 if (nextChunkStart != null) {
-                    val nextChunkState: PageState<T> =
+                    val nextChunkState: OffsetPageState<T> =
                         checkNotNull(cache.getStateOf(nextChunkStart))
                     val nextChunkData: MutableList<T> = requireNotNull(
                         value = nextChunkState.data as? MutableList
@@ -504,9 +504,9 @@ open class MutablePaginator<T>(
      * @param predicate Determines whether an element should be processed.
      */
     inline fun replaceAllElements(
-        providerElement: (current: T, pageState: PageState<T>, index: Int) -> T?,
+        providerElement: (current: T, pageState: OffsetPageState<T>, index: Int) -> T?,
         silently: Boolean = false,
-        predicate: (current: T, pageState: PageState<T>, index: Int) -> Boolean
+        predicate: (current: T, pageState: OffsetPageState<T>, index: Int) -> Boolean
     ) {
         smartForEach { _, _, pageState ->
             var index = 0
@@ -561,9 +561,9 @@ open class MutablePaginator<T>(
     /**
      * Flushes CRUD changes to the [persistent cache][PagingCore.persistentCache] (L2).
      *
-     * Pages still present in L1 as [SuccessPage] are saved; pages that no longer
-     * exist in L1 are removed from L2. Transient states ([PageState.ErrorPage],
-     * [PageState.ProgressPage]) are skipped — their existing L2 entry (if any) is
+     * Pages still present in L1 as [OffsetPageState.Success] are saved; pages that no longer
+     * exist in L1 are removed from L2. Transient states ([OffsetPageState.Error],
+     * [OffsetPageState.Progress]) are skipped — their existing L2 entry (if any) is
      * preserved.
      *
      * This method is called **automatically** when [transaction] completes
@@ -578,7 +578,7 @@ open class MutablePaginator<T>(
         val pagesToFlush: Set<Int> = drainAffectedPages()
         if (pagesToFlush.isEmpty()) return
 
-        val toSave = mutableListOf<PageState<T>>()
+        val toSave = mutableListOf<OffsetPageState<T>>()
         val toRemove = mutableListOf<Int>()
 
         for (page in pagesToFlush) {
@@ -629,7 +629,7 @@ open class MutablePaginator<T>(
         removeState(page)
     }
 
-    operator fun minusAssign(pageState: PageState<T>) {
+    operator fun minusAssign(pageState: OffsetPageState<T>) {
         removeState(pageState.page)
     }
 
@@ -638,7 +638,7 @@ open class MutablePaginator<T>(
      * to flush the change to the persistent cache, or use [transaction] which flushes
      * automatically on success.
      */
-    operator fun plusAssign(pageState: PageState<T>) {
+    operator fun plusAssign(pageState: OffsetPageState<T>) {
         core.setState(pageState)
         markAffected(pageState.page)
     }

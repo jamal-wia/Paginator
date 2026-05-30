@@ -1,12 +1,12 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.logger.CompositePaginatorLogger
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.LogLevel
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.core.logger.PrintPaginatorLogger
 import com.jamal_aliev.paginator.core.logger.plus
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test

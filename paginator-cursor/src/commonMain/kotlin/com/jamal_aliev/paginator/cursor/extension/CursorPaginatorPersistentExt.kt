@@ -1,6 +1,6 @@
 package com.jamal_aliev.paginator.cursor.extension
 
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
@@ -28,7 +28,7 @@ import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingC
  *
  * ### Link consistency caveat
  *
- * The cursor cache is keyed by [CursorBookmark.self] but ordering is reconstructed by walking
+ * The cursor cache is keyed by [CursorBookmark<K>.self] but ordering is reconstructed by walking
  * `prev`/`next` links. This function assumes L2 stored both endpoints — if L2 dropped a
  * chain link (e.g. after `removeAll` of the tail), the warm-up will still load the surviving
  * islands but `walkForward`/`walkBackward` from a head cursor will stop at the gap. Callers
@@ -44,12 +44,12 @@ import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingC
  *   becomes visible without a jump. When `null` no snapshot is emitted.
  * @return The number of pages actually inserted into L1 (skipped duplicates are not counted).
  */
-suspend fun <T> CursorPaginator<T>.warmUpFromPersistent(
-    cursorRange: Pair<CursorBookmark, CursorBookmark>? = null,
+suspend fun <K : Any, T> CursorPaginator<K, T>.warmUpFromPersistent(
+    cursorRange: Pair<CursorBookmark<K>, CursorBookmark<K>>? = null,
 ): Int {
-    val pc: CursorPersistentPagingCache<T> = core.persistentCache ?: return 0
+    val pc: CursorPersistentPagingCache<K, T> = core.persistentCache ?: return 0
 
-    val persisted: List<Pair<CursorBookmark, PageState<T>>> = pc.loadAll()
+    val persisted: List<Pair<CursorBookmark<K>, CursorPageState<K, T>>> = pc.loadAll()
     if (persisted.isEmpty()) return 0
 
     var inserted = 0

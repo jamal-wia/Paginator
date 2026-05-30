@@ -1,8 +1,5 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.PagingCore.Companion.DEFAULT_CAPACITY
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
-import com.jamal_aliev.paginator.core.cache.PagingCache
 import com.jamal_aliev.paginator.core.exception.FinalPageExceededException
 import com.jamal_aliev.paginator.core.exception.LoadGuardedException
 import com.jamal_aliev.paginator.core.exception.LockedException.GoNextPageWasLockedException
@@ -11,19 +8,20 @@ import com.jamal_aliev.paginator.core.exception.LockedException.JumpWasLockedExc
 import com.jamal_aliev.paginator.core.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.core.exception.LockedException.RestartWasLockedException
 import com.jamal_aliev.paginator.core.extension.isProgressState
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
-import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.core.logger.info
 import com.jamal_aliev.paginator.core.logger.warn
-import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.ProgressPage
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
+import com.jamal_aliev.paginator.offset.PagingCore.Companion.DEFAULT_CAPACITY
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
+import com.jamal_aliev.paginator.offset.cache.PagingCache
+import com.jamal_aliev.paginator.offset.initializer.InitializerErrorPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerProgressPage
+import com.jamal_aliev.paginator.offset.initializer.InitializerSuccessPage
+import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.offset.serialization.PaginatorSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -165,10 +163,10 @@ open class Paginator<T>(
      *   Defaults to always allowing the load.
      * @param lockJump If `true`, throws [JumpWasLockedException]. Defaults to [Paginator.lockJump].
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
-     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initProgressState Factory for creating [OffsetPageState.Progress] instances during loading.
+     * @param initSuccessState Factory for creating [OffsetPageState.Success] instances on successful load.
      * @param initErrorState Factory for creating error page instances when the source throws.
-     * @return A [Pair] of the [BookmarkInt] and resulting [PageState], or `null` if no bookmark is available.
+     * @return A [Pair] of the [BookmarkInt] and resulting [OffsetPageState], or `null` if no bookmark is available.
      * @throws JumpWasLockedException If [lockJump] is `true`.
      * @throws FinalPageExceededException If the bookmark page exceeds [finalPage].
      * @throws LoadGuardedException If [loadGuard] returns `false`.
@@ -178,13 +176,13 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         finalPage: Int = this.finalPage,
-        loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
-    ): Pair<BookmarkInt, PageState<T>>? {
+    ): Pair<BookmarkInt, OffsetPageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "jumpForward: recycling=$recycling" }
 
@@ -262,13 +260,13 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         finalPage: Int = this.finalPage,
-        loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
-    ): Pair<BookmarkInt, PageState<T>>? {
+    ): Pair<BookmarkInt, OffsetPageState<T>>? {
         if (lockJump) throw JumpWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "jumpBack: recycling=$recycling" }
 
@@ -375,7 +373,7 @@ open class Paginator<T>(
      *
      * @param bookmark The target page bookmark. Must have `page >= 1`.
      * @param silentlyLoading If `true`, the snapshot will **not** be emitted when the
-     *   page transitions to [ProgressPage].
+     *   page transitions to [OffsetPageState.Progress].
      * @param silentlyResult If `true`, the snapshot will **not** be emitted after the
      *   page finishes loading.
      * @param finalPage Upper page boundary for this call. Defaults to [Paginator.finalPage].
@@ -384,10 +382,10 @@ open class Paginator<T>(
      * @param lockJump If `true`, the operation is blocked and [JumpWasLockedException]
      *   is thrown immediately. Defaults to [Paginator.lockJump].
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
-     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initProgressState Factory for creating [OffsetPageState.Progress] instances during loading.
+     * @param initSuccessState Factory for creating [OffsetPageState.Success] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
-     * @return A [Pair] of the [BookmarkInt] and the resulting [PageState].
+     * @return A [Pair] of the [BookmarkInt] and the resulting [OffsetPageState].
      * @throws JumpWasLockedException If [lockJump] is `true`.
      * @throws FinalPageExceededException If [bookmark] page exceeds [finalPage].
      * @throws LoadGuardedException If [loadGuard] returns `false`.
@@ -398,13 +396,13 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         finalPage: Int = this.finalPage,
-        loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
         lockJump: Boolean = this.lockJump,
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
-    ): Pair<BookmarkInt, PageState<T>> = coroutineScope {
+    ): Pair<BookmarkInt, OffsetPageState<T>> = coroutineScope {
         if (lockJump) throw JumpWasLockedException()
 
         require(bookmark.page >= 1) { "bookmark.page should be >= 1, but was ${bookmark.page}" }
@@ -419,12 +417,12 @@ open class Paginator<T>(
 
         var savedStartContextPage: Int = cache.startContextPage
         var savedEndContextPage: Int = cache.endContextPage
-        var savedPageState: PageState<T>? = null
+        var savedPageState: OffsetPageState<T>? = null
         var shouldCleanup = false
 
         navigationMutex.lock()
         try {
-            var probablySuccessBookmarkPage: PageState<T>? = cache.getStateOf(bookmark.page)
+            var probablySuccessBookmarkPage: OffsetPageState<T>? = cache.getStateOf(bookmark.page)
             if (probablySuccessBookmarkPage == null) {
                 probablySuccessBookmarkPage = core.loadFromPersistentCache(bookmark.page)
             }
@@ -452,14 +450,14 @@ open class Paginator<T>(
             core.startContextPage = bookmark.page
             core.endContextPage = bookmark.page
 
-            val resultState: PageState<T> = loadOrGetPageState(
+            val resultState: OffsetPageState<T> = loadOrGetPageState(
                 page = bookmark.page,
                 forceLoading = true,
-                loading = { page: Int, pageState: PageState<T>? ->
+                loading = { page: Int, pageState: OffsetPageState<T>? ->
                     val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = core.coerceToCapacity(
+                    val progressState: OffsetPageState.Progress<T> = core.coerceToCapacity(
                         state = initProgressState.invoke(page, data, pageState?.metadata)
-                    ) as ProgressPage
+                    ) as OffsetPageState.Progress
                     cache.setState(
                         state = progressState,
                         silently = true,
@@ -530,10 +528,10 @@ open class Paginator<T>(
      * @param loadGuard A guard callback invoked before the page is loaded.
      * @param lockGoNextPage If `true`, throws [GoNextPageWasLockedException].
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
-     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initProgressState Factory for creating [OffsetPageState.Progress] instances during loading.
+     * @param initSuccessState Factory for creating [OffsetPageState.Success] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
-     * @return The resulting [PageState] of the loaded page.
+     * @return The resulting [OffsetPageState] of the loaded page.
      * @throws GoNextPageWasLockedException If [lockGoNextPage] is `true`.
      * @throws FinalPageExceededException If the next page exceeds [finalPage].
      * @throws LoadGuardedException If [loadGuard] returns `false`.
@@ -542,18 +540,18 @@ open class Paginator<T>(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
         finalPage: Int = this.finalPage,
-        loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
         lockGoNextPage: Boolean = this.lockGoNextPage,
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
-    ): PageState<T> = coroutineScope {
+    ): OffsetPageState<T> = coroutineScope {
         if (lockGoNextPage) throw GoNextPageWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "goNextPage: endContextPage=${cache.endContextPage}" }
         if (!cache.isStarted) {
             logger.debug(LogComponent.NAVIGATION) { "goNextPage: not started, jumping to page 1" }
-            val pageState: PageState<T> = jump(
+            val pageState: OffsetPageState<T> = jump(
                 bookmark = BookmarkInt(page = 1),
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
@@ -567,17 +565,17 @@ open class Paginator<T>(
         }
 
         var savedNextPage = -1
-        var savedNextPageState: PageState<T>? = null
+        var savedNextPageState: OffsetPageState<T>? = null
         var shouldCleanup = false
 
         navigationMutex.lock()
         try {
             var pivotContextPage: Int = cache.endContextPage
-            var pivotContextPageState: PageState<T>? = cache.getStateOf(pivotContextPage)
+            var pivotContextPageState: OffsetPageState<T>? = cache.getStateOf(pivotContextPage)
             val isPivotContextPageValid: Boolean = core.isFilledSuccessState(pivotContextPageState)
             if (isPivotContextPageValid) {
                 core.expandEndContextPage(cache.getStateOf(pivotContextPage + 1))
-                    ?.also { expanded: PageState<T> ->
+                    ?.also { expanded: OffsetPageState<T> ->
                         pivotContextPage = expanded.page
                         pivotContextPageState = expanded
                     }
@@ -594,7 +592,7 @@ open class Paginator<T>(
                 )
             }
 
-            var nextPageState: PageState<T>? =
+            var nextPageState: OffsetPageState<T>? =
                 if (nextPage == pivotContextPage) pivotContextPageState
                 else cache.getStateOf(nextPage)
 
@@ -625,11 +623,11 @@ open class Paginator<T>(
             loadOrGetPageState(
                 page = nextPage,
                 forceLoading = true,
-                loading = { page: Int, pageState: PageState<T>? ->
+                loading = { page: Int, pageState: OffsetPageState<T>? ->
                     val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = core.coerceToCapacity(
+                    val progressState: OffsetPageState.Progress<T> = core.coerceToCapacity(
                         state = initProgressState.invoke(page, data, pageState?.metadata)
-                    ) as ProgressPage
+                    ) as OffsetPageState.Progress
                     cache.setState(
                         state = progressState,
                         silently = true,
@@ -694,10 +692,10 @@ open class Paginator<T>(
      * @param silentlyResult If `true`, the snapshot will **not** be emitted after loading.
      * @param loadGuard A guard callback invoked before the page is loaded.
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
-     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initProgressState Factory for creating [OffsetPageState.Progress] instances during loading.
+     * @param initSuccessState Factory for creating [OffsetPageState.Success] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
-     * @return The resulting [PageState] of the loaded page.
+     * @return The resulting [OffsetPageState] of the loaded page.
      * @throws GoPreviousPageWasLockedException If [lockGoPreviousPage] is `true`.
      * @throws LoadGuardedException If [loadGuard] returns `false`.
      * @throws IllegalStateException If the paginator has not been started or the previous page is < 1.
@@ -705,12 +703,12 @@ open class Paginator<T>(
     suspend fun goPreviousPage(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
-        loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
-    ): PageState<T> = coroutineScope {
+    ): OffsetPageState<T> = coroutineScope {
         if (lockGoPreviousPage) throw GoPreviousPageWasLockedException()
         logger.debug(LogComponent.NAVIGATION) { "goPreviousPage: startContextPage=${cache.startContextPage}" }
         check(cache.isStarted) {
@@ -720,7 +718,7 @@ open class Paginator<T>(
         }
 
         var savedPreviousPage = -1
-        var savedPreviousPageState: PageState<T>? = null
+        var savedPreviousPageState: OffsetPageState<T>? = null
         var shouldCleanup = false
 
         navigationMutex.lock()
@@ -730,7 +728,7 @@ open class Paginator<T>(
             val pivotContextPageValid = core.isFilledSuccessState(pivotContextPageState)
             if (pivotContextPageValid) {
                 core.expandStartContextPage(cache.getStateOf(pivotContextPage - 1))
-                    ?.also { expanded: PageState<T> ->
+                    ?.also { expanded: OffsetPageState<T> ->
                         pivotContextPage = expanded.page
                         pivotContextPageState = expanded
                     }
@@ -740,7 +738,7 @@ open class Paginator<T>(
                 if (pivotContextPageValid) pivotContextPage - 1
                 else pivotContextPage
             check(previousPage >= 1) { "previousPage is $previousPage. you can't go below page 1" }
-            var previousPageState: PageState<T>? =
+            var previousPageState: OffsetPageState<T>? =
                 if (previousPage == pivotContextPage) pivotContextPageState
                 else cache.getStateOf(previousPage)
 
@@ -771,11 +769,11 @@ open class Paginator<T>(
             loadOrGetPageState(
                 page = previousPage,
                 forceLoading = true,
-                loading = { page: Int, pageState: PageState<T>? ->
+                loading = { page: Int, pageState: OffsetPageState<T>? ->
                     val data: List<T> = core.coerceToCapacity(pageState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = core.coerceToCapacity(
+                    val progressState: OffsetPageState.Progress<T> = core.coerceToCapacity(
                         state = initProgressState.invoke(page, data, pageState?.metadata)
-                    ) as ProgressPage
+                    ) as OffsetPageState.Progress
                     cache.setState(
                         state = progressState,
                         silently = true
@@ -789,7 +787,7 @@ open class Paginator<T>(
                 },
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState
-            ).also { resultState: PageState<T> ->
+            ).also { resultState: OffsetPageState<T> ->
                 shouldCleanup = false
                 cache.setState(
                     state = resultState,
@@ -841,8 +839,8 @@ open class Paginator<T>(
      * @param silentlyResult If `true`, the snapshot will **not** be emitted after loading.
      * @param loadGuard A guard callback invoked before page 1 is reloaded.
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
-     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initProgressState Factory for creating [OffsetPageState.Progress] instances during loading.
+     * @param initSuccessState Factory for creating [OffsetPageState.Success] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
      * @throws RestartWasLockedException If [lockRestart] is `true`.
      * @throws LoadGuardedException If [loadGuard] returns `false`.
@@ -850,7 +848,7 @@ open class Paginator<T>(
     suspend fun restart(
         silentlyLoading: Boolean = false,
         silentlyResult: Boolean = false,
-        loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
@@ -861,7 +859,7 @@ open class Paginator<T>(
 
         var savedStartContextPage: Int = cache.startContextPage
         var savedEndContextPage: Int = cache.endContextPage
-        var savedFirstPageState: PageState<T>? = null
+        var savedFirstPageState: OffsetPageState<T>? = null
         var shouldCleanup = false
 
         navigationMutex.lock()
@@ -869,7 +867,7 @@ open class Paginator<T>(
             savedStartContextPage = cache.startContextPage
             savedEndContextPage = cache.endContextPage
 
-            val firstPage: PageState<T>? = cache.getStateOf(1)
+            val firstPage: OffsetPageState<T>? = cache.getStateOf(1)
             cache.clear()
             if (firstPage != null) {
                 cache.setState(
@@ -895,9 +893,9 @@ open class Paginator<T>(
                 loading = { page, pageState ->
                     val dataOfState: List<T> =
                         core.coerceToCapacity(pageState?.data ?: mutableListOf())
-                    val progressState: ProgressPage<T> = core.coerceToCapacity(
+                    val progressState: OffsetPageState.Progress<T> = core.coerceToCapacity(
                         state = initProgressState.invoke(page, dataOfState, pageState?.metadata)
-                    ) as ProgressPage
+                    ) as OffsetPageState.Progress
                     cache.setState(
                         state = progressState,
                         silently = true
@@ -949,19 +947,19 @@ open class Paginator<T>(
     /**
      * Refreshes the specified pages by reloading them from the [load] in parallel.
      *
-     * Each page is first set to [ProgressPage] (preserving any previously cached data),
+     * Each page is first set to [OffsetPageState.Progress] (preserving any previously cached data),
      * then all pages are reloaded concurrently. After all loads complete, the cache is
      * updated with the results.
      *
      * @param pages The list of page numbers to refresh.
      * @param loadingSilently If `true`, the snapshot will **not** be emitted after setting
-     *   pages to [ProgressPage].
+     *   pages to [OffsetPageState.Progress].
      * @param finalSilently If `true`, the snapshot will **not** be emitted after all pages
      *   finish loading.
      * @param loadGuard A guard callback invoked for each page before loading.
      * @param enableCacheFlow If `true`, the full cache flow is also updated.
-     * @param initProgressState Factory for creating [ProgressPage] instances during loading.
-     * @param initSuccessState Factory for creating [SuccessPage] instances on successful load.
+     * @param initProgressState Factory for creating [OffsetPageState.Progress] instances during loading.
+     * @param initSuccessState Factory for creating [OffsetPageState.Success] instances on successful load.
      * @param initErrorState Factory for creating error page instances.
      * @throws RefreshWasLockedException If [lockRefresh] is `true`.
      * @throws LoadGuardedException If [loadGuard] returns `false` for any page.
@@ -970,7 +968,7 @@ open class Paginator<T>(
         pages: List<Int>,
         loadingSilently: Boolean = false,
         finalSilently: Boolean = false,
-        loadGuard: (page: Int, state: PageState<T>?) -> Boolean = { _, _ -> true },
+        loadGuard: (page: Int, state: OffsetPageState<T>?) -> Boolean = { _, _ -> true },
         enableCacheFlow: Boolean = core.enableCacheFlow,
         initProgressState: InitializerProgressPage<T> = core.initializerProgressPage,
         initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
@@ -979,7 +977,7 @@ open class Paginator<T>(
         if (lockRefresh) throw RefreshWasLockedException()
         logger.debug(LogComponent.LIFECYCLE) { "refresh: pages=$pages" }
 
-        var savedStates: Map<Int, PageState<T>?> = emptyMap()
+        var savedStates: Map<Int, OffsetPageState<T>?> = emptyMap()
 
         try {
             // Phase 1: validate guards and set progress states under lock
@@ -1000,7 +998,7 @@ open class Paginator<T>(
                             dataOfPage,
                             savedStates[page]?.metadata
                         )
-                    ) as ProgressPage
+                    ) as OffsetPageState.Progress
                     cache.setState(
                         state = progressState,
                         silently = true
@@ -1026,11 +1024,11 @@ open class Paginator<T>(
                         initErrorState = initErrorState
                     )
                 }
-            }.awaitAll().let { results: List<PageState<T>> ->
+            }.awaitAll().let { results: List<OffsetPageState<T>> ->
                 // Phase 3: write results back under lock
                 navigationMutex.lock()
                 try {
-                    results.forEach { finalPageState: PageState<T> ->
+                    results.forEach { finalPageState: OffsetPageState<T> ->
                         cache.setState(
                             state = finalPageState,
                             silently = true
@@ -1042,7 +1040,7 @@ open class Paginator<T>(
 
                 // Phase 4: persist successful results to L2
                 core.persistentCache?.let { pc ->
-                    val successStates = results.filterIsInstance<SuccessPage<T>>()
+                    val successStates = results.filterIsInstance<OffsetPageState.Success<T>>()
                     if (successStates.isNotEmpty()) {
                         pc.saveAll(successStates)
                     }
@@ -1094,20 +1092,20 @@ open class Paginator<T>(
      * @param load The data source suspend function. Defaults to [Paginator.load].
      * @param initSuccessState Factory for success page instances.
      * @param initErrorState Factory for error page instances.
-     * @return The resulting [PageState] after loading or from cache.
+     * @return The resulting [OffsetPageState] after loading or from cache.
      */
     suspend inline fun loadOrGetPageState(
         page: Int,
         forceLoading: Boolean = false,
-        loading: ((page: Int, pageState: PageState<T>?) -> Unit) = { _, _ -> },
+        loading: ((page: Int, pageState: OffsetPageState<T>?) -> Unit) = { _, _ -> },
         noinline load: suspend Paginator<T>.(page: Int) -> LoadResult<T> = this.load,
         noinline initSuccessState: InitializerSuccessPage<T> = core.initializerSuccessPage,
         noinline initErrorState: InitializerErrorPage<T> = core.initializerErrorPage
-    ): PageState<T> {
+    ): OffsetPageState<T> {
         logger.debug(LogComponent.NAVIGATION) {
             "loadOrGetPageState: page=$page forceLoading=$forceLoading"
         }
-        val cachedState: PageState<T>? = cache.getStateOf(page)
+        val cachedState: OffsetPageState<T>? = cache.getStateOf(page)
         if (!forceLoading && core.isFilledSuccessState(cachedState)) {
             logger.debug(LogComponent.NAVIGATION) {
                 "loadOrGetPageState: page=$page cachedState(isFilledSuccessState)=$cachedState"
@@ -1144,13 +1142,13 @@ open class Paginator<T>(
 
     /**
      * Saves [state] to the [persistent cache][PagingCore.persistentCache] if it is
-     * a [SuccessPage] (including pages that came back empty).
+     * a [OffsetPageState.Success] (including pages that came back empty).
      *
      * Error and progress pages are **not** persisted because they represent
      * transient states that should be re-fetched from the source.
      */
-    private suspend fun persistSuccessState(state: PageState<T>) {
-        if (state is SuccessPage) {
+    private suspend fun persistSuccessState(state: OffsetPageState<T>) {
+        if (state is OffsetPageState.Success) {
             core.persistentCache?.save(state)
         }
     }
@@ -1279,7 +1277,7 @@ open class Paginator<T>(
     }
 
     private class TransactionSavepoint<T>(
-        val states: List<PageState<T>>,
+        val states: List<OffsetPageState<T>>,
         val startContextPage: Int,
         val endContextPage: Int,
         val capacity: Int,
@@ -1320,8 +1318,8 @@ open class Paginator<T>(
      * On success, the block's return value is returned and all state changes are kept.
      *
      * **Snapshot fidelity:** unlike [saveState]/[restoreState] (which are designed for
-     * serialization and convert [PageState.ErrorPage]/[PageState.ProgressPage] to success entries),
-     * this method preserves exact [PageState] types through an in-memory deep copy.
+     * serialization and convert [OffsetPageState.Error]/[OffsetPageState.Progress] to success entries),
+     * this method preserves exact [OffsetPageState] types through an in-memory deep copy.
      *
      * **Concurrency:** the [navigationMutex] is **not** held during [block] execution,
      * so navigation operations inside the block work without deadlock. This matches the
@@ -1382,16 +1380,16 @@ open class Paginator<T>(
      */
     override operator fun compareTo(other: Paginator<*>): Int = cache.size - other.cache.size
 
-    operator fun iterator(): Iterator<PageState<T>> {
+    operator fun iterator(): Iterator<OffsetPageState<T>> {
         return core.iterator()
     }
 
     operator fun contains(page: Int): Boolean = cache.getStateOf(page) != null
 
-    operator fun contains(pageState: PageState<T>): Boolean =
+    operator fun contains(pageState: OffsetPageState<T>): Boolean =
         cache.getStateOf(pageState.page) != null
 
-    operator fun get(page: Int): PageState<T>? = cache.getStateOf(page)
+    operator fun get(page: Int): OffsetPageState<T>? = cache.getStateOf(page)
 
     operator fun get(page: Int, index: Int): T? = cache.getElement(page, index)
 

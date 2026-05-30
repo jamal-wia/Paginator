@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator.cursor.prefetch
 
-import com.jamal_aliev.paginator.core.initializer.InitializerErrorPage
-import com.jamal_aliev.paginator.core.initializer.InitializerProgressPage
-import com.jamal_aliev.paginator.core.initializer.InitializerSuccessPage
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.CursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorErrorPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorProgressPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorSuccessPage
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -24,18 +24,18 @@ import kotlinx.coroutines.launch
  * - a forward prefetch fires only when `endContextCursor?.next != null`;
  * - a backward prefetch fires only when `startContextCursor?.prev != null`.
  */
-class CursorPaginatorPrefetchController<T>(
-    private val paginator: CursorPaginator<T>,
+class CursorPaginatorPrefetchController<K : Any, T>(
+    private val paginator: CursorPaginator<K, T>,
     private val scope: CoroutineScope,
     prefetchDistance: Int,
     var enableBackwardPrefetch: Boolean = false,
     var silentlyLoading: Boolean = false,
     var silentlyResult: Boolean = false,
-    var loadGuard: (cursor: CursorBookmark, state: PageState<T>?) -> Boolean = { _, _ -> true },
+    var loadGuard: (cursor: CursorBookmark<K>, state: CursorPageState<K, T>?) -> Boolean = { _, _ -> true },
     var enableCacheFlow: Boolean = paginator.core.enableCacheFlow,
-    var initProgressState: InitializerProgressPage<T> = paginator.core.initializerProgressPage,
-    var initSuccessState: InitializerSuccessPage<T> = paginator.core.initializerSuccessPage,
-    var initErrorState: InitializerErrorPage<T> = paginator.core.initializerErrorPage,
+    var initProgressState: InitializerCursorProgressPage<K, T> = paginator.core.initializerProgressPage,
+    var initSuccessState: InitializerCursorSuccessPage<K, T> = paginator.core.initializerSuccessPage,
+    var initErrorState: InitializerCursorErrorPage<K, T> = paginator.core.initializerErrorPage,
     var onPrefetchError: ((Exception) -> Unit)? = null,
 ) {
 

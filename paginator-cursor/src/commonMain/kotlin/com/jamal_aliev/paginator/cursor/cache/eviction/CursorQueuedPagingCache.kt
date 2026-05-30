@@ -1,13 +1,13 @@
 package com.jamal_aliev.paginator.cursor.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
+import com.jamal_aliev.paginator.core.logger.LogComponent
+import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cursor.extension.withLeaf
-import com.jamal_aliev.paginator.core.logger.LogComponent
-import com.jamal_aliev.paginator.core.logger.debug
-import com.jamal_aliev.paginator.core.page.PageState
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 /**
  * A [CursorPagingCache] decorator enforcing **FIFO (First In, First Out)** eviction.
@@ -16,14 +16,14 @@ import com.jamal_aliev.paginator.core.page.PageState
  * first is evicted. Unlike [CursorMostRecentPagingCache], reads do not affect the
  * eviction priority.
  */
-class CursorQueuedPagingCache<T>(
-    private val cache: CursorPagingCache<T> = CursorInMemoryPagingCache<T>(),
+class CursorQueuedPagingCache<K : Any, T>(
+    private val cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>(),
     val maxSize: Int,
     val protectContextWindow: Boolean = true,
     var evictionListener: CacheEvictionListener<T>? = null,
-) : CursorPagingCache<T> by cache, CursorChainablePagingCache<T> {
+) : CursorPagingCache<K, T> by cache, CursorChainablePagingCache<K, T> {
 
-    override fun replaceLeaf(newLeaf: CursorPagingCache<T>): CursorQueuedPagingCache<T> =
+    override fun replaceLeaf(newLeaf: CursorPagingCache<K, T>): CursorQueuedPagingCache<K, T> =
         CursorQueuedPagingCache(
             cache = cache.withLeaf(newLeaf),
             maxSize = maxSize,
@@ -35,16 +35,20 @@ class CursorQueuedPagingCache<T>(
         require(maxSize > 0) { "maxSize must be greater than 0, was $maxSize" }
     }
 
-    private val insertionOrder = mutableListOf<Any>()
+    private val insertionOrder = mutableListOf<K>()
 
-    override fun setState(cursor: CursorBookmark, state: PageState<T>, silently: Boolean) {
+    override fun setState(
+        cursor: CursorBookmark<K>,
+        state: CursorPageState<K, T>,
+        silently: Boolean
+    ) {
         val isNew = cache.getStateOf(cursor.self) == null
         cache.setState(cursor, state, silently)
         if (isNew) insertionOrder.add(cursor.self)
         performEviction(justAdded = cursor.self)
     }
 
-    override fun removeFromCache(self: Any): PageState<T>? {
+    override fun removeFromCache(self: K): CursorPageState<K, T>? {
         val result = cache.removeFromCache(self)
         if (result != null) insertionOrder.remove(self)
         return result
@@ -60,9 +64,9 @@ class CursorQueuedPagingCache<T>(
         insertionOrder.clear()
     }
 
-    private fun performEviction(justAdded: Any) {
+    private fun performEviction(justAdded: K) {
         while (cache.size > maxSize) {
-            val protectedSet: Set<Any>? =
+            val protectedSet: Set<K>? =
                 if (protectContextWindow && cache.isStarted) protectedSelves() else null
 
             val victim = insertionOrder.firstOrNull { self ->
@@ -82,11 +86,11 @@ class CursorQueuedPagingCache<T>(
         }
     }
 
-    private fun protectedSelves(): Set<Any> {
-        val result = HashSet<Any>()
+    private fun protectedSelves(): Set<K> {
+        val result = HashSet<K>()
         var current = cache.startContextCursor
         val end = cache.endContextCursor
-        val visited = HashSet<Any>()
+        val visited = HashSet<K>()
         while (current != null && visited.add(current.self)) {
             result.add(current.self)
             if (end != null && current.self == end.self) break

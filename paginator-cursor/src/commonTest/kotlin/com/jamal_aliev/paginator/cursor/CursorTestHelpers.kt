@@ -1,8 +1,5 @@
 package com.jamal_aliev.paginator.cursor
 
-import com.jamal_aliev.paginator.cursor.CursorPaginator
-import com.jamal_aliev.paginator.cursor.CursorPagingCore
-import com.jamal_aliev.paginator.cursor.MutableCursorPaginator
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.load.CursorLoadResult
 
@@ -32,7 +29,7 @@ class FakeCursorBackend(
         private set
 
     /** Maps a hint cursor (from `goNext` / `goPrev` / `jump`) to the target page. */
-    fun resolve(cursor: CursorBookmark?): Page {
+    fun resolve(cursor: CursorBookmark<String>?): Page {
         callCount++
         if (cursor == null) return pages.first()
         // Callers pass the **target** self in `cursor.self`. Resolve by self first.
@@ -47,11 +44,11 @@ class FakeCursorBackend(
         error("unknown cursor: $cursor")
     }
 
-    fun loadResult(cursor: CursorBookmark?): CursorLoadResult<String> {
+    fun loadResult(cursor: CursorBookmark<String>?): CursorLoadResult<String, String> {
         val page = resolve(cursor)
         return CursorLoadResult(
             data = page.items,
-            bookmark = CursorBookmark(
+            bookmark = CursorBookmark<String>(
                 prev = page.prev,
                 self = page.self,
                 next = page.next,
@@ -84,9 +81,9 @@ class FakeCursorBackend(
 fun cursorPaginatorOf(
     backend: FakeCursorBackend = FakeCursorBackend(),
     capacity: Int = 3,
-): CursorPaginator<String> {
-    val core = CursorPagingCore<String>(initialCapacity = capacity)
-    return CursorPaginator<String>(core = core) { cursor ->
+): CursorPaginator<String, String> {
+    val core = CursorPagingCore<String, String>(initialCapacity = capacity)
+    return CursorPaginator<String, String>(core = core) { cursor ->
         backend.loadResult(cursor)
     }
 }
@@ -95,9 +92,9 @@ fun cursorPaginatorOf(
 fun mutableCursorPaginatorOf(
     backend: FakeCursorBackend = FakeCursorBackend(),
     capacity: Int = 3,
-): MutableCursorPaginator<String> {
-    val core = CursorPagingCore<String>(initialCapacity = capacity)
-    return MutableCursorPaginator<String>(core = core) { cursor ->
+): MutableCursorPaginator<String, String> {
+    val core = CursorPagingCore<String, String>(initialCapacity = capacity)
+    return MutableCursorPaginator<String, String>(core = core) { cursor ->
         backend.loadResult(cursor)
     }
 }
@@ -106,7 +103,7 @@ fun mutableCursorPaginatorOf(
 fun failingCursorPaginator(
     error: Exception = RuntimeException("boom"),
     capacity: Int = 3,
-): CursorPaginator<String> {
-    val core = CursorPagingCore<String>(initialCapacity = capacity)
-    return CursorPaginator<String>(core = core) { _ -> throw error }
+): CursorPaginator<String, String> {
+    val core = CursorPagingCore<String, String>(initialCapacity = capacity)
+    return CursorPaginator<String, String>(core = core) { _ -> throw error }
 }

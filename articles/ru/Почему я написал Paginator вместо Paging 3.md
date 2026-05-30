@@ -191,7 +191,7 @@ connections и аккуратно ловить `EndOfPaginationReached`.
 тройка `prev / self / next`:
 
 ```kotlin
-val messages = mutableCursorPaginator<Message> {
+val messages = mutableCursorPaginator<String, Message> {
     load { cursor ->
         val page = api.getMessages(cursor?.self as? String)
         CursorLoadResult(

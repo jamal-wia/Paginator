@@ -1,9 +1,10 @@
 package com.jamal_aliev.paginator.offset
 
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
+
 import com.jamal_aliev.paginator.offset.PagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.core.page.PageState
-import com.jamal_aliev.paginator.core.page.PageState.SuccessPage
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -164,7 +165,7 @@ class CrudOperationsTest {
         // page2: [p2_item0, p2_item1, p2_item2]
 
         // Add to page 1 at index 0, causing overflow.
-        // Page 2 has same type (SuccessPage) so overflow cascades there.
+        // Page 2 has same type (OffsetPageState.Success) so overflow cascades there.
         // But page 2 is already full, so page 2 overflows.
         // No page 3 and no initPageState → pages after page 2 get removed.
         paginator.addAllElements(
@@ -297,11 +298,11 @@ class CrudOperationsTest {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = 10, resize = false, silently = true)
         paginator.cache.setState(
-            state = SuccessPage(page = 1, data = mutableListOf("a", "b", "c")),
+            state = OffsetPageState.Success(page = 1, data = mutableListOf("a", "b", "c")),
             silently = true,
         )
         paginator.cache.setState(
-            state = SuccessPage(page = 2, data = mutableListOf("x", "y", "z")),
+            state = OffsetPageState.Success(page = 2, data = mutableListOf("x", "y", "z")),
             silently = true,
         )
 
@@ -360,7 +361,7 @@ class CrudOperationsTest {
             index = 0,
             silently = true,
             initPageState = { page, data ->
-                SuccessPage(page = page, data = data.toMutableList())
+                OffsetPageState.Success(page = page, data = data.toMutableList())
             },
         )
 
@@ -393,11 +394,11 @@ class CrudOperationsTest {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = UNLIMITED_CAPACITY, resize = false, silently = true)
         paginator.cache.setState(
-            state = SuccessPage(page = 1, data = mutableListOf("a", "b", "c")),
+            state = OffsetPageState.Success(page = 1, data = mutableListOf("a", "b", "c")),
             silently = true,
         )
         paginator.cache.setState(
-            state = SuccessPage(page = 2, data = mutableListOf("x", "y", "z")),
+            state = OffsetPageState.Success(page = 2, data = mutableListOf("x", "y", "z")),
             silently = true,
         )
 
@@ -422,7 +423,7 @@ class CrudOperationsTest {
 
         fun seed(page: Int) {
             paginator.cache.setState(
-                state = SuccessPage(
+                state = OffsetPageState.Success(
                     page = page,
                     data = MutableList(20) { "p${page}_$it" },
                 ),
@@ -501,11 +502,11 @@ class CrudOperationsTest {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.cache.setState(
-            state = SuccessPage(page = 1, data = mutableListOf("a", "b", "c")),
+            state = OffsetPageState.Success(page = 1, data = mutableListOf("a", "b", "c")),
             silently = true,
         )
         paginator.cache.setState(
-            state = SuccessPage(page = 2, data = mutableListOf("x", "y", "z")),
+            state = OffsetPageState.Success(page = 2, data = mutableListOf("x", "y", "z")),
             silently = true,
         )
 
@@ -531,15 +532,15 @@ class CrudOperationsTest {
 
             // Chunk 1: page 1 (Success, full)
             paginator.cache.setState(
-                state = SuccessPage(
+                state = OffsetPageState.Success(
                     page = 1,
                     data = MutableList(5) { "p1_$it" },
                 ),
                 silently = true,
             )
-            // Blocker: page 2 is an ErrorPage — different class.
+            // Blocker: page 2 is an OffsetPageState.Error — different class.
             paginator.cache.setState(
-                state = PageState.ErrorPage<String>(
+                state = OffsetPageState.Error<String>(
                     exception = RuntimeException("boom"),
                     page = 2,
                     data = mutableListOf(),
@@ -549,12 +550,14 @@ class CrudOperationsTest {
             // Chunk 2: pages 10..11 (Success, full)
             for (p in 10..11) {
                 paginator.cache.setState(
-                    state = SuccessPage(page = p, data = MutableList(5) { "p${p}_$it" }),
+                    state = OffsetPageState.Success(
+                        page = p,
+                        data = MutableList(5) { "p${p}_$it" }),
                     silently = true,
                 )
             }
 
-            // Insert 2 elements at page 1 → cascade can't continue to page 2 (ErrorPage).
+            // Insert 2 elements at page 1 → cascade can't continue to page 2 (OffsetPageState.Error).
             paginator.addAllElements(
                 elements = listOf("N0", "N1"),
                 targetPage = 1,
@@ -567,9 +570,9 @@ class CrudOperationsTest {
                 listOf("N0", "N1", "p1_0", "p1_1", "p1_2"),
                 paginator.cache.getStateOf(1)!!.data
             )
-            // Page 2 (ErrorPage) untouched — we do not disturb transient states.
+            // Page 2 (OffsetPageState.Error) untouched — we do not disturb transient states.
             val page2 = paginator.cache.getStateOf(2)
-            assertTrue(page2 is PageState.ErrorPage)
+            assertTrue(page2 is OffsetPageState.Error)
             // Page 10 — partially filled (lost last 2 items to cascade).
             assertEquals(listOf("p10_0", "p10_1", "p10_2"), paginator.cache.getStateOf(10)!!.data)
             // Page 11 — full after receiving last 2 of page 10.
@@ -590,16 +593,16 @@ class CrudOperationsTest {
             paginator.core.resize(capacity = 10, resize = false, silently = true)
 
             paginator.cache.setState(
-                state = SuccessPage(page = 1, data = MutableList(10) { "p1_$it" }),
+                state = OffsetPageState.Success(page = 1, data = MutableList(10) { "p1_$it" }),
                 silently = true,
             )
             // Next chunk's head is under-filled (7 items) but still larger than the shift (5).
             paginator.cache.setState(
-                state = SuccessPage(page = 10, data = MutableList(7) { "p10_$it" }),
+                state = OffsetPageState.Success(page = 10, data = MutableList(7) { "p10_$it" }),
                 silently = true,
             )
             paginator.cache.setState(
-                state = SuccessPage(page = 11, data = MutableList(10) { "p11_$it" }),
+                state = OffsetPageState.Success(page = 11, data = MutableList(10) { "p11_$it" }),
                 silently = true,
             )
 
@@ -658,14 +661,14 @@ class CrudOperationsTest {
         // Chunk 1: pages 1..2 full (5 items each).
         for (p in 1..2) {
             paginator.cache.setState(
-                state = SuccessPage(page = p, data = MutableList(5) { "p${p}_$it" }),
+                state = OffsetPageState.Success(page = p, data = MutableList(5) { "p${p}_$it" }),
                 silently = true,
             )
         }
         // Chunk 2: pages 10..11 full.
         for (p in 10..11) {
             paginator.cache.setState(
-                state = SuccessPage(page = p, data = MutableList(5) { "p${p}_$it" }),
+                state = OffsetPageState.Success(page = p, data = MutableList(5) { "p${p}_$it" }),
                 silently = true,
             )
         }
@@ -706,7 +709,7 @@ class CrudOperationsTest {
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         for (p in 1..3) {
             paginator.cache.setState(
-                state = SuccessPage(page = p, data = MutableList(3) { "p${p}_$it" }),
+                state = OffsetPageState.Success(page = p, data = MutableList(3) { "p${p}_$it" }),
                 silently = true,
             )
         }

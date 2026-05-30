@@ -30,7 +30,7 @@ It's a separate type because cursors and Int indexes live by different rules: a 
 The API is a mirror image:
 
 ```kotlin
-val paginator = mutableCursorPaginator<Message>(capacity = 50) {
+val paginator = mutableCursorPaginator<String, Message>(capacity = 50) {
     load { cursor ->
         val page = api.getMessages(cursor?.self as? String)
         CursorLoadResult(

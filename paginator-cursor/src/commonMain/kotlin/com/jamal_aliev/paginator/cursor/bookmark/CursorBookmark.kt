@@ -32,24 +32,25 @@ import com.jamal_aliev.paginator.core.bookmark.Bookmark
  *
  * ## Cache key
  *
- * [self] is the cache key. It is deliberately typed as `Any` so consumers can pick
- * whatever key shape their backend returns — opaque strings, numeric ids,
- * timestamps, composite `data class` tokens, etc. The only requirements are stable
- * [Any.equals]/[Any.hashCode].
+ * [self] is the cache key. The key type [K] is chosen by the consumer to match whatever
+ * shape their backend returns — opaque strings, numeric ids, timestamps, composite
+ * `data class` tokens, etc. The only requirements are stable [Any.equals]/[Any.hashCode],
+ * hence the `K : Any` bound.
  *
+ * @param K The cursor key type (`prev` / `self` / `next`).
  * @property prev Cache key of the page immediately before this one, or `null` at the head.
  * @property self Cache key of this page. Used for identity and hashing.
  * @property next Cache key of the page immediately after this one, or `null` at the tail.
  */
-data class CursorBookmark(
-    val prev: Any?,
-    val self: Any,
-    val next: Any?,
+data class CursorBookmark<K : Any>(
+    val prev: K?,
+    val self: K,
+    val next: K?,
 ) : Bookmark {
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (other !is CursorBookmark) return false
+        if (other !is CursorBookmark<*>) return false
         return self == other.self
     }
 

@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.core.exception.LockedException.GoNextPageWasLockedException
 import com.jamal_aliev.paginator.core.exception.LockedException.GoPreviousPageWasLockedException
 import com.jamal_aliev.paginator.core.exception.LockedException.JumpWasLockedException
 import com.jamal_aliev.paginator.core.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.core.exception.LockedException.RestartWasLockedException
+import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertNotNull

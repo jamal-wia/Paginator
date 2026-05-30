@@ -1,11 +1,11 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
-import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.PagingCore
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,8 +19,8 @@ class ContextWindowPagingCacheTest {
     private fun successPage(
         page: Int,
         data: List<String> = listOf("item_$page")
-    ): PageState.SuccessPage<String> {
-        return PageState.SuccessPage(page = page, data = data)
+    ): OffsetPageState.Success<String> {
+        return OffsetPageState.Success(page = page, data = data)
     }
 
     // -- Unit tests --
@@ -88,7 +88,7 @@ class ContextWindowPagingCacheTest {
     fun `evictionListener called for evicted pages`() {
         val core = ContextWindowPagingCache<String>()
         val evicted = mutableListOf<Int>()
-        core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
+        core.evictionListener = CacheEvictionListener { evicted.add((it as OffsetPageState).page) }
 
         core.setState(successPage(1), silently = true)
         core.setState(successPage(2), silently = true)
@@ -259,7 +259,7 @@ class ContextWindowPagingCacheTest {
     fun `evictionListener called on jump eviction`() = runTest {
         val core = ContextWindowPagingCache<String>()
         val evicted = mutableListOf<Int>()
-        core.evictionListener = CacheEvictionListener { evicted.add(it.page) }
+        core.evictionListener = CacheEvictionListener { evicted.add((it as OffsetPageState).page) }
 
         val paginator = MutablePaginator(
             core = PagingCore(cache = core, initialCapacity = 3)

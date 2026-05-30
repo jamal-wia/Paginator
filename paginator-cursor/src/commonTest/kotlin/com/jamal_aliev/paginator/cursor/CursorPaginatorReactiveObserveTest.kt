@@ -69,7 +69,7 @@ class CursorPaginatorReactiveObserveTest {
             return List(3) { i -> Item(id = base + i + 1, label = "v$ver-${base + i + 1}") }
         }
 
-        fun load(cursor: CursorBookmark?): CursorLoadResult<Item> {
+        fun load(cursor: CursorBookmark<String>?): CursorLoadResult<String, Item> {
             val self = cursor?.self as? String
             val prev = cursor?.prev as? String
             val next = cursor?.next as? String
@@ -83,7 +83,7 @@ class CursorPaginatorReactiveObserveTest {
             val page = pageOf(targetSelf)
             return CursorLoadResult(
                 data = pageData(page),
-                bookmark = CursorBookmark(
+                bookmark = CursorBookmark<String>(
                     prev = if (page == 0) null else "p${page - 1}",
                     self = targetSelf,
                     next = if (page == pageCount - 1) null else "p${page + 1}",
@@ -94,14 +94,14 @@ class CursorPaginatorReactiveObserveTest {
 
     private suspend fun populatedPaginator(
         backend: IntBackend = IntBackend(pageCount = 3),
-    ): MutableCursorPaginator<Item> {
-        val core = CursorPagingCore<Item>(initialCapacity = 3)
-        val paginator = MutableCursorPaginator<Item>(core = core) { cursor ->
+    ): MutableCursorPaginator<String, Item> {
+        val core = CursorPagingCore<String, Item>(initialCapacity = 3)
+        val paginator = MutableCursorPaginator<String, Item>(core = core) { cursor ->
             backend.load(cursor)
         }
         // Bootstrap: load p0, then walk forward to p1 so the cache holds 2 pages.
         paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = "p0", next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = "p0", next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )
@@ -185,12 +185,12 @@ class CursorPaginatorReactiveObserveTest {
         // observe path drops the overflow — there is no factory hook on the
         // reactive surface to mint a new tail page.)
         val backend = IntBackend(pageCount = 3)
-        val core = CursorPagingCore<Item>(initialCapacity = 5)
-        val paginator = MutableCursorPaginator<Item>(core = core) { cursor ->
+        val core = CursorPagingCore<String, Item>(initialCapacity = 5)
+        val paginator = MutableCursorPaginator<String, Item>(core = core) { cursor ->
             backend.load(cursor)
         }
         paginator.jump(
-            bookmark = CursorBookmark(prev = null, self = "p0", next = null),
+            bookmark = CursorBookmark<String>(prev = null, self = "p0", next = null),
             silentlyLoading = true,
             silentlyResult = true,
         )
