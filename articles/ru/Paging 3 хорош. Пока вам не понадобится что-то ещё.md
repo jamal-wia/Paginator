@@ -202,7 +202,7 @@ KMP-артефакт:
 ```kotlin
 commonMain.dependencies {
     // Привязываем все артефакты Paginator к одной версии через BOM
-  implementation(platform("io.github.jamal-wia:paginator-bom:10.0.3"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:10.0.4"))
     // Подключаем нужную стратегию; обе тянут paginator-core транзитивно
     implementation("io.github.jamal-wia:paginator-offset")
     // implementation("io.github.jamal-wia:paginator-cursor")
@@ -289,11 +289,11 @@ Paginator закрывает всё перечисленное из коробк
 
 Если пагинация — регулярная часть ваших задач, попробуйте. Репозиторий живой,
 на [Maven Central](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator-core),
-зрелый (текущая версия 10.0.3), покрыт документацией. Обратная связь и звёзды — помогают.
+зрелый (текущая версия 10.0.4), покрыт документацией. Обратная связь и звёзды — помогают.
 
 - **GitHub:** [github.com/jamal-wia/Paginator](https://github.com/jamal-wia/Paginator)
-- **Maven Central:** `io.github.jamal-wia:paginator-offset:10.0.3` /
-  `paginator-cursor:10.0.3` (или через `paginator-bom`)
+- **Maven Central:** `io.github.jamal-wia:paginator-offset:10.0.4` /
+  `paginator-cursor:10.0.4` (или через `paginator-bom`)
 - **Telegram-сообщество:** [t.me/+0eeAM-EJpqgwNGZi](https://t.me/+0eeAM-EJpqgwNGZi)
 - **Документация:** по разделам в [docs/](https://github.com/jamal-wia/Paginator/tree/master/docs)
 
