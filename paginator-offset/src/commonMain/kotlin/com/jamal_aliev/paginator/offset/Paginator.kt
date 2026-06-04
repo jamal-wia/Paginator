@@ -424,6 +424,7 @@ open class Paginator<T>(
         try {
             var probablySuccessBookmarkPage: OffsetPageState<T>? = cache.getStateOf(bookmark.page)
             if (probablySuccessBookmarkPage == null) {
+                // FIXME пердставим 2 пользователей чата (ранее было загруженно 1,2,3 страницы) и потом один из них вышел из приложения, а второй из них написал первому в этот момент. Вернувшись в приложение пагинатор у перовго загрузит не актуальные данные из L2 кеша
                 probablySuccessBookmarkPage = core.loadFromPersistentCache(bookmark.page)
             }
             if (core.isFilledSuccessState(probablySuccessBookmarkPage)) {
@@ -446,6 +447,13 @@ open class Paginator<T>(
             savedEndContextPage = cache.endContextPage
             savedPageState = probablySuccessBookmarkPage
             shouldCleanup = true
+
+            // TODO доработать ReactiveCache так чтобы его можно было исопльзовать как единый источник правды, а сейчас он опциональный и пользователь вынужден реализоывать load который скорее всего будет грузить данные из бекенда и возращать напрямую в L1 кеш и скорее всего эти же данные data слой сохранит в Room поэтому логично бы чтобы этот Room и был источником истины
+            // Single source of truth 99%
+            // UI <-> Paginator (load) <-> ReactiveCache (Room) <-> Repository (Backend + Room)
+            //                                             1. load from Backend -> Room
+            //                                             2. <- from Room
+            // Websocket -> Room
 
             core.startContextPage = bookmark.page
             core.endContextPage = bookmark.page
@@ -733,6 +741,12 @@ open class Paginator<T>(
                         pivotContextPageState = expanded
                     }
             }
+
+            // FIXME если у нас пропал интернет во время глубоко спагинированного списка (например чата) то мы не можем runtime актуализировать данные страницы, следовательно при обратном скролле или сдвиге у нас появляется рассинхрон с бекендом и это можно решить refreshAll но тогда будет пересборка видимых даннных
+            // 3 (10)
+            // 2 (10)
+            // 1 (10)
+            // 5 min
 
             val previousPage: Int =
                 if (pivotContextPageValid) pivotContextPage - 1
@@ -1024,6 +1038,7 @@ open class Paginator<T>(
                         initErrorState = initErrorState
                     )
                 }
+                // FIXME если вдруг пользователь просматривал этот диапозон и после был обрыв интернета и после восстановления этот диапозон удаляется беком то пользователь видит этот же диапозон как EmptyPage
             }.awaitAll().let { results: List<OffsetPageState<T>> ->
                 // Phase 3: write results back under lock
                 navigationMutex.lock()
