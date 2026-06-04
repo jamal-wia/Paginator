@@ -1038,7 +1038,6 @@ open class Paginator<T>(
                         initErrorState = initErrorState
                     )
                 }
-                // FIXME если вдруг пользователь просматривал этот диапозон и после был обрыв интернета и после восстановления этот диапозон удаляется беком то пользователь видит этот же диапозон как EmptyPage
             }.awaitAll().let { results: List<OffsetPageState<T>> ->
                 // Phase 3: write results back under lock
                 navigationMutex.lock()
@@ -1047,6 +1046,21 @@ open class Paginator<T>(
                         cache.setState(
                             state = finalPageState,
                             silently = true
+                        )
+                    }
+                    // Re-anchor the context window if it collapsed onto non-filled pages.
+                    // Happens when the backend deleted the currently viewed range while the
+                    // client was offline: the refreshed pages come back as empty Success, the
+                    // window keeps pointing at them, and the user sees a blank screen even
+                    // though other filled pages are still cached. Snap the window to the
+                    // nearest filled-success group so those live pages become visible again.
+                    if (cache.isStarted
+                        && (!core.isFilledSuccessState(cache.getStateOf(cache.startContextPage))
+                                || !core.isFilledSuccessState(cache.getStateOf(cache.endContextPage)))
+                    ) {
+                        core.findNearContextPage(
+                            startPoint = cache.startContextPage,
+                            endPoint = cache.endContextPage
                         )
                     }
                 } finally {
