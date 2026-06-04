@@ -874,6 +874,20 @@ open class CursorPaginator<K : Any, T>(
                 results.forEach { (cursor, state) ->
                     cache.setState(cursor, state, silently = true)
                 }
+                // Re-anchor the context window if it collapsed onto non-filled pages.
+                // Happens when the backend deleted the currently viewed range while the
+                // client was offline: the refreshed pages come back as empty Success, the
+                // window keeps pointing at them, and the user sees a blank screen even
+                // though other filled pages are still cached. Snap the window to the
+                // nearest filled-success group so those live pages become visible again.
+                val startC: CursorBookmark<K>? = cache.startContextCursor
+                val endC: CursorBookmark<K>? = cache.endContextCursor
+                if (startC != null && endC != null
+                    && (!core.isFilledSuccessState(core.getStateOf(startC.self))
+                            || !core.isFilledSuccessState(core.getStateOf(endC.self)))
+                ) {
+                    core.findNearContextCursor(startCursor = startC, endCursor = endC)
+                }
             } finally {
                 navigationMutex.unlock()
             }

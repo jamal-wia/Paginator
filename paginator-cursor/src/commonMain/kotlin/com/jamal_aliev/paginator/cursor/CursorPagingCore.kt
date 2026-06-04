@@ -145,6 +145,83 @@ open class CursorPagingCore<K : Any, T>(
             ?.first
     }
 
+    /**
+     * Re-anchors the context window to the nearest filled-success page group when the
+     * current window boundaries no longer point at filled pages.
+     *
+     * This is the cursor counterpart of `PagingCore.findNearContextPage`. It is needed when
+     * an operation (typically `refresh`/`refreshAll` after the backend deleted the currently
+     * viewed range) leaves [startContextCursor]/[endContextCursor] pointing at empty-`Success`
+     * pages: the snapshot would then collapse to a blank window even though other filled pages
+     * are still cached. Since cursors have no numeric order, the search walks the cached chain
+     * (head-to-tail [cursors]) and picks the filled page closest **by chain distance** to the
+     * current window band, then expands outward through its contiguous filled group.
+     *
+     * If no filled-success page remains in the cache, both boundaries are cleared
+     * ([isStarted] becomes `false`).
+     *
+     * @param startCursor Lower reference boundary of the search band. Defaults to [startContextCursor].
+     * @param endCursor Upper reference boundary of the search band. Defaults to [endContextCursor].
+     */
+    fun findNearContextCursor(
+        startCursor: CursorBookmark<K>? = startContextCursor,
+        endCursor: CursorBookmark<K>? = endContextCursor,
+    ) {
+        val ordered: List<CursorBookmark<K>> = cache.cursors
+        if (ordered.isEmpty()) {
+            startContextCursor = null
+            endContextCursor = null
+            return
+        }
+
+        // Indices (in head-to-tail order) of pages that are currently filled-success.
+        val validIndices = ArrayList<Int>()
+        var firstValid = -1
+        var lastValid = -1
+        for (i in ordered.indices) {
+            if (isFilledSuccessState(cache.getStateOf(ordered[i].self))) {
+                validIndices.add(i)
+                if (firstValid == -1) firstValid = i
+                lastValid = i
+            }
+        }
+        if (validIndices.isEmpty()) {
+            startContextCursor = null
+            endContextCursor = null
+            return
+        }
+
+        // Reference band derived from the current (possibly stale) window. When a boundary
+        // is no longer in the chain, fall back to the filled-page extremes.
+        val startIdx: Int = startCursor?.self?.let { s -> ordered.indexOfFirst { it.self == s } } ?: -1
+        val endIdx: Int = endCursor?.self?.let { e -> ordered.indexOfFirst { it.self == e } } ?: -1
+        val bandLo: Int = if (startIdx >= 0) startIdx else firstValid
+        val bandHi: Int = if (endIdx >= 0) endIdx else lastValid
+
+        // Pick the filled page with the smallest chain distance to the band; ties resolve
+        // toward the head (earlier range), matching the offset variant's bias.
+        var bestIdx: Int = validIndices.first()
+        var bestDist: Int = Int.MAX_VALUE
+        for (vi in validIndices) {
+            val dist: Int = when {
+                vi < bandLo -> bandLo - vi
+                vi > bandHi -> vi - bandHi
+                else -> 0
+            }
+            if (dist < bestDist) {
+                bestDist = dist
+                bestIdx = vi
+            }
+        }
+
+        val nearestCursor: CursorBookmark<K> = ordered[bestIdx]
+        val nearestState: CursorPageState<K, T>? = cache.getStateOf(nearestCursor.self)
+        startContextCursor = nearestCursor
+        endContextCursor = nearestCursor
+        expandStartContextCursor(nearestState, nearestCursor)
+        expandEndContextCursor(nearestState, nearestCursor)
+    }
+
     /** Retrieves the cached [PageState] by its `self` key. */
     fun getStateOf(self: K): CursorPageState<K, T>? = cache.getStateOf(self)
 
