@@ -127,6 +127,18 @@ open class MutableCursorPaginator<K : Any, T>(
             core.endContextCursor = prevCursor?.copy(next = removedCursor.next)
         }
 
+        // The one-step neighbour shift above can land a boundary on a non-filled (or now
+        // missing) page while filled pages remain elsewhere in the cache — leaving the user
+        // on a blank/degraded window. Re-anchor to the nearest filled-success group instead.
+        val startC: CursorBookmark<K>? = core.startContextCursor
+        val endC: CursorBookmark<K>? = core.endContextCursor
+        val windowBroken: Boolean = startC == null || endC == null
+                || !core.isFilledSuccessState(core.getStateOf(startC.self))
+                || !core.isFilledSuccessState(core.getStateOf(endC.self))
+        if (windowBroken && core.size > 0) {
+            core.findNearContextCursor(startC, endC)
+        }
+
         markAffected(selfToRemove)
         if (!silently) core.snapshot()
         return removedState
@@ -174,6 +186,11 @@ open class MutableCursorPaginator<K : Any, T>(
         markAffected(self)
         val removed: T
 
+        // Snapshot the window before mutating: emptying the page may drop it and re-anchor
+        // the window (via removeState), which we must detect to emit the new window.
+        val startBeforeSelf: K? = core.startContextCursor?.self
+        val endBeforeSelf: K? = core.endContextCursor?.self
+
         val updatedData = pageState.data
             .let { it as MutableList }
             .also { removed = it.removeAt(index) }
@@ -203,7 +220,18 @@ open class MutableCursorPaginator<K : Any, T>(
         }
 
         if (isDirty) core.markDirty(self)
-        if (!silently) snapshotIfSelfVisible(self)
+        if (!silently) {
+            if (core.startContextCursor?.self != startBeforeSelf
+                || core.endContextCursor?.self != endBeforeSelf
+            ) {
+                // The removal moved/re-anchored the context window — emit the whole new
+                // window. snapshotIfSelfVisible(self) would suppress it because the old
+                // page is no longer visible, stranding the UI on a stale/blank window.
+                core.snapshot()
+            } else {
+                snapshotIfSelfVisible(self)
+            }
+        }
         return removed
     }
 
