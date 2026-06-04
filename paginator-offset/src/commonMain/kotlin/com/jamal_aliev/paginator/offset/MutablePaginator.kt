@@ -296,6 +296,11 @@ open class MutablePaginator<T>(
         markAffected(page)
         val removed: T
 
+        // Snapshot the context window before mutating: emptying the page may drop it and
+        // re-anchor the window (via removeState), which we must detect to emit correctly.
+        val startBefore: Int = cache.startContextPage
+        val endBefore: Int = cache.endContextPage
+
         val updatedData = pageState.data
             .let { it as MutableList }
             .also { removed = it.removeAt(index) }
@@ -335,7 +340,18 @@ open class MutablePaginator<T>(
 
         if (isDirty) core.markDirty(page)
 
-        if (!silently) snapshotIfPageVisible(page)
+        if (!silently) {
+            if (cache.startContextPage != startBefore || cache.endContextPage != endBefore) {
+                // The removal moved/shrank the context window — e.g. the currently viewed
+                // page was emptied and dropped, re-anchoring to the nearest filled group.
+                // Emit the whole new window: snapshotIfPageVisible(page) would suppress the
+                // emission because the old page is no longer inside the visible range, leaving
+                // the UI stuck on a stale/blank window while live data sits in the cache.
+                core.snapshot()
+            } else {
+                snapshotIfPageVisible(page)
+            }
+        }
 
         return removed
     }
@@ -486,7 +502,7 @@ open class MutablePaginator<T>(
 
         if (isDirty) core.markDirty(targetPage)
 
-        if (!silently) snapshotIfPageVisible(targetPage)
+        if (!silently) snapshotAfterMutation(targetPage)
     }
 
     /**
@@ -551,6 +567,30 @@ open class MutablePaginator<T>(
         val rangeSnapshot = startState.page..endState.page
         if (affectedPage in rangeSnapshot) {
             core.snapshot(rangeSnapshot)
+        }
+    }
+
+    /**
+     * Emits a snapshot after a mutation that may have removed pages directly from the cache
+     * (without going through [removeState]'s context re-anchoring).
+     *
+     * If the context window now points at a non-filled or missing pivot, the window is
+     * re-anchored to the nearest filled-success group and the whole new window is emitted.
+     * Otherwise this behaves like [snapshotIfPageVisible], emitting only when [affectedPage]
+     * is currently visible.
+     */
+    private fun snapshotAfterMutation(affectedPage: Int) {
+        if (cache.isStarted
+            && (!core.isFilledSuccessState(cache.getStateOf(cache.startContextPage))
+                    || !core.isFilledSuccessState(cache.getStateOf(cache.endContextPage)))
+        ) {
+            core.findNearContextPage(
+                startPoint = cache.startContextPage,
+                endPoint = cache.endContextPage
+            )
+            core.snapshot()
+        } else {
+            snapshotIfPageVisible(affectedPage)
         }
     }
 
