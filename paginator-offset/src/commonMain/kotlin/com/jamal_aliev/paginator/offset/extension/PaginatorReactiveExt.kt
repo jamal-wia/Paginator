@@ -82,6 +82,13 @@ import kotlinx.coroutines.launch
  *   empty at subscribe time.
  * @param unknownItem What to do with events whose target identity is not in
  *   the cache. Defaults to [UnknownItemPolicy.Drop].
+ * @param deduplicateInserts When `true` (default), an [ReactiveEvent.Inserted]
+ *   whose identity is **already** present in the cache is applied as an in-place
+ *   update instead of inserting a duplicate. This makes the hybrid model safe —
+ *   where the `load` lambda writes the fetched page into the same source the
+ *   adapter observes, so paginating re-delivers those rows as inserts. Set to
+ *   `false` to keep the literal "always insert" behaviour. Duplicate-by-identity
+ *   inserts are never correct, so the default is on.
  * @param onError Invoked for non-cancellation errors that escape during
  *   event application. The default logs at warn level via the paginator's
  *   [com.jamal_aliev.paginator.offset.Paginator.logger].
@@ -94,6 +101,7 @@ fun <T, ID : Any> MutablePaginator<T>.observe(
     source: PaginatorReactiveCache<T, ID>,
     initialSync: InitialSyncPolicy = InitialSyncPolicy.RefreshAll,
     unknownItem: UnknownItemPolicy = UnknownItemPolicy.Drop,
+    deduplicateInserts: Boolean = true,
     onError: ((Throwable) -> Unit)? = null,
 ): Job {
     val paginator = this
@@ -115,7 +123,7 @@ fun <T, ID : Any> MutablePaginator<T>.observe(
         try {
             source.changes().collect { event ->
                 try {
-                    paginator.applyEvent(source, event, unknownItem)
+                    paginator.applyEvent(source, event, unknownItem, deduplicateInserts)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
@@ -174,6 +182,7 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
     source: PaginatorReactiveCache<T, ID>,
     event: ReactiveEvent<T, ID>,
     unknownItem: UnknownItemPolicy,
+    deduplicateInserts: Boolean,
 ) {
     when (event) {
         is ReactiveEvent.Updated<T> -> {
@@ -190,7 +199,7 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
         }
 
         is ReactiveEvent.Inserted<T, ID> -> {
-            val landed = insertAt(source, event.item, event.position)
+            val landed = insertAt(source, event.item, event.position, deduplicateInserts)
             if (!landed) handleUnknown(unknownItem)
         }
 
@@ -207,7 +216,9 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
                 @Suppress("UNCHECKED_CAST")
                 val self = this as MutablePaginator<T>
                 self.removeElement { source.identity(it) == identityKey }
-                val landed = self.insertAt(source, event.item, event.position)
+                // The item was just removed, so dedup would never trigger here;
+                // pass false to skip the redundant cache scan.
+                val landed = self.insertAt(source, event.item, event.position, deduplicate = false)
                 check(landed) {
                     "Moved: cannot resolve InsertPosition ${event.position} for identity $identityKey; " +
                             "transaction will be rolled back."
@@ -226,7 +237,7 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
                 @Suppress("UNCHECKED_CAST")
                 val self = this as MutablePaginator<T>
                 event.events.forEach { child ->
-                    self.applyEvent(source, child, unknownItem)
+                    self.applyEvent(source, child, unknownItem, deduplicateInserts)
                 }
             }
         }
@@ -237,12 +248,30 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
  * Inserts [item] at the position described by [position]. Returns `false`
  * when the position cannot be resolved (e.g., the anchor identity is not in
  * the cache, or an explicit [InsertPosition.At] points to an uncached page).
+ *
+ * When [deduplicate] is `true` and an item with the same identity is already
+ * cached, the existing entry is updated in place instead of inserting a
+ * duplicate (returns `true` — the item "landed").
  */
 private fun <T, ID : Any> MutablePaginator<T>.insertAt(
     source: PaginatorReactiveCache<T, ID>,
     item: T,
     position: InsertPosition<ID>,
+    deduplicate: Boolean,
 ): Boolean {
+    if (deduplicate) {
+        val identityKey = source.identity(item)
+        val alreadyCached = cache.pages.any { page ->
+            cache.getStateOf(page)?.data?.any { source.identity(it) == identityKey } == true
+        }
+        if (alreadyCached) {
+            updateWhere(
+                predicate = { source.identity(it) == identityKey },
+                transform = { item },
+            )
+            return true
+        }
+    }
     return when (position) {
         InsertPosition.Head -> prependElement(item)
         InsertPosition.Tail -> addElement(item)

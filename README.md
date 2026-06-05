@@ -571,7 +571,9 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 14. [**Paginator vs CursorPaginator**](docs/14.%20paginator-vs-cursor.md) — full catalog of
     behavioural differences, removed APIs, signature-only changes, and a migration cheat sheet
 15. [**Reactive Sources**](docs/15.%20reactive-sources.md) — bridge Room/SQLDelight/Realm to a
-    paginator via `observe(...)` and `PaginatorReactiveCache` — point CRUD instead of `refreshAll`
+    paginator via `observe(...)` and `PaginatorReactiveCache` — point CRUD instead of `refreshAll`,
+    with a built-in `DiffUtil`-style `snapshotReactiveCache(...)` that diffs a `Flow<List<T>>` for
+    you
 16. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)
 
 Maintainer docs:

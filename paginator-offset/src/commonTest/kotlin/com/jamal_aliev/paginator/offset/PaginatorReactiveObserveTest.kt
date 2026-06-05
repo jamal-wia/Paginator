@@ -160,6 +160,50 @@ class PaginatorReactiveObserveTest {
     }
 
     @Test
+    fun `Inserted with already-cached identity updates in place under default dedup`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+        )
+
+        // id 2 is already in page 1; re-inserting it must not duplicate.
+        source.emit(ReactiveEvent.Inserted(Item(2, "dup"), InsertPosition.Head))
+        runCurrent()
+
+        val page1 = paginator.cache.getStateOf(1)!!
+        assertEquals(listOf(1, 2, 3), page1.data.map { it.id })           // order unchanged
+        assertEquals(1, page1.data.count { it.id == 2 })                  // no duplicate
+        assertEquals("dup", page1.data.first { it.id == 2 }.label)        // content updated
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Inserted with already-cached identity duplicates when dedup disabled`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            deduplicateInserts = false,
+        )
+
+        source.emit(ReactiveEvent.Inserted(Item(2, "dup"), InsertPosition.Head))
+        runCurrent()
+
+        // Literal insert: id 2 now appears twice across the cache.
+        val allIds =
+            paginator.cache.pages.flatMap { paginator.cache.getStateOf(it)!!.data.map { i -> i.id } }
+        assertEquals(2, allIds.count { it == 2 })
+
+        job.cancel()
+    }
+
+    @Test
     fun `Inserted AfterIdentity with unknown anchor and Drop policy is a no-op`() = runTest {
         val paginator = populatedPaginator()
         val before: List<List<Int>> =
