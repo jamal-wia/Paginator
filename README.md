@@ -96,7 +96,7 @@ write-up: [Paging 3 is good. Until you need something more.](articles/en/Paging%
 
 The library is published to **Maven Central**. No additional repository configuration needed.
 
-Since **10.0.4** the suite is split into per-strategy modules so consumers only pay for the variant
+Since **10.1.0** the suite is split into per-strategy modules so consumers only pay for the variant
 they actually use:
 
 | Artifact                                       | When to pick it                                                          |
@@ -116,7 +116,7 @@ use — the BOM keeps the suite aligned on your classpath:
 ```kotlin
 dependencies {
   // Pin all Paginator artifacts together. Latest version: see the Maven Central badge above.
-  implementation(platform("io.github.jamal-wia:paginator-bom:10.0.4"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:10.1.0"))
 
   // Pick exactly one paginator strategy (or both, if your app needs both)
   implementation("io.github.jamal-wia:paginator-offset")   // page-number paginator
@@ -146,7 +146,7 @@ metadata. The `paginator-compose-*` modules go in the shared Compose source set;
 > ```kotlin
 > // top-level dependencies {} block — NOT inside kotlin { sourceSets { } }
 > dependencies {
->     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:10.0.4"))
+>     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:10.1.0"))
 > }
 >
 > // inside kotlin { sourceSets { commonMain.dependencies { } } } — no version needed
@@ -176,10 +176,10 @@ or anything else on your classpath.
 ### Migrating from 8.x
 
 The 8.x line shipped a single `paginator` artifact (+ `paginator-compose`, `paginator-view`).
-10.0.4 replaces them with the table above and renames Kotlin packages accordingly. Find/replace
+10.1.0 replaces them with the table above and renames Kotlin packages accordingly. Find/replace
 in your project:
 
-| 8.x import                                                                                    | 10.0.4 import                                                         |
+| 8.x import                                                                                    | 10.1.0 import                                                         |
 |-----------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|
 | `com.jamal_aliev.paginator.Paginator`                                                         | `com.jamal_aliev.paginator.offset.Paginator`                          |
 | `com.jamal_aliev.paginator.MutablePaginator`                                                  | `com.jamal_aliev.paginator.offset.MutablePaginator`                   |
