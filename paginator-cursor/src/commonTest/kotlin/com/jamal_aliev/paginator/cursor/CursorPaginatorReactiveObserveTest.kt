@@ -238,6 +238,50 @@ class CursorPaginatorReactiveObserveTest {
     }
 
     @Test
+    fun `Inserted with already-cached identity updates in place under default dedup`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+        )
+
+        // id 2 is already in page p0; re-inserting it must not duplicate.
+        source.emit(CursorReactiveEvent.Inserted(Item(2, "dup"), CursorInsertPosition.Head))
+        runCurrent()
+
+        val p0 = paginator.cache.getStateOf("p0")!!
+        assertEquals(listOf(1, 2, 3), p0.data.map { it.id })          // order unchanged
+        assertEquals(1, p0.data.count { it.id == 2 })                 // no duplicate
+        assertEquals("dup", p0.data.first { it.id == 2 }.label)       // content updated
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Inserted with already-cached identity duplicates when dedup disabled`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            deduplicateInserts = false,
+        )
+
+        source.emit(CursorReactiveEvent.Inserted(Item(2, "dup"), CursorInsertPosition.Head))
+        runCurrent()
+
+        // Literal insert: id 2 now appears twice across the cache.
+        val allIds = paginator.cache.cursors
+            .flatMap { paginator.cache.getStateOf(it.self)!!.data.map { i -> i.id } }
+        assertEquals(2, allIds.count { it == 2 })
+
+        job.cancel()
+    }
+
+    @Test
     fun `Inserted BeforeIdentity places item right before the anchor`() = runTest {
         val paginator = populatedPaginator()
         val source = FakeReactiveCache()

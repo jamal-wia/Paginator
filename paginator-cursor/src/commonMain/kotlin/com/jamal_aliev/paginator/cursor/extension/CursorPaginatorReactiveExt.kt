@@ -86,6 +86,13 @@ import kotlinx.coroutines.launch
  *   empty at subscribe time.
  * @param unknownItem What to do with events whose target identity is not in
  *   the cache. Defaults to [UnknownItemPolicy.Drop].
+ * @param deduplicateInserts When `true` (default), a [CursorReactiveEvent.Inserted]
+ *   whose identity is **already** present in the cache is applied as an in-place
+ *   update instead of inserting a duplicate. This makes the hybrid model safe —
+ *   where the `load` lambda writes the fetched page into the same source the
+ *   adapter observes, so paginating re-delivers those rows as inserts. Set to
+ *   `false` to keep the literal "always insert" behaviour. Duplicate-by-identity
+ *   inserts are never correct, so the default is on.
  * @param onError Invoked for non-cancellation errors that escape during
  *   event application. The default logs at warn level via the paginator's
  *   [com.jamal_aliev.paginator.cursor.CursorPaginator.logger].
@@ -98,6 +105,7 @@ fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.observe(
     source: CursorPaginatorReactiveCache<T, ID>,
     initialSync: InitialSyncPolicy = InitialSyncPolicy.RefreshAll,
     unknownItem: UnknownItemPolicy = UnknownItemPolicy.Drop,
+    deduplicateInserts: Boolean = true,
     onError: ((Throwable) -> Unit)? = null,
 ): Job {
     val paginator = this
@@ -119,7 +127,7 @@ fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.observe(
         try {
             source.changes().collect { event ->
                 try {
-                    paginator.applyEvent(source, event, unknownItem)
+                    paginator.applyEvent(source, event, unknownItem, deduplicateInserts)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
@@ -178,6 +186,7 @@ private suspend fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.applyEve
     source: CursorPaginatorReactiveCache<T, ID>,
     event: CursorReactiveEvent<T, ID>,
     unknownItem: UnknownItemPolicy,
+    deduplicateInserts: Boolean,
 ) {
     when (event) {
         is CursorReactiveEvent.Updated<T> -> {
@@ -194,7 +203,7 @@ private suspend fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.applyEve
         }
 
         is CursorReactiveEvent.Inserted<T, ID> -> {
-            val landed = insertAt(source, event.item, event.position)
+            val landed = insertAt(source, event.item, event.position, deduplicateInserts)
             if (!landed) handleUnknown(unknownItem)
         }
 
@@ -211,7 +220,9 @@ private suspend fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.applyEve
                 @Suppress("UNCHECKED_CAST")
                 val self = this as MutableCursorPaginator<K, T>
                 self.removeElement { source.identity(it) == identityKey }
-                val landed = self.insertAt(source, event.item, event.position)
+                // The item was just removed, so dedup would never trigger here;
+                // pass false to skip the redundant cache scan.
+                val landed = self.insertAt(source, event.item, event.position, deduplicate = false)
                 check(landed) {
                     "Moved: cannot resolve CursorInsertPosition ${event.position} for identity $identityKey; " +
                             "transaction will be rolled back."
@@ -230,7 +241,7 @@ private suspend fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.applyEve
                 @Suppress("UNCHECKED_CAST")
                 val self = this as MutableCursorPaginator<K, T>
                 event.events.forEach { child ->
-                    self.applyEvent(source, child, unknownItem)
+                    self.applyEvent(source, child, unknownItem, deduplicateInserts)
                 }
             }
         }
@@ -243,12 +254,30 @@ private suspend fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.applyEve
  * the cache, an explicit [CursorInsertPosition.At] points to an uncached
  * `self`, or the cache is empty for [CursorInsertPosition.Head] /
  * [CursorInsertPosition.Tail]).
+ *
+ * When [deduplicate] is `true` and an item with the same identity is already
+ * cached, the existing entry is updated in place instead of inserting a
+ * duplicate (returns `true` — the item "landed").
  */
 private fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.insertAt(
     source: CursorPaginatorReactiveCache<T, ID>,
     item: T,
     position: CursorInsertPosition<ID>,
+    deduplicate: Boolean,
 ): Boolean {
+    if (deduplicate) {
+        val identityKey = source.identity(item)
+        val alreadyCached = cache.cursors.any { cursor ->
+            cache.getStateOf(cursor.self)?.data?.any { source.identity(it) == identityKey } == true
+        }
+        if (alreadyCached) {
+            updateWhere(
+                predicate = { source.identity(it) == identityKey },
+                transform = { item },
+            )
+            return true
+        }
+    }
     return when (position) {
         CursorInsertPosition.Head -> prependElement(item)
         CursorInsertPosition.Tail -> addElement(item)
