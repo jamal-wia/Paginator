@@ -3,6 +3,7 @@ package com.jamal_aliev.paginator.cursor.extension
 import com.jamal_aliev.paginator.cursor.MutableCursorPaginator
 import com.jamal_aliev.paginator.cursor.MutableCursorPaginator.CursorBookmarkFactory
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.defaultCursorOverflowPageFactory
 import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -18,7 +19,8 @@ fun <K : Any, T> MutableCursorPaginator<K, T>.addElement(
     element: T,
     silently: Boolean = false,
     bookmarkFactory: CursorBookmarkFactory<K>? = null,
-    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? = null,
+    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? =
+        defaultCursorOverflowPageFactory(),
 ): Boolean {
     val tail: CursorBookmark<K> = core.tailCursor() ?: return false
     val tailData: List<T> = cache.getStateOf(tail.self)?.data ?: return false
@@ -42,7 +44,8 @@ fun <K : Any, T> MutableCursorPaginator<K, T>.addElement(
     index: Int,
     silently: Boolean = false,
     bookmarkFactory: CursorBookmarkFactory<K>? = null,
-    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? = null,
+    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? =
+        defaultCursorOverflowPageFactory(),
 ) {
     addAllElements(
         elements = listOf(element),
@@ -63,7 +66,8 @@ fun <K : Any, T> MutableCursorPaginator<K, T>.prependElement(
     element: T,
     silently: Boolean = false,
     bookmarkFactory: CursorBookmarkFactory<K>? = null,
-    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? = null,
+    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? =
+        defaultCursorOverflowPageFactory(),
 ): Boolean {
     val head: CursorBookmark<K> = core.headCursor() ?: return false
     addAllElements(
@@ -144,6 +148,8 @@ fun <K : Any, T> MutableCursorPaginator<K, T>.moveElement(
     toSelf: K, toIndex: Int,
     silently: Boolean = false,
     bookmarkFactory: CursorBookmarkFactory<K>? = null,
+    initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? =
+        defaultCursorOverflowPageFactory(),
 ) {
     if (fromSelf == toSelf && fromIndex == toIndex) return
 
@@ -166,6 +172,7 @@ fun <K : Any, T> MutableCursorPaginator<K, T>.moveElement(
         index = toIndex,
         silently = true,
         bookmarkFactory = bookmarkFactory,
+        initPageState = initPageState,
     )
 
     if (!silently) core.snapshot()
@@ -174,6 +181,9 @@ fun <K : Any, T> MutableCursorPaginator<K, T>.moveElement(
 inline fun <K : Any, T> MutableCursorPaginator<K, T>.insertBefore(
     element: T,
     silently: Boolean = false,
+    bookmarkFactory: CursorBookmarkFactory<K>? = null,
+    noinline initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? =
+        defaultCursorOverflowPageFactory(),
     predicate: (T) -> Boolean,
 ): Boolean {
     val (cursor, idx) = indexOfFirst(predicate) ?: return false
@@ -182,6 +192,8 @@ inline fun <K : Any, T> MutableCursorPaginator<K, T>.insertBefore(
         targetSelf = cursor.self,
         index = idx,
         silently = silently,
+        bookmarkFactory = bookmarkFactory,
+        initPageState = initPageState,
     )
     return true
 }
@@ -189,6 +201,9 @@ inline fun <K : Any, T> MutableCursorPaginator<K, T>.insertBefore(
 inline fun <K : Any, T> MutableCursorPaginator<K, T>.insertAfter(
     element: T,
     silently: Boolean = false,
+    bookmarkFactory: CursorBookmarkFactory<K>? = null,
+    noinline initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? =
+        defaultCursorOverflowPageFactory(),
     predicate: (T) -> Boolean,
 ): Boolean {
     val (cursor, idx) = indexOfFirst(predicate) ?: return false
@@ -197,6 +212,8 @@ inline fun <K : Any, T> MutableCursorPaginator<K, T>.insertAfter(
         targetSelf = cursor.self,
         index = idx + 1,
         silently = silently,
+        bookmarkFactory = bookmarkFactory,
+        initPageState = initPageState,
     )
     return true
 }

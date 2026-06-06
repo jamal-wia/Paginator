@@ -11,6 +11,53 @@ import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
 
 /**
+ * The default overflow-page **state** factory shared by the cursor CRUD insert family
+ * ([MutableCursorPaginator.addAllElements],
+ * [com.jamal_aliev.paginator.cursor.extension.addElement],
+ * [com.jamal_aliev.paginator.cursor.extension.prependElement],
+ * [com.jamal_aliev.paginator.cursor.extension.moveElement],
+ * [com.jamal_aliev.paginator.cursor.extension.insertBefore],
+ * [com.jamal_aliev.paginator.cursor.extension.insertAfter]) and the reactive
+ * [com.jamal_aliev.paginator.cursor.extension.observe] bridge.
+ *
+ * Mirrors the offset `defaultOverflowPageFactory`: it produces a fresh page of the **same class** as
+ * the page that overflowed ([previous]) via the configured `core.initializer*Page` factories, so
+ * custom subclasses and fresh ids are preserved. CRUD on an Error/Progress page is legal, so a
+ * non-filled source yields the matching class; an absent or Success source yields Success.
+ *
+ * The new tail page's `self` is `previous.next` — the cascade in [MutableCursorPaginator.addAllElements]
+ * sets that link (to the cursor minted by the `CursorBookmarkFactory`) immediately before invoking this
+ * factory, so the produced state embeds the correct bookmark instead of the source page's (which the
+ * old `targetState.copy(...)` fallback did, sharing the source id and bookmark).
+ *
+ * **Cursor-specific limitation:** unlike offset, this factory only builds the page *state* — it cannot
+ * mint the `self` key. Cursors are server-issued and unsynthesisable from the client, so a
+ * [MutableCursorPaginator.CursorBookmarkFactory] is still required to create a brand-new tail page;
+ * without one the overflow is dropped. See `docs/15. reactive-sources.md` → "Tail-insert overflow
+ * caveat".
+ *
+ * `@PublishedApi internal` (not plain `internal`) so the public **inline** CRUD helpers
+ * ([com.jamal_aliev.paginator.cursor.extension.insertBefore] /
+ * [com.jamal_aliev.paginator.cursor.extension.insertAfter]) can reference it as a default argument.
+ */
+@PublishedApi
+internal fun <K : Any, T> MutableCursorPaginator<K, T>.defaultCursorOverflowPageFactory(): (previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T> =
+    { previous, data ->
+        val newSelf: K = requireNotNull(previous.next) {
+            "defaultCursorOverflowPageFactory invoked without a linked next self"
+        }
+        val newBookmark = CursorBookmark(prev = previous.self, self = newSelf, next = null)
+        when (val source = cache.getStateOf(previous.self)) {
+            is CursorPageState.Error<*, *> ->
+                core.initializerErrorPage(source.exception, newBookmark, data, null)
+            is CursorPageState.Progress<*, *> ->
+                core.initializerProgressPage(newBookmark, data, null)
+            else ->
+                core.initializerSuccessPage(newBookmark, data, null)
+        }
+    }
+
+/**
  * Cursor-based counterpart of [MutablePaginator]. Adds element-level CRUD on
  * top of the navigation/state machinery of [CursorPaginator].
  *
@@ -241,7 +288,13 @@ open class MutableCursorPaginator<K : Any, T>(
      *
      * @param bookmarkFactory Optional factory producing new cursors for tail pages
      *   when the cascade needs to spawn one. When `null` the cascade stops at the
-     *   first missing link and excess elements are dropped.
+     *   first missing link and excess elements are dropped. **No default is possible** —
+     *   cursors are server-issued and cannot be synthesised client-side, so tail-page
+     *   creation is opt-in (the documented cursor analogue of the offset overflow factory).
+     * @param initPageState Factory for the **state** of a created tail page. **Defaults** to the
+     *   same-class factory ([defaultCursorOverflowPageFactory]); only takes effect when
+     *   [bookmarkFactory] is supplied (otherwise no tail page is created). Pass `null` to fall back to
+     *   `targetState.copy(...)`.
      */
     fun addAllElements(
         elements: List<T>,
@@ -250,7 +303,8 @@ open class MutableCursorPaginator<K : Any, T>(
         silently: Boolean = false,
         isDirty: Boolean = false,
         bookmarkFactory: CursorBookmarkFactory<K>? = null,
-        initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? = null,
+        initPageState: ((previous: CursorBookmark<K>, data: List<T>) -> CursorPageState<K, T>)? =
+            defaultCursorOverflowPageFactory(),
     ) {
         logger.debug(LogComponent.MUTATION) {
             "addAllElements: targetSelf=$targetSelf index=$index count=${elements.size} isDirty=$isDirty"

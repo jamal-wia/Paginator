@@ -620,4 +620,57 @@ class CursorPaginatorReactiveObserveTest {
 
         second.cancel()
     }
+
+    // =========================================================================
+    // bookmarkFactory / initPageState: tail-overflow page creation on the
+    // reactive path. Cursors are server-issued, so creation is opt-in via a
+    // bookmarkFactory — observe() now exposes it (the offset analogue of
+    // observe(initPageState = …)).
+    // =========================================================================
+
+    @Test
+    fun `Inserted Tail overflow creates a tail page when a bookmarkFactory is supplied`() = runTest {
+        val paginator = populatedPaginator(IntBackend(pageCount = 2)) // p0,p1 cached; p1 is the genuine tail
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            bookmarkFactory = { idx, previous ->
+                CursorBookmark(prev = previous.self, self = "ovf$idx", next = null)
+            },
+        )
+
+        source.emit(CursorReactiveEvent.Inserted(Item(99, "tail"), CursorInsertPosition.Tail))
+        runCurrent()
+
+        // p1 = [4,5,6]; appending 99 overflows it into a freshly minted tail page.
+        val tail = paginator.cache.getStateOf("ovf0")
+        assertNotNull(tail)
+        assertEquals(listOf(99), tail.data.map { it.id })
+        assertEquals("ovf0", tail.bookmark.self)
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Inserted Tail overflow is dropped by default (no bookmarkFactory)`() = runTest {
+        val paginator = populatedPaginator(IntBackend(pageCount = 2))
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+        )
+
+        source.emit(CursorReactiveEvent.Inserted(Item(99, "tail"), CursorInsertPosition.Tail))
+        runCurrent()
+
+        // The documented cursor behaviour: without a bookmarkFactory the client cannot mint a `self`,
+        // so the tail overflow is dropped and no page is created.
+        assertNull(paginator.cache.getStateOf("ovf0"))
+        assertEquals(listOf(4, 5, 6), paginator.cache.getStateOf("p1")!!.data.map { it.id })
+
+        job.cancel()
+    }
 }
