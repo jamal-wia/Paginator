@@ -8,6 +8,8 @@ import com.jamal_aliev.paginator.core.cache.reactive.UnknownItemPolicy
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.warn
 import com.jamal_aliev.paginator.offset.MutablePaginator
+import com.jamal_aliev.paginator.offset.defaultOverflowPageFactory
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
@@ -89,6 +91,13 @@ import kotlinx.coroutines.launch
  *   adapter observes, so paginating re-delivers those rows as inserts. Set to
  *   `false` to keep the literal "always insert" behaviour. Duplicate-by-identity
  *   inserts are never correct, so the default is on.
+ * @param initPageState Factory for trailing pages created when a reactive insert overflows the
+ *   **last** cached page. **Defaults** to a factory that creates a new page of the **same class** as
+ *   the page that overflowed (custom subclasses and fresh ids preserved), so inserted rows are not
+ *   silently dropped at the tail. Pass a custom factory to override page creation, or pass `null` to
+ *   **opt out** — overflow past the last page is then dropped. This governs end-overflow only; an
+ *   explicit [InsertPosition.At] pointing to an **uncached** page is always treated as out-of-window
+ *   (deferred to [unknownItem]), never materialised.
  * @param onError Invoked for non-cancellation errors that escape during
  *   event application. The default logs at warn level via the paginator's
  *   [com.jamal_aliev.paginator.offset.Paginator.logger].
@@ -102,6 +111,7 @@ fun <T, ID : Any> MutablePaginator<T>.observe(
     initialSync: InitialSyncPolicy = InitialSyncPolicy.RefreshAll,
     unknownItem: UnknownItemPolicy = UnknownItemPolicy.Drop,
     deduplicateInserts: Boolean = true,
+    initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = defaultOverflowPageFactory(),
     onError: ((Throwable) -> Unit)? = null,
 ): Job {
     val paginator = this
@@ -123,7 +133,7 @@ fun <T, ID : Any> MutablePaginator<T>.observe(
         try {
             source.changes().collect { event ->
                 try {
-                    paginator.applyEvent(source, event, unknownItem, deduplicateInserts)
+                    paginator.applyEvent(source, event, unknownItem, deduplicateInserts, initPageState)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
@@ -183,6 +193,7 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
     event: ReactiveEvent<T, ID>,
     unknownItem: UnknownItemPolicy,
     deduplicateInserts: Boolean,
+    initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)?,
 ) {
     when (event) {
         is ReactiveEvent.Updated<T> -> {
@@ -199,7 +210,7 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
         }
 
         is ReactiveEvent.Inserted<T, ID> -> {
-            val landed = insertAt(source, event.item, event.position, deduplicateInserts)
+            val landed = insertAt(source, event.item, event.position, deduplicateInserts, initPageState)
             if (!landed) handleUnknown(unknownItem)
         }
 
@@ -218,7 +229,7 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
                 self.removeElement { source.identity(it) == identityKey }
                 // The item was just removed, so dedup would never trigger here;
                 // pass false to skip the redundant cache scan.
-                val landed = self.insertAt(source, event.item, event.position, deduplicate = false)
+                val landed = self.insertAt(source, event.item, event.position, deduplicate = false, initPageState)
                 check(landed) {
                     "Moved: cannot resolve InsertPosition ${event.position} for identity $identityKey; " +
                             "transaction will be rolled back."
@@ -237,7 +248,7 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
                 @Suppress("UNCHECKED_CAST")
                 val self = this as MutablePaginator<T>
                 event.events.forEach { child ->
-                    self.applyEvent(source, child, unknownItem, deduplicateInserts)
+                    self.applyEvent(source, child, unknownItem, deduplicateInserts, initPageState)
                 }
             }
         }
@@ -252,12 +263,20 @@ private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
  * When [deduplicate] is `true` and an item with the same identity is already
  * cached, the existing entry is updated in place instead of inserting a
  * duplicate (returns `true` — the item "landed").
+ *
+ * [initPageState] is the overflow-page factory threaded down from [observe]:
+ * it governs whether an insert that overflows the **last** cached page creates
+ * a trailing page (non-null factory) or drops the overflow (`null`). It is
+ * applied uniformly to every position so the reactive bridge behaves the same
+ * wherever the insert lands. It does **not** materialise an out-of-window
+ * [InsertPosition.At] target — that always resolves to `false`.
  */
 private fun <T, ID : Any> MutablePaginator<T>.insertAt(
     source: PaginatorReactiveCache<T, ID>,
     item: T,
     position: InsertPosition<ID>,
     deduplicate: Boolean,
+    initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)?,
 ): Boolean {
     if (deduplicate) {
         val identityKey = source.identity(item)
@@ -273,26 +292,30 @@ private fun <T, ID : Any> MutablePaginator<T>.insertAt(
         }
     }
     return when (position) {
-        InsertPosition.Head -> prependElement(item)
-        InsertPosition.Tail -> addElement(item)
+        InsertPosition.Head -> prependElement(item, initSuccessPageState = initPageState)
+        InsertPosition.Tail -> addElement(item, initSuccessPageState = initPageState)
         is InsertPosition.At -> {
-            // addAllElements throws if targetPage isn't cached and no
-            // initPageState factory is provided. We treat that as "out of
-            // window" → false, so the UnknownItemPolicy can decide.
+            // An At position pointing outside the cached window is "out of window": we refuse to
+            // materialise an arbitrary far page (that would create a non-contiguous island) and defer
+            // to UnknownItemPolicy via false. initPageState governs OVERFLOW past the end during the
+            // cascade, not target-page materialisation — so the guard is independent of the factory.
             if (cache.getStateOf(position.page) == null) return false
             addAllElements(
                 elements = listOf(item),
                 targetPage = position.page,
                 index = position.index,
+                initPageState = initPageState,
             )
             true
         }
 
+        // insertAfter / insertBefore now thread the overflow factory themselves, so the reactive
+        // bridge simply delegates (they return false when the anchor identity is not cached).
         is InsertPosition.AfterIdentity<ID> ->
-            insertAfter(item) { source.identity(it) == position.identity }
+            insertAfter(item, initPageState = initPageState) { source.identity(it) == position.identity }
 
         is InsertPosition.BeforeIdentity<ID> ->
-            insertBefore(item) { source.identity(it) == position.identity }
+            insertBefore(item, initPageState = initPageState) { source.identity(it) == position.identity }
     }
 }
 

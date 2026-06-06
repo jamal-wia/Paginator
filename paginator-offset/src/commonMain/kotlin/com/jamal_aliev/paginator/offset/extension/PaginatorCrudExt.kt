@@ -1,6 +1,7 @@
 package com.jamal_aliev.paginator.offset.extension
 
 import com.jamal_aliev.paginator.offset.MutablePaginator
+import com.jamal_aliev.paginator.offset.defaultOverflowPageFactory
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -13,13 +14,16 @@ import com.jamal_aliev.paginator.offset.page.OffsetPageState
  * Returns `false` if no last page exists (cache is empty) and the element could
  * not be appended.
  *
+ * If appending overflows the last page, a new page is created by default (same class as the
+ * source page). Pass `initSuccessPageState = null` to opt out of that overflow page creation.
+ *
  * **L2 note:** modifies L1 only. Use [MutablePaginator.flush] or wrap the call
  * in [MutablePaginator.transaction] to persist.
  */
 fun <T> MutablePaginator<T>.addElement(
     element: T,
     silently: Boolean = false,
-    initSuccessPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = null,
+    initSuccessPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = defaultOverflowPageFactory(),
 ): Boolean {
     val lastPage: Int = core.lastPage() ?: return false
     val lastPageData = cache.getStateOf(lastPage)?.data ?: return false
@@ -40,7 +44,7 @@ fun <T> MutablePaginator<T>.addElement(
     page: Int,
     index: Int,
     silently: Boolean = false,
-    initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = null,
+    initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = defaultOverflowPageFactory(),
 ) {
     return addAllElements(
         elements = listOf(element),
@@ -133,21 +137,24 @@ fun <T> MutablePaginator<T>.removeElement(page: Int, predicate: (T) -> Boolean):
  *
  * If the cache is empty (no first page exists), the function returns `false`.
  * Overflow elements pushed past the page capacity are cascaded to subsequent
- * pages by [addAllElements].
+ * pages by [addAllElements]; when the cascade overruns the **last** cached page,
+ * a trailing page is created by default (same class as the page that overflowed)
+ * so the overflow is not dropped.
  *
  * **L2 note:** modifies L1 only. Use [MutablePaginator.flush] or wrap the call
  * in [MutablePaginator.transaction] to persist.
  *
  * @param element The element to insert at the front of the first cached page.
  * @param silently If `true`, no snapshot is emitted after the operation.
- * @param initSuccessPageState Optional factory used by [addAllElements] to create
- *   overflow pages.
+ * @param initSuccessPageState Factory used by [addAllElements] to create overflow pages.
+ *   **Defaults** to the same-class factory ([defaultOverflowPageFactory]); pass `null` to
+ *   **opt out** of overflow page creation (the overflow is then dropped).
  * @return `true` if an element was inserted, `false` if the cache had no pages.
  */
 fun <T> MutablePaginator<T>.prependElement(
     element: T,
     silently: Boolean = false,
-    initSuccessPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = null
+    initSuccessPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = defaultOverflowPageFactory(),
 ): Boolean {
     val firstPage: Int = cache.pages.firstOrNull() ?: return false
     addAllElements(
@@ -203,9 +210,16 @@ fun <T> MutablePaginator<T>.swapElements(
  * [toPage] is automatically shifted down by 1 so the element still lands on
  * the page the caller meant.
  *
+ * If moving across pages overruns the **last** cached page (the target region
+ * grows while a different source page shrinks), a trailing page is created by
+ * default so the displaced element is not dropped.
+ *
  * **L2 note:** modifies L1 only. Use [MutablePaginator.flush] or wrap the call
  * in [MutablePaginator.transaction] to persist.
  *
+ * @param initPageState Factory used by [addAllElements] to create overflow pages.
+ *   **Defaults** to the same-class factory ([defaultOverflowPageFactory]); pass `null` to
+ *   **opt out** of overflow page creation (the displaced overflow is then dropped).
  * @throws NoSuchElementException If [fromPage] is not in the cache.
  * @throws IndexOutOfBoundsException If [fromIndex] is out of range.
  */
@@ -213,6 +227,7 @@ fun <T> MutablePaginator<T>.moveElement(
     fromPage: Int, fromIndex: Int,
     toPage: Int, toIndex: Int,
     silently: Boolean = false,
+    initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = defaultOverflowPageFactory(),
 ) {
     if (fromPage == toPage && fromIndex == toIndex) return
 
@@ -235,6 +250,7 @@ fun <T> MutablePaginator<T>.moveElement(
         targetPage = effectiveToPage,
         index = toIndex,
         silently = true,
+        initPageState = initPageState,
     )
 
     if (!silently) core.snapshot()
@@ -243,12 +259,19 @@ fun <T> MutablePaginator<T>.moveElement(
 /**
  * Inserts [element] immediately **before** the first element matching [predicate].
  *
+ * If the insertion cascades past the **last** cached page, a trailing page is created
+ * by default so the overflow is not dropped.
+ *
+ * @param initPageState Factory used by [addAllElements] to create overflow pages.
+ *   **Defaults** to the same-class factory ([defaultOverflowPageFactory]); pass `null` to
+ *   **opt out** of overflow page creation (the overflow is then dropped).
  * @return `true` if a matching element was found and the insertion happened,
  *   `false` otherwise.
  */
 inline fun <T> MutablePaginator<T>.insertBefore(
     element: T,
     silently: Boolean = false,
+    noinline initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = defaultOverflowPageFactory(),
     predicate: (T) -> Boolean,
 ): Boolean {
     val (page, index) = indexOfFirst(predicate) ?: return false
@@ -257,6 +280,7 @@ inline fun <T> MutablePaginator<T>.insertBefore(
         targetPage = page,
         index = index,
         silently = silently,
+        initPageState = initPageState,
     )
     return true
 }
@@ -264,12 +288,19 @@ inline fun <T> MutablePaginator<T>.insertBefore(
 /**
  * Inserts [element] immediately **after** the first element matching [predicate].
  *
+ * If the insertion cascades past the **last** cached page, a trailing page is created
+ * by default so the overflow is not dropped.
+ *
+ * @param initPageState Factory used by [addAllElements] to create overflow pages.
+ *   **Defaults** to the same-class factory ([defaultOverflowPageFactory]); pass `null` to
+ *   **opt out** of overflow page creation (the overflow is then dropped).
  * @return `true` if a matching element was found and the insertion happened,
  *   `false` otherwise.
  */
 inline fun <T> MutablePaginator<T>.insertAfter(
     element: T,
     silently: Boolean = false,
+    noinline initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = defaultOverflowPageFactory(),
     predicate: (T) -> Boolean,
 ): Boolean {
     val (page, index) = indexOfFirst(predicate) ?: return false
@@ -278,6 +309,7 @@ inline fun <T> MutablePaginator<T>.insertAfter(
         targetPage = page,
         index = index + 1,
         silently = silently,
+        initPageState = initPageState,
     )
     return true
 }

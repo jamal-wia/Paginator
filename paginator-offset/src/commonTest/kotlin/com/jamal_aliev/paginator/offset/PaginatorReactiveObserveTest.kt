@@ -8,6 +8,7 @@ import com.jamal_aliev.paginator.core.cache.reactive.UnknownItemPolicy
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.extension.observe
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -493,6 +494,133 @@ class PaginatorReactiveObserveTest {
         assertNotEquals(first, second)
 
         second.cancel()
+    }
+
+    // =========================================================================
+    // initPageState: overflow-page factory for reactive inserts
+    //
+    // The same default-factory-or-null mechanism the CRUD family exposes is
+    // threaded through observe(): an insert that overflows the last cached page
+    // creates a trailing page by default, accepts a custom factory, or drops
+    // the overflow when the caller passes initPageState = null.
+    // =========================================================================
+
+    private class LabeledSuccessPage(page: Int, data: List<Item>) :
+        OffsetPageState.Success<Item>(page, data)
+
+    @Test
+    fun `Inserted Tail overflow creates a trailing page by default (item not dropped)`() = runTest {
+        val paginator = populatedPaginator() // pages 1=[1,2,3], 2=[4,5,6], capacity 3 (both full)
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+        )
+
+        source.emit(ReactiveEvent.Inserted(Item(7, "tail"), InsertPosition.Tail))
+        runCurrent()
+
+        // 7 appended to the full last page overflows into a freshly created page 3.
+        val page3 = paginator.cache.getStateOf(3)
+        assertNotNull(page3)
+        assertTrue(page3 is OffsetPageState.Success)
+        assertEquals(listOf(7), page3.data.map { it.id })
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Inserted Tail overflow is dropped when initPageState is null (opt-out)`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            initPageState = null, // opt out: no trailing page is created
+        )
+
+        source.emit(ReactiveEvent.Inserted(Item(7, "tail"), InsertPosition.Tail))
+        runCurrent()
+
+        // No page 3 created; the last page is unchanged and the overflow item is dropped.
+        assertNull(paginator.cache.getStateOf(3))
+        assertEquals(listOf(4, 5, 6), paginator.cache.getStateOf(2)!!.data.map { it.id })
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Inserted Tail overflow uses a custom initPageState factory (subclass preserved)`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            initPageState = { page, data -> LabeledSuccessPage(page, data) },
+        )
+
+        source.emit(ReactiveEvent.Inserted(Item(7, "tail"), InsertPosition.Tail))
+        runCurrent()
+
+        val page3 = paginator.cache.getStateOf(3)
+        assertTrue(
+            page3 is LabeledSuccessPage,
+            "overflow page should be the custom subclass, was ${page3?.let { it::class.simpleName }}",
+        )
+        assertEquals(listOf(7), page3.data.map { it.id })
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Inserted Head overflow honors the default factory (threaded to prependElement)`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+        )
+
+        // Head insert pushes the tail of the cache forward: 0,1,2 | 3,4,5 | 6.
+        source.emit(ReactiveEvent.Inserted(Item(0, "head"), InsertPosition.Head))
+        runCurrent()
+
+        assertEquals(listOf(0, 1, 2), paginator.cache.getStateOf(1)!!.data.map { it.id })
+        assertEquals(listOf(3, 4, 5), paginator.cache.getStateOf(2)!!.data.map { it.id })
+        // The cascade reaches the end: id 6 lands in a created page 3 instead of being dropped.
+        val page3 = paginator.cache.getStateOf(3)
+        assertNotNull(page3)
+        assertEquals(listOf(6), page3.data.map { it.id })
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Inserted AfterIdentity overflow is dropped when initPageState is null (opt-out)`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            initPageState = null,
+        )
+
+        // Insert after id 6 (the last element of the last full page) → overflow at the very end.
+        source.emit(
+            ReactiveEvent.Inserted(Item(7, "x"), InsertPosition.AfterIdentity(identity = 6)),
+        )
+        runCurrent()
+
+        // Null opt-out: the overflow has nowhere to go and is dropped; no page 3 is created.
+        assertNull(paginator.cache.getStateOf(3))
+        assertEquals(listOf(4, 5, 6), paginator.cache.getStateOf(2)!!.data.map { it.id })
+
+        job.cancel()
     }
 }
 

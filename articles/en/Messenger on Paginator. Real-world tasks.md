@@ -205,7 +205,10 @@ What happens internally:
 2. Page=1 already contains `capacity=50` elements — so after insertion there are 51. The overflow
    cascades forward: the last element of page=1 moves to the start of page=2, the last of page=2 to
    the start of page=3, and so on through the chain of cached pages. The invariant "no more than
-   `capacity` elements per page" is maintained automatically.
+   `capacity` elements per page" is maintained automatically. When the cascade reaches the **last**
+   cached page, a new trailing page is created by default so nothing is dropped — for a feed where
+   the bottom is just history you'll reload anyway, pass `initPageState = null` to drop the oldest
+   off-screen element instead of growing the cache.
 
 That's it. One line per WebSocket event, the library handles the capacity invariant itself. In
 Paging 3 this required a `RemoteMediator` + manual Room work + `invalidate()` + flickering — and it

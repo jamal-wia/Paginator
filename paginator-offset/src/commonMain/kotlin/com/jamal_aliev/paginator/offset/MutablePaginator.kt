@@ -1,5 +1,6 @@
 package com.jamal_aliev.paginator.offset
 
+import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
@@ -12,6 +13,35 @@ import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
+
+/**
+ * The default overflow-page factory shared by the whole CRUD insert family
+ * ([MutablePaginator.addAllElements], [com.jamal_aliev.paginator.offset.extension.addElement],
+ * [com.jamal_aliev.paginator.offset.extension.prependElement]) and the reactive
+ * [com.jamal_aliev.paginator.offset.extension.observe] bridge.
+ *
+ * Produces a fresh page of the **same class** as the page that overflowed (the one immediately
+ * preceding [page]) via the configured `core.initializer*Page` factories, so custom subclasses and
+ * fresh ids are preserved. CRUD on an Error/Progress page is legal, so a non-filled source yields the
+ * matching class; an absent or Success source yields Success.
+ *
+ * Reads `page - 1` (the preceding page) rather than a captured coordinate so the same factory is
+ * correct for every insert overload regardless of where the overflow originated. Pass `null` in place
+ * of this factory to **opt out** of overflow page creation (overflow is then dropped).
+ *
+ * `@PublishedApi internal` (not plain `internal`) so the public **inline** CRUD helpers
+ * ([com.jamal_aliev.paginator.offset.extension.insertBefore] /
+ * [com.jamal_aliev.paginator.offset.extension.insertAfter]) can reference it as a default argument.
+ */
+@PublishedApi
+internal fun <T> MutablePaginator<T>.defaultOverflowPageFactory(): (page: Int, data: List<T>) -> OffsetPageState<T> =
+    { page, data ->
+        when (val source = cache.getStateOf(page - 1)) {
+            is OffsetPageState.Error<*> -> core.initializerErrorPage(source.exception, page, data, null)
+            is OffsetPageState.Progress<*> -> core.initializerProgressPage(page, data, null)
+            else -> core.initializerSuccessPage(page, data, null)
+        }
+    }
 
 /**
  * A full-featured, mutable pagination manager for Kotlin/Android.
@@ -371,7 +401,12 @@ open class MutablePaginator<T>(
      * @param index The zero-based position within the page's data list where elements are inserted.
      * @param silently If `true`, the change will **not** trigger a snapshot emission.
      * @param isDirty If `true`, marks the page as dirty.
-     * @param initPageState Optional factory to create a new [OffsetPageState] for overflow pages.
+     * @param initPageState Factory for pages created during overflow. **Defaults** to a factory that
+     *   creates a new page of the **same class** as the preceding (source) page via the configured
+     *   `core.initializer*Page` factories (custom subclasses and fresh ids preserved), so inserted
+     *   elements are not silently dropped. Pass a custom factory to override page creation, or pass
+     *   `null` to **opt out** of overflow page creation (overflow is then dropped / a missing target
+     *   throws — the pre-overflow-algorithm behavior).
      * @throws IndexOutOfBoundsException If [targetPage] is not in the cache and [initPageState] is `null`.
      */
     fun addAllElements(
@@ -380,7 +415,7 @@ open class MutablePaginator<T>(
         index: Int,
         silently: Boolean = false,
         isDirty: Boolean = false,
-        initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = null
+        initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)? = defaultOverflowPageFactory()
     ) {
         logger.debug(LogComponent.MUTATION) {
             "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty"
@@ -413,10 +448,7 @@ open class MutablePaginator<T>(
 
         if (!extraElements.isNullOrEmpty()) {
             val nextPageState: OffsetPageState<T>? = cache.getStateOf(targetPage + 1)
-            if ((nextPageState != null && nextPageState::class == targetState::class)
-                ||
-                (nextPageState == null && initPageState != null)
-            ) {
+            if (nextPageState != null && nextPageState::class == targetState::class) {
                 addAllElements(
                     elements = extraElements,
                     targetPage = targetPage + 1,
@@ -425,27 +457,24 @@ open class MutablePaginator<T>(
                     initPageState = initPageState
                 )
             } else {
-                // Cascade blocked at targetPage+1:
-                //   (a) nextPageState exists but has a different class (transient blocker), or
-                //   (b) nextPageState == null AND no initPageState factory was supplied (gap).
+                // Cascade blocked at targetPage+1 (a gap, the true end, or a foreign-class page).
+                // Two independent things happen here:
+                //   (1) Rebalance: the insert shifts every later position forward by
+                //       N = extraElements.size. If a cached chunk exists beyond the gap, peel N
+                //       items off its first page and cascade them through it (its first page becomes
+                //       partial, to be refilled later) so it stays consistent with that shift.
+                //   (2) Preserve the overflow: if targetPage+1 is empty (gap or true end) and a
+                //       factory is available (initPageState, default = same-class), create a new
+                //       page to hold extraElements instead of dropping them — covers "addElement
+                //       appends to a full last page" and "fill toward the gap". A null initPageState
+                //       opts out (overflow dropped).
+                // nextChunkStart is captured BEFORE (2) so the peel targets the far chunk, not a
+                // page that (2) may have just created.
                 //
-                // Semantics we want (per library design):
-                //   - extraElements belong to the slot right after targetPage; across a gap
-                //     or a foreign-class page they have no valid home, so they are DROPPED.
-                //   - The insertion at targetPage still logically shifts every later chunk
-                //     forward by N = extraElements.size positions. To keep the next cached
-                //     chunk internally consistent with that shift, we peel N items off the
-                //     tail of its first page and let the standard cascade propagate them
-                //     through the chunk, creating a new trailing page for the overflow.
-                //
-                // Outcome for data `1..5 gap 10..15 gap 20..25` + insert of N=5 at page 13:
-                //   pages 1..5   — untouched
-                //   pages 10..12 — untouched
-                //   pages 13..15 — cascade shifted by 5 (standard path, not this branch)
-                //   page  20     — loses its last 5 items, ends up partially filled
-                //                  (goPreviousPage will refill it from the source later)
-                //   pages 21..25 — shifted by 5 (full)
-                //   page  26     — newly created with page 25's original tail
+                // Example: `1=[a,b,c] 2=[d,e,f] 3=[g,h,i] gap 10=[p,q,r] 11=[s,t,u]`,
+                // insert ["X","Y"] at page 1 ->
+                //   1=[X,Y,a] 2=[b,c,d] 3=[e,f,g] 4=[h,i] gap 10=[p] 11=[q,r,s] 12=[t,u]
+                //   (page 4 created with the overflow — (2); far chunk rebalanced by N=2 — (1)).
                 val shiftSize = extraElements.size
                 val nextChunkStart: Int? = cache.pages
                     .asSequence()
@@ -495,8 +524,24 @@ open class MutablePaginator<T>(
                         )
                     }
                 }
-                // If no subsequent chunk of the same class exists, extras are simply dropped
-                // and no shift is needed — there's nothing downstream left to keep consistent.
+
+                // (2) Preserve the front overflow: when targetPage+1 is empty (gap or true end) and
+                // a factory is available (the default same-class factory, or a custom one), create a
+                // new page to hold it instead of dropping. Passing initPageState = null opts out, so
+                // the overflow is dropped (the pre-overflow-algorithm behavior).
+                // This runs ALONGSIDE the rebalance above, so a cross-gap insert both fills toward
+                // the gap and keeps the far chunk consistent.
+                if (nextPageState == null && initPageState != null) {
+                    addAllElements(
+                        elements = extraElements,
+                        targetPage = targetPage + 1,
+                        index = 0,
+                        silently = true,
+                        initPageState = initPageState,
+                    )
+                }
+                // (If a foreign-class page occupies targetPage+1 and there is no far chunk to
+                //  rebalance, the overflow has no valid home and is dropped — unchanged edge case.)
             }
         }
 

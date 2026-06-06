@@ -159,15 +159,14 @@ class CrudOperationsTest {
     }
 
     @Test
-    fun `addAllElements overflow without next page removes extra pages`() = runTest {
+    fun `addAllElements overflow past the last page creates a new page instead of dropping`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
         // page1: [p1_item0, p1_item1, p1_item2]
         // page2: [p2_item0, p2_item1, p2_item2]
 
-        // Add to page 1 at index 0, causing overflow.
-        // Page 2 has same type (OffsetPageState.Success) so overflow cascades there.
-        // But page 2 is already full, so page 2 overflows.
-        // No page 3 and no initPageState → pages after page 2 get removed.
+        // Add at page 1, index 0 — overflow cascades: page 1 -> page 2 -> a brand-new page 3.
+        // There is no page 3 and no initPageState, but the default factory now creates one
+        // (same class as the source), so the overflow is preserved instead of silently dropped.
         paginator.addAllElements(
             elements = listOf("x1", "x2", "x3"),
             targetPage = 1,
@@ -175,19 +174,14 @@ class CrudOperationsTest {
             silently = true
         )
 
-        val page1 = paginator.cache.getStateOf(1)!!.data
-        assertEquals(3, page1.size)
-        assertEquals("x1", page1[0])
-        assertEquals("x2", page1[1])
-        assertEquals("x3", page1[2])
-
-        // page2 received overflow from page1
-        val page2 = paginator.cache.getStateOf(2)!!.data
-        assertEquals(3, page2.size)
-        assertEquals("p1_item0", page2[0])
-        assertEquals("p1_item1", page2[1])
-        assertEquals("p1_item2", page2[2])
-        // Original page2 data lost (overflow couldn't cascade further)
+        assertEquals(listOf("x1", "x2", "x3"), paginator.cache.getStateOf(1)!!.data)
+        // page2 received page1's overflow
+        assertEquals(listOf("p1_item0", "p1_item1", "p1_item2"), paginator.cache.getStateOf(2)!!.data)
+        // page3 was created with page2's overflow — original data preserved, not lost
+        val page3 = paginator.cache.getStateOf(3)
+        assertNotNull(page3)
+        assertTrue(page3 is OffsetPageState.Success) // same class as the source pages
+        assertEquals(listOf("p2_item0", "p2_item1", "p2_item2"), page3.data)
     }
 
     @Test
@@ -377,7 +371,7 @@ class CrudOperationsTest {
     }
 
     @Test
-    fun `addAllElements throws when target page missing and no initPageState`() = runTest {
+    fun `addAllElements throws when target page missing and initPageState is null (opt-out)`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
         assertFailsWith<IndexOutOfBoundsException> {
             paginator.addAllElements(
@@ -385,6 +379,7 @@ class CrudOperationsTest {
                 targetPage = 99,
                 index = 0,
                 silently = true,
+                initPageState = null, // opt out → missing target throws (pre-overflow-algorithm behavior)
             )
         }
     }
@@ -472,8 +467,11 @@ class CrudOperationsTest {
         for (i in 0..4) assertEquals("p14_${15 + i}", page15[i])
         for (i in 0..14) assertEquals("p15_$i", page15[5 + i])
 
-        // Page 16 must NOT be created — no initPageState on the outer call.
-        assertNull(paginator.cache.getStateOf(16))
+        // Page 16 is now created with the preserved front overflow (no longer dropped): the last 5
+        // items that cascaded out of the front chunk (original page 15's tail).
+        val page16 = paginator.cache.getStateOf(16)!!.data
+        assertEquals(5, page16.size)
+        for (i in 0..4) assertEquals("p15_${15 + i}", page16[i])
 
         // Page 20 — partially filled (lost last 5), original first 15 items preserved.
         val page20 = paginator.cache.getStateOf(20)!!.data
@@ -498,7 +496,7 @@ class CrudOperationsTest {
     }
 
     @Test
-    fun `addAllElements gap with no next chunk drops extras without invalidation`() = runTest {
+    fun `addAllElements overflow past the last page creates a trailing page without invalidating existing pages`() = runTest {
         val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
         paginator.core.resize(capacity = 3, resize = false, silently = true)
         paginator.cache.setState(
@@ -519,9 +517,36 @@ class CrudOperationsTest {
 
         assertEquals(listOf("N1", "N2", "N3"), paginator.cache.getStateOf(1)!!.data)
         assertEquals(listOf("a", "b", "c"), paginator.cache.getStateOf(2)!!.data)
-        // No third page was created, no invalidation of existing pages.
-        assertNull(paginator.cache.getStateOf(3))
-        assertEquals(setOf(1, 2), paginator.cache.pages.toSet())
+        // The final overflow now extends the data with a new trailing page (same class) instead of
+        // being dropped; existing pages 1 and 2 are not invalidated.
+        assertEquals(listOf("x", "y", "z"), paginator.cache.getStateOf(3)!!.data)
+        assertEquals(setOf(1, 2, 3), paginator.cache.pages.toSet())
+    }
+
+    @Test
+    fun `addAllElements across a gap creates the overflow page AND rebalances the far chunk`() = runTest {
+        val paginator = MutablePaginator<String> { LoadResult(emptyList()) }
+        paginator.core.resize(capacity = 3, resize = false, silently = true)
+        // Front chunk 1,2,3 ; gap 4-9 ; far chunk 10,11.
+        paginator.cache.setState(OffsetPageState.Success(1, mutableListOf("a", "b", "c")), silently = true)
+        paginator.cache.setState(OffsetPageState.Success(2, mutableListOf("d", "e", "f")), silently = true)
+        paginator.cache.setState(OffsetPageState.Success(3, mutableListOf("g", "h", "i")), silently = true)
+        paginator.cache.setState(OffsetPageState.Success(10, mutableListOf("p", "q", "r")), silently = true)
+        paginator.cache.setState(OffsetPageState.Success(11, mutableListOf("s", "t", "u")), silently = true)
+
+        paginator.addAllElements(listOf("X", "Y"), targetPage = 1, index = 0, silently = true)
+
+        // Front chunk shifts; the overflow at the gap is PRESERVED in a freshly created page 4.
+        assertEquals(listOf("X", "Y", "a"), paginator.cache.getStateOf(1)!!.data)
+        assertEquals(listOf("b", "c", "d"), paginator.cache.getStateOf(2)!!.data)
+        assertEquals(listOf("e", "f", "g"), paginator.cache.getStateOf(3)!!.data)
+        assertEquals(listOf("h", "i"), paginator.cache.getStateOf(4)!!.data)
+        assertNull(paginator.cache.getStateOf(5)) // gap beyond the created page is preserved
+
+        // The far chunk is rebalanced by N=2: its first page becomes partial, the tail shifts forward.
+        assertEquals(listOf("p"), paginator.cache.getStateOf(10)!!.data)
+        assertEquals(listOf("q", "r", "s"), paginator.cache.getStateOf(11)!!.data)
+        assertEquals(listOf("t", "u"), paginator.cache.getStateOf(12)!!.data)
     }
 
     @Test

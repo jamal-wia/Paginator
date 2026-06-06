@@ -117,9 +117,10 @@ class PaginatorCrudExtTest {
         paginator.moveElement(fromPage = 1, fromIndex = 0, toPage = 2, toIndex = 0, silently = true)
         // Page 1 became empty and was removed; page 2 collapsed down to page 1.
         // p1_item0 was inserted at the (collapsed) page 1, index 0 → pushing the original
-        // p2_item0 to overflow into a fresh page 2.
-        assertEquals(1, paginator.cache.pages.size)
+        // p2_item0 to overflow into a fresh page 2 (preserved, not dropped).
+        assertEquals(2, paginator.cache.pages.size)
         assertEquals("p1_item0", paginator.cache.getElement(1, 0))
+        assertEquals("p2_item0", paginator.cache.getElement(2, 0))
     }
 
     @Test
