@@ -911,6 +911,10 @@ open class CursorPaginator<K : Any, T>(
                             || !core.isFilledSuccessState(core.getStateOf(endC.self)))
                 ) {
                     core.findNearContextCursor(startCursor = startC, endCursor = endC)
+                    // The window moved to a new position; realign the bookmark cursor so a
+                    // subsequent jumpForward/jumpBack resumes from here, not from the deleted
+                    // range — consistent with jump/restart, which both syncBookmarkIndex.
+                    core.startContextCursor?.let { syncBookmarkIndex(it) }
                 }
             } finally {
                 navigationMutex.unlock()

@@ -1081,6 +1081,10 @@ open class Paginator<T>(
                             startPoint = cache.startContextPage,
                             endPoint = cache.endContextPage
                         )
+                        // The window moved to a new position; realign the bookmark cursor so a
+                        // subsequent jumpForward/jumpBack resumes from here, not from the deleted
+                        // range — consistent with jump/restart, which both syncBookmarkIndex.
+                        syncBookmarkIndex(cache.startContextPage)
                     }
                 } finally {
                     navigationMutex.unlock()
