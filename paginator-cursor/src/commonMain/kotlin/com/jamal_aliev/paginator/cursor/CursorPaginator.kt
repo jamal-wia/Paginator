@@ -282,6 +282,7 @@ open class CursorPaginator<K : Any, T>(
             if (core.isFilledSuccessState(cachedState)) {
                 core.expandStartContextCursor(cachedState, effectiveCursor)
                 core.expandEndContextCursor(cachedState, effectiveCursor)
+                if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 logger.debug(LogComponent.NAVIGATION) { "jump: self=${bookmark.self} cache hit" }
                 syncBookmarkIndex(effectiveCursor)
@@ -322,8 +323,27 @@ open class CursorPaginator<K : Any, T>(
             )
             shouldCleanup = false
             cache.setState(resultCursor, resultState, silently = true)
-            core.expandStartContextCursor(resultState, resultCursor)
-            core.expandEndContextCursor(resultState, resultCursor)
+            if (core.isFilledSuccessState(resultState)) {
+                core.expandStartContextCursor(resultState, resultCursor)
+                core.expandEndContextCursor(resultState, resultCursor)
+            } else {
+                // The landing page is not a filled boundary, but adjacent already-cached filled
+                // pages should still be absorbed so loaded neighbors stay visible. Keep the landing
+                // at a boundary — never span the window across it (that would bury a non-filled page
+                // in the interior). Absorb the cached filled run on one side: backward (toward prev)
+                // when there's a filled page below — the landing stays at endContextCursor; otherwise
+                // forward (toward next), the landing stays at startContextCursor. Mirrors offset jump.
+                val belowCursor: CursorBookmark<K>? = cache.walkBackward(resultCursor)
+                val belowState: CursorPageState<K, T>? = belowCursor?.let { cache.getStateOf(it.self) }
+                if (core.isFilledSuccessState(belowState)) {
+                    core.endContextCursor = resultCursor
+                    core.expandStartContextCursor(belowState, belowCursor)
+                } else {
+                    core.startContextCursor = resultCursor
+                    val aboveCursor: CursorBookmark<K>? = cache.walkForward(resultCursor)
+                    core.expandEndContextCursor(aboveCursor?.let { cache.getStateOf(it.self) }, aboveCursor)
+                }
+            }
 
             if (enableCacheFlow) core.repeatCacheFlow()
             if (!silentlyResult) core.snapshot()
@@ -559,17 +579,21 @@ open class CursorPaginator<K : Any, T>(
                 }
             }
 
-            val prevTargetSelf: K? = if (pivotIsFilled) pivotCursor.prev else null
-            if (pivotIsFilled && prevTargetSelf == null) {
-                throw EndOfCursorFeedException(
+            // Always step to the page before the anchor (mirror of offset goPreviousPage). A
+            // non-filled start anchor (a partial tail or an errored/empty jump target) must NOT be
+            // reloaded in place here: earlier pages always exist behind it via prev, so reloading
+            // would trap backward navigation on that page forever. The anchor stays in the window as
+            // the end boundary and remains retryable via goNextPage / refresh. Only a true head
+            // (prev == null) is the backward terminus — unlike goNextPage, which reloads a non-filled
+            // end because forward can run into the end of the feed.
+            val prevTargetSelf: K = pivotCursor.prev
+                ?: throw EndOfCursorFeedException(
                     attemptedCursorKey = pivotCursor.self,
                     direction = EndOfCursorFeedException.Direction.BACKWARD,
                 )
-            }
 
             val targetCursor: CursorBookmark<K> =
-                if (!pivotIsFilled) pivotCursor
-                else cache.getCursorOf(prevTargetSelf!!)
+                cache.getCursorOf(prevTargetSelf)
                     ?: CursorBookmark<K>(
                         prev = null,
                         self = prevTargetSelf,
