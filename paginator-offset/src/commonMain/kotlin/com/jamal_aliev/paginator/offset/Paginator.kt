@@ -430,6 +430,9 @@ open class Paginator<T>(
             if (core.isFilledSuccessState(probablySuccessBookmarkPage)) {
                 core.expandStartContextPage(probablySuccessBookmarkPage)
                 core.expandEndContextPage(probablySuccessBookmarkPage)
+                if (enableCacheFlow) {
+                    core.repeatCacheFlow()
+                }
                 if (!silentlyResult) {
                     core.snapshot()
                 }
@@ -488,8 +491,23 @@ open class Paginator<T>(
                 state = resultState,
                 silently = true
             )
-            core.expandStartContextPage(resultState)
-            core.expandEndContextPage(resultState)
+            if (core.isFilledSuccessState(resultState)) {
+                core.expandStartContextPage(resultState)
+                core.expandEndContextPage(resultState)
+            } else {
+                // The landing page is not a filled boundary, but adjacent already-cached filled
+                // pages should still be absorbed so loaded neighbors stay visible. The landing
+                // page must stay at a boundary — we never span the window across it (that would
+                // bury a non-filled page in the interior). So absorb the filled run on one side:
+                // backward when there's a filled page below (the common "partial last page" case,
+                // landing stays at endContextPage); otherwise forward (landing stays at start).
+                val belowState: OffsetPageState<T>? = cache.getStateOf(cache.startContextPage - 1)
+                if (core.isFilledSuccessState(belowState)) {
+                    core.expandStartContextPage(belowState)
+                } else {
+                    core.expandEndContextPage(cache.getStateOf(cache.endContextPage + 1))
+                }
+            }
 
             if (enableCacheFlow) {
                 core.repeatCacheFlow()
@@ -732,23 +750,21 @@ open class Paginator<T>(
         navigationMutex.lock()
         try {
             var pivotContextPage: Int = cache.startContextPage
-            var pivotContextPageState = cache.getStateOf(pivotContextPage)
-            val pivotContextPageValid = core.isFilledSuccessState(pivotContextPageState)
-            if (pivotContextPageValid) {
+            if (core.isFilledSuccessState(cache.getStateOf(pivotContextPage))) {
                 core.expandStartContextPage(cache.getStateOf(pivotContextPage - 1))
                     ?.also { expanded: OffsetPageState<T> ->
                         pivotContextPage = expanded.page
-                        pivotContextPageState = expanded
                     }
             }
 
-            val previousPage: Int =
-                if (pivotContextPageValid) pivotContextPage - 1
-                else pivotContextPage
+            // Always step to the page before the anchor. Unlike goNextPage, a non-filled
+            // start anchor (a partial last page, or an errored/empty jump target) must NOT be
+            // reloaded in place here: earlier pages always exist behind it, so reloading would
+            // trap backward navigation on that page forever. The anchor stays in the window as
+            // the end boundary and remains retryable via goNextPage / refresh.
+            val previousPage: Int = pivotContextPage - 1
             check(previousPage >= 1) { "previousPage is $previousPage. you can't go below page 1" }
-            var previousPageState: OffsetPageState<T>? =
-                if (previousPage == pivotContextPage) pivotContextPageState
-                else cache.getStateOf(previousPage)
+            var previousPageState: OffsetPageState<T>? = cache.getStateOf(previousPage)
 
             if (previousPageState == null) {
                 previousPageState = core.loadFromPersistentCache(previousPage)
