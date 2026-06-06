@@ -607,6 +607,15 @@ open class Paginator<T>(
                     }
             }
 
+            // Unlike goPreviousPage (which always steps to anchor-1), a non-filled END boundary is
+            // RELOADED in place here, never skipped. Forward navigation can run into the end of the
+            // dataset: a non-filled end may be the genuine last page, so advancing to pivot+1 could
+            // load empty pages past the end. Reloading lets a transient error/partial recover (and
+            // then advance), while a real last page stays put. This is the deliberate asymmetry with
+            // goPreviousPage — backward can always step to a real earlier page (page 1 is the floor),
+            // forward cannot. A page cached beyond a non-filled boundary is a non-contiguous island:
+            // reach it by reloading this boundary first (so the run becomes contiguous) or via jump,
+            // never by skipping over the non-filled page.
             val nextPage: Int =
                 if (isPivotContextPageValid) pivotContextPage + 1
                 else pivotContextPage
