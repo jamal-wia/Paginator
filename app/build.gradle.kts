@@ -6,11 +6,11 @@ plugins {
 
 android {
     namespace = "com.jamal_aliev.paginator"
-    compileSdk = 36
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
         applicationId = "com.jamal_aliev.paginator"
-        minSdk = 24
+        minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"

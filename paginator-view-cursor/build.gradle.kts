@@ -67,10 +67,10 @@ mavenPublishing {
 
 android {
     namespace = "com.jamal_aliev.paginator.view.cursor"
-    compileSdk = 36
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        minSdk = 24
+        minSdk = libs.versions.minSdk.get().toInt()
     }
 
     buildTypes {

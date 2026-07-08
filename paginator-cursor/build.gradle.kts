@@ -104,10 +104,10 @@ kotlin {
 
 android {
     namespace = "com.jamal_aliev.paginator.cursor"
-    compileSdk = 36
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        minSdk = 24
+        minSdk = libs.versions.minSdk.get().toInt()
     }
 
     compileOptions {
