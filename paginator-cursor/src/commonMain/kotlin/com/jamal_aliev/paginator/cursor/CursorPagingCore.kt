@@ -146,6 +146,62 @@ open class CursorPagingCore<K : Any, T>(
     }
 
     /**
+     * Fallback anchoring used by [findNearContextCursor] when the cache holds **no** FULL
+     * (`== capacity`) page — a short / partial-only feed. A non-empty success page is still a valid
+     * *visible* anchor, so instead of clearing the window (which would stop the reactive snapshot,
+     * see issue #2) this anchors on the success page nearest by chain distance to the current
+     * [startCursor]..[endCursor] band and sets the window across its contiguous success run.
+     *
+     * The window is set **directly** because [expandStartContextCursor] / [expandEndContextCursor]
+     * walk only FULL pages and would bail on a partial pivot. This is intentionally reached only
+     * when no filled page exists: with filled pages present the strict filled-only expansion is
+     * required so the window is never stretched across a non-filled page buried in its interior.
+     * Only a cache with no non-empty success page at all stays cleared.
+     */
+    private fun anchorOnNearestSuccessRun(
+        ordered: List<CursorBookmark<K>>,
+        orderedStates: List<CursorPageState<K, T>?>,
+        startCursor: CursorBookmark<K>?,
+        endCursor: CursorBookmark<K>?,
+    ) {
+        val startIdx: Int =
+            startCursor?.self?.let { s -> ordered.indexOfFirst { it.self == s } } ?: -1
+        val endIdx: Int =
+            endCursor?.self?.let { e -> ordered.indexOfFirst { it.self == e } } ?: -1
+        var bestIdx = -1
+        var bestDist = Int.MAX_VALUE
+        for (i in ordered.indices) {
+            if (!orderedStates[i].isSuccessState()) continue
+            val dist: Int = when {
+                startIdx >= 0 && i < startIdx -> startIdx - i
+                endIdx >= 0 && i > endIdx -> i - endIdx
+                else -> 0
+            }
+            if (dist < bestDist) {
+                bestDist = dist
+                bestIdx = i
+            }
+        }
+        if (bestIdx == -1) {
+            startContextCursor = null
+            endContextCursor = null
+            return
+        }
+        val anchorCursor: CursorBookmark<K> = ordered[bestIdx]
+        val anchorState: CursorPageState<K, T>? = orderedStates[bestIdx]
+        startContextCursor = walkWhile(
+            anchorState, anchorCursor,
+            next = { _, c -> cache.walkBackward(c) },
+            predicate = { it.isSuccessState() },
+        )?.second ?: anchorCursor
+        endContextCursor = walkWhile(
+            anchorState, anchorCursor,
+            next = { _, c -> cache.walkForward(c) },
+            predicate = { it.isSuccessState() },
+        )?.second ?: anchorCursor
+    }
+
+    /**
      * Re-anchors the context window to the nearest filled-success page group when the
      * current window boundaries no longer point at filled pages.
      *
@@ -173,62 +229,23 @@ open class CursorPagingCore<K : Any, T>(
             endContextCursor = null
             return
         }
+        // Resolve every cached state once — it is read per cursor below and again in the fallback,
+        // so materialise it a single time instead of re-looking-up per pass.
+        val orderedStates: List<CursorPageState<K, T>?> = ordered.map { cache.getStateOf(it.self) }
 
         // Indices (in head-to-tail order) of pages that are currently filled-success.
         val validIndices = ArrayList<Int>()
         var firstValid = -1
         var lastValid = -1
         for (i in ordered.indices) {
-            if (isFilledSuccessState(cache.getStateOf(ordered[i].self))) {
+            if (isFilledSuccessState(orderedStates[i])) {
                 validIndices.add(i)
                 if (firstValid == -1) firstValid = i
                 lastValid = i
             }
         }
         if (validIndices.isEmpty()) {
-            // No FULL (== capacity) page to anchor the context window on. A partial (short / last)
-            // success page is still a valid VISIBLE anchor, so clearing the window here is wrong —
-            // it stops the reactive snapshot for feeds shorter than one page (issue #2). Fall back
-            // to the nearest non-empty success page by chain distance and set the window across its
-            // contiguous success run directly (expand* walks accept only FULL pages). Only a cache
-            // with no non-empty success page at all stays cleared.
-            val startIdx: Int =
-                startCursor?.self?.let { s -> ordered.indexOfFirst { it.self == s } } ?: -1
-            val endIdx: Int =
-                endCursor?.self?.let { e -> ordered.indexOfFirst { it.self == e } } ?: -1
-            var bestIdx = -1
-            var bestDist = Int.MAX_VALUE
-            for (i in ordered.indices) {
-                if (!cache.getStateOf(ordered[i].self).isSuccessState()) continue
-                val dist: Int = when {
-                    startIdx >= 0 && i < startIdx -> startIdx - i
-                    endIdx >= 0 && i > endIdx -> i - endIdx
-                    else -> 0
-                }
-                if (dist < bestDist) {
-                    bestDist = dist
-                    bestIdx = i
-                }
-            }
-            if (bestIdx == -1) {
-                startContextCursor = null
-                endContextCursor = null
-                return
-            }
-            val anchorCursor: CursorBookmark<K> = ordered[bestIdx]
-            val anchorState: CursorPageState<K, T>? = cache.getStateOf(anchorCursor.self)
-            val startAnchor: CursorBookmark<K> = walkWhile(
-                anchorState, anchorCursor,
-                next = { _, c -> cache.walkBackward(c) },
-                predicate = { it.isSuccessState() },
-            )?.second ?: anchorCursor
-            val endAnchor: CursorBookmark<K> = walkWhile(
-                anchorState, anchorCursor,
-                next = { _, c -> cache.walkForward(c) },
-                predicate = { it.isSuccessState() },
-            )?.second ?: anchorCursor
-            startContextCursor = startAnchor
-            endContextCursor = endAnchor
+            anchorOnNearestSuccessRun(ordered, orderedStates, startCursor, endCursor)
             return
         }
 
@@ -256,7 +273,7 @@ open class CursorPagingCore<K : Any, T>(
         }
 
         val nearestCursor: CursorBookmark<K> = ordered[bestIdx]
-        val nearestState: CursorPageState<K, T>? = cache.getStateOf(nearestCursor.self)
+        val nearestState: CursorPageState<K, T>? = orderedStates[bestIdx]
         startContextCursor = nearestCursor
         endContextCursor = nearestCursor
         expandStartContextCursor(nearestState, nearestCursor)

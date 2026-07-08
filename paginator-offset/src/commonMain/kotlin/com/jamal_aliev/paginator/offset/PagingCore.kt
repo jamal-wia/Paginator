@@ -162,6 +162,44 @@ open class PagingCore<T>(
     }
 
     /**
+     * Fallback anchoring used by [findNearContextPage] when the cache holds **no** FULL
+     * (`== capacity`) page — a short / partial-only list. A non-empty success page is still a valid
+     * *visible* anchor, so instead of collapsing the window (which would stop the reactive snapshot,
+     * see issue #2) this anchors on the success page nearest to [sPoint]..[ePoint] and sets the
+     * window across its contiguous success run.
+     *
+     * The window is set **directly** because [expandStartContextPage] / [expandEndContextPage] walk
+     * only FULL pages and would bail on a partial pivot. This is intentionally reached only when no
+     * filled page exists: with filled pages present the strict filled-only expansion is required so
+     * the window is never stretched across a non-filled page buried in its interior. Only a cache
+     * with no non-empty success page at all stays at `0,0`.
+     */
+    private fun anchorOnNearestSuccessRun(
+        states: List<OffsetPageState<T>>,
+        sPoint: Int,
+        ePoint: Int,
+    ) {
+        val anchor = states
+            .filter { it.isSuccessState() }
+            .minByOrNull { minOf(abs(it.page - sPoint), abs(it.page - ePoint)) }
+        if (anchor == null) {
+            startContextPage = 0
+            endContextPage = 0
+            return
+        }
+        startContextPage = (walkWhile(
+            pivotState = anchor,
+            next = { it - 1 },
+            predicate = { it.isSuccessState() }
+        ) ?: anchor).page
+        endContextPage = (walkWhile(
+            pivotState = anchor,
+            next = { it + 1 },
+            predicate = { it.isSuccessState() }
+        ) ?: anchor).page
+    }
+
+    /**
      * Finds the nearest contiguous group of filled success pages to the given
      * [startPoint]..[endPoint] range and sets [startContextPage]/[endContextPage] accordingly.
      *
@@ -184,31 +222,10 @@ open class PagingCore<T>(
 
         fun find(sPoint: Int, ePoint: Int) {
             // example 1(0), 2(1), 3(2), 21(3), 22(4), 23(5)
-            val validStates = this.states.filter(::isFilledSuccessState)
+            val states = this.states // materialised once; `states` re-scans the cache on every read
+            val validStates = states.filter(::isFilledSuccessState)
             if (validStates.isEmpty()) {
-                // No FULL (== capacity) page to anchor the context window on. A partial
-                // (short / last) success page is still a valid VISIBLE anchor, so collapsing the
-                // window to 0,0 here is wrong — it stops the reactive snapshot for lists shorter
-                // than one page (issue #2). Fall back to the nearest non-empty success page and
-                // set the window across the contiguous run of success pages directly (the expand*
-                // walks accept only FULL pages, so they can't do it). Only a cache with no
-                // non-empty success page at all legitimately stays at 0,0.
-                val anchor = this.states
-                    .filter { it.isSuccessState() }
-                    .minByOrNull { minOf(abs(it.page - sPoint), abs(it.page - ePoint)) }
-                if (anchor == null) {
-                    startContextPage = 0
-                    endContextPage = 0
-                } else {
-                    val startAnchor =
-                        walkWhile(anchor, next = { it - 1 }, predicate = { it.isSuccessState() })
-                            ?: anchor
-                    val endAnchor =
-                        walkWhile(anchor, next = { it + 1 }, predicate = { it.isSuccessState() })
-                            ?: anchor
-                    startContextPage = startAnchor.page
-                    endContextPage = endAnchor.page
-                }
+                anchorOnNearestSuccessRun(states, sPoint, ePoint)
                 return
             }
 
