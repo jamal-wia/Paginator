@@ -221,6 +221,9 @@ PaginatedLazyColumn(paginator, Modifier.fillMaxSize(), key = { it.id }) { item -
 }
 ```
 
+The same turnkey covers every lazy layout and axis — `PaginatedLazyRow`, `PaginatedLazyVerticalGrid`
+/ `PaginatedLazyHorizontalGrid`, and the staggered-grid variants.
+
 Need a custom body (sticky headers, mixed content)? Drop to the `rememberPaginated` +
 `paginated { }` DSL — zero manual numbers (`dataItemCount` is read from `paginator.uiState`, header
 / footer counts are tallied by the DSL) — and add `PaginatorScrollEdgeIndicators` to keep the
@@ -486,8 +489,8 @@ differs only in **how pages are addressed**. Read the full guide at
   paginator-* artifacts without versions; the BOM keeps the suite aligned on your classpath
   and only constrains Paginator artifacts (no impact on Compose / Kotlin / AndroidX versions)
 - **Compose Multiplatform bindings (`paginator-compose-offset` / `paginator-compose-cursor`)** --
-  the turnkey, scroll-anchor-safe `PaginatedLazyColumn` (and `PaginatorScrollEdgeIndicators` for a
-  custom body); plus the lower-level `PaginatedLazyList`, `PaginatedLazyGrid`,
+  the turnkey, scroll-anchor-safe `PaginatedLazy{Column,Row,*Grid}` family (and
+  `PaginatorScrollEdgeIndicators` for a custom body); plus the lower-level `PaginatedLazyList`, `PaginatedLazyGrid`,
   `PaginatedLazyStaggeredGrid` and `rememberPaginated`
   + the `paginated { }` DSL for zero-boilerplate prefetch on `LazyColumn` / `LazyRow` /
   `LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal counterparts); a

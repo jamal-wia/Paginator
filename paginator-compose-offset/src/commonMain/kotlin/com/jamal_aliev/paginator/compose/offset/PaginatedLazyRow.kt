@@ -1,11 +1,12 @@
-package com.jamal_aliev.paginator.compose.cursor
+package com.jamal_aliev.paginator.compose.offset
 
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -17,44 +18,36 @@ import com.jamal_aliev.paginator.compose.core.PaginatorLoadingIndicator
 import com.jamal_aliev.paginator.compose.core.PaginatorScrollEdgeIndicators
 import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
+import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
 import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
-import com.jamal_aliev.paginator.cursor.CursorPaginator
-import com.jamal_aliev.paginator.cursor.extension.uiState
-import com.jamal_aliev.paginator.cursor.prefetch.CursorLoadGuard
+import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.offset.extension.uiState
 
 /**
- * Turnkey, scroll-anchor-safe paginated `LazyColumn` for a [CursorPaginator]. Cursor counterpart of
- * the offset `PaginatedLazyColumn`.
- *
- * It collects [CursorPaginator.uiState], renders `Content.items` in a `LazyColumn`, and surfaces
- * "loading previous / next page" indicators as animated siblings **outside** the list via
- * [PaginatorScrollEdgeIndicators], so a page load never causes the list to jump (see that composable
- * for the anchoring rationale). Scroll-driven prefetch is wired automatically unless [prefetch] is
- * `null`.
- *
- * [key] is **required**: a stable per-item key is what lets the list keep its scroll position when a
- * previous page is prepended. Prefer a real item id; do not derive it from the list position.
- *
- * Full-screen states ([PaginatorUiState.Loading] / [Empty][PaginatorUiState.Empty] /
- * [Error][PaginatorUiState.Error]) render their optional slot when provided; otherwise the list is
- * shown empty. For fine-grained per-page control use `rememberPaginated` +
- * `LazyColumn { paginated(holder) { … } }` instead.
+ * Horizontal turnkey, scroll-anchor-safe paginated `LazyRow` for an offset [Paginator]. The
+ * horizontal counterpart of [PaginatedLazyColumn]; the "loading previous / next page" indicators
+ * animate in on the start / end edge instead of top / bottom. See [PaginatedLazyColumn] for the
+ * full parameter contract (notably: [key] is required for scroll-anchor preservation).
  */
 @Composable
-fun <K : Any, T> PaginatedLazyColumn(
-    paginator: CursorPaginator<K, T>,
+fun <T> PaginatedLazyRow(
+    paginator: Paginator<T>,
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
-    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
+    verticalAlignment: Alignment.Vertical = Alignment.Top,
     prefetch: PrefetchOptions? = PrefetchOptions(),
     onPrefetchError: ((Exception) -> Unit)? = null,
-    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
+    loadGuard: PageLoadGuard<T> = PageLoadGuard.allowAll(),
     edgeGatedIndicators: Boolean = true,
     contentType: (item: T) -> Any? = { null },
-    prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
-    appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
+    prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
+        PaginatorLoadingIndicator(orientation = Orientation.Horizontal)
+    },
+    appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
+        PaginatorLoadingIndicator(orientation = Orientation.Horizontal)
+    },
     loadingContent: (@Composable () -> Unit)? = null,
     emptyContent: (@Composable () -> Unit)? = null,
     errorContent: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
@@ -63,7 +56,6 @@ fun <K : Any, T> PaginatedLazyColumn(
 ) {
     val uiState by paginator.uiState.collectAsState(initial = PaginatorUiState.Idle)
 
-    // Full-screen states render their slot (if any) in place of the list.
     when (val current = uiState) {
         is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }
         is PaginatorUiState.Empty -> if (emptyContent != null) { emptyContent(); return }
@@ -81,7 +73,7 @@ fun <K : Any, T> PaginatedLazyColumn(
             silentlyResult = prefetch.silentlyResult,
             enabled = prefetch.enabled,
             cancelOnDispose = prefetch.cancelOnDispose,
-            loadGuard = { cursor, st -> loadGuard(cursor, st) },
+            loadGuard = { page, st -> loadGuard(page, st) },
             onPrefetchError = onPrefetchError,
         )
         controller.BindToLazyList(
@@ -97,16 +89,17 @@ fun <K : Any, T> PaginatedLazyColumn(
         uiState = uiState,
         scrollState = state,
         modifier = modifier,
+        orientation = Orientation.Horizontal,
         edgeGated = edgeGatedIndicators,
         prependIndicator = prependIndicator,
         appendIndicator = appendIndicator,
     ) {
-        LazyColumn(
+        LazyRow(
             modifier = Modifier.fillMaxSize(),
             state = state,
             contentPadding = contentPadding,
-            verticalArrangement = verticalArrangement,
-            horizontalAlignment = horizontalAlignment,
+            horizontalArrangement = horizontalArrangement,
+            verticalAlignment = verticalAlignment,
         ) {
             items(
                 count = items.size,

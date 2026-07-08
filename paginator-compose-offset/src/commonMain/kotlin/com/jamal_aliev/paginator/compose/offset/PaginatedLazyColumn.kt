@@ -2,7 +2,7 @@ package com.jamal_aliev.paginator.compose.offset
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -101,16 +101,14 @@ fun <T> PaginatedLazyColumn(
 
     PaginatorScrollEdgeIndicators(
         uiState = uiState,
-        listState = state,
+        scrollState = state,
         modifier = modifier,
         edgeGated = edgeGatedIndicators,
         prependIndicator = prependIndicator,
         appendIndicator = appendIndicator,
     ) {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+            modifier = Modifier.fillMaxSize(),
             state = state,
             contentPadding = contentPadding,
             verticalArrangement = verticalArrangement,
