@@ -207,7 +207,7 @@ val messages = mutableCursorPaginator<String, Message> {
 
 ## Что есть сейчас
 
-На момент публикации статьи Paginator опубликован на Maven Central под версией 10.1.1 и
+На момент публикации статьи Paginator опубликован на Maven Central под версией 10.2.0 и
 разделён на модули по стратегиям пагинации: `paginator-offset` для page-number лент,
 `paginator-cursor` для cursor / GraphQL-connection лент. Оба построены поверх общего
 `paginator-core`. Поддерживаемые таргеты — Android, JVM (Desktop / Server), iosX64, iosArm64,
