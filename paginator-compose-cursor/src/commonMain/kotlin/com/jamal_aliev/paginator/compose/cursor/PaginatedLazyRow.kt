@@ -24,9 +24,10 @@ import com.jamal_aliev.paginator.cursor.extension.uiState
 import com.jamal_aliev.paginator.cursor.prefetch.CursorLoadGuard
 
 /**
- * Horizontal turnkey, scroll-anchor-safe paginated `LazyRow` for a [CursorPaginator]. The horizontal
- * counterpart of the cursor `PaginatedLazyColumn`; the "loading previous / next page" indicators
- * animate in on the start / end edge. [key] is required for scroll-anchor preservation.
+ * Horizontal turnkey, scroll-anchor-safe paginated `LazyRow` for a [CursorPaginator]. The indicators
+ * animate in on the start / end edge; scroll-on-jump works the same way (via
+ * [CursorPaginator.navigationEvents]). See the cursor [PaginatedLazyColumn] for the full parameter
+ * contract ([key] is required).
  */
 @Composable
 fun <K : Any, T> PaginatedLazyRow(
@@ -40,6 +41,7 @@ fun <K : Any, T> PaginatedLazyRow(
     onPrefetchError: ((Exception) -> Unit)? = null,
     loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
     edgeGatedIndicators: Boolean = true,
+    autoScrollToJumpTarget: Boolean = true,
     contentType: (item: T) -> Any? = { null },
     prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
         PaginatorLoadingIndicator(orientation = Orientation.Horizontal)
@@ -63,6 +65,8 @@ fun <K : Any, T> PaginatedLazyRow(
     }
 
     val items = (uiState as? PaginatorUiState.Content<T>)?.items.orEmpty()
+
+    CursorJumpScrollEffect(paginator, state, items, key, autoScrollToJumpTarget)
 
     if (prefetch != null) {
         val controller = paginator.rememberPrefetchController(

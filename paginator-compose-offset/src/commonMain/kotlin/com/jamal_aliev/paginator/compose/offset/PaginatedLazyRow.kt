@@ -26,8 +26,9 @@ import com.jamal_aliev.paginator.offset.extension.uiState
 /**
  * Horizontal turnkey, scroll-anchor-safe paginated `LazyRow` for an offset [Paginator]. The
  * horizontal counterpart of [PaginatedLazyColumn]; the "loading previous / next page" indicators
- * animate in on the start / end edge instead of top / bottom. See [PaginatedLazyColumn] for the
- * full parameter contract (notably: [key] is required for scroll-anchor preservation).
+ * animate in on the start / end edge. Scroll-on-jump works the same way (see [PaginatedLazyColumn]),
+ * observing [Paginator.jumpEvents]. See [PaginatedLazyColumn] for the full parameter contract
+ * ([key] is required).
  */
 @Composable
 fun <T> PaginatedLazyRow(
@@ -41,6 +42,7 @@ fun <T> PaginatedLazyRow(
     onPrefetchError: ((Exception) -> Unit)? = null,
     loadGuard: PageLoadGuard<T> = PageLoadGuard.allowAll(),
     edgeGatedIndicators: Boolean = true,
+    autoScrollToJumpTarget: Boolean = true,
     contentType: (item: T) -> Any? = { null },
     prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
         PaginatorLoadingIndicator(orientation = Orientation.Horizontal)
@@ -64,6 +66,8 @@ fun <T> PaginatedLazyRow(
     }
 
     val items = (uiState as? PaginatorUiState.Content<T>)?.items.orEmpty()
+
+    JumpScrollEffect(paginator, state, items, key, autoScrollToJumpTarget)
 
     if (prefetch != null) {
         val controller = paginator.rememberPrefetchController(

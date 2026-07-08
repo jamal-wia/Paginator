@@ -8,13 +8,19 @@ import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.jamal_aliev.paginator.compose.core.PaginatorLoadingIndicator
 import com.jamal_aliev.paginator.compose.core.PaginatorScrollEdgeIndicators
+import com.jamal_aliev.paginator.core.extension.isProgressState
+import com.jamal_aliev.paginator.core.navigation.PaginatorNavigationEvent
 import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
 import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
@@ -31,19 +37,22 @@ import com.jamal_aliev.paginator.offset.extension.uiState
  * so a page load never causes the list to jump (see that composable for the anchoring rationale).
  * Scroll-driven prefetch is wired automatically unless [prefetch] is `null`.
  *
- * [key] is **required**: a stable per-item key is what lets the list keep its scroll position when a
- * previous page is prepended (the first visible row must survive the data change). Prefer a real
- * item id; do not derive it from the list position.
+ * **Scroll-on-jump.** When [autoScrollToJumpTarget] is `true` (default) the list scrolls to the
+ * jumped-to page whenever a `jump` / `jumpForward` / `jumpBack` lands — no matter where it was
+ * triggered, including `paginator.jump(...)` called from a `ViewModel` — by observing
+ * [Paginator.jumpEvents]. You keep driving navigation with the plain paginator; no scroll plumbing.
+ * `goNextPage` / `goPreviousPage` never scroll (appending keeps the anchor; a prepended page is
+ * inserted past the edge with the position preserved).
  *
- * Full-screen states ([PaginatorUiState.Loading] / [Empty][PaginatorUiState.Empty] /
- * [Error][PaginatorUiState.Error]) render their optional slot when provided; otherwise the list is
- * shown empty. For fine-grained per-page control (custom headers, sticky sections, inline error
- * rows) use `rememberPaginated` + `LazyColumn { paginated(holder) { … } }` instead.
+ * [key] is **required**: a stable per-item key lets the list keep its scroll position when a
+ * previous page is prepended, and locates a jumped-to page. Full-screen [PaginatorUiState.Loading] /
+ * [Empty][PaginatorUiState.Empty] / [Error][PaginatorUiState.Error] states render their optional
+ * slot when provided. For fine-grained per-page control use `rememberPaginated` +
+ * `LazyColumn { paginated(holder) { … } }` instead.
  *
  * ```
- * PaginatedLazyColumn(paginator, Modifier.fillMaxSize(), key = { it.id }) { item ->
- *     ItemRow(item)
- * }
+ * // ViewModel: fun openDeeplink(page: Int) = viewModelScope.launch { paginator.jump(BookmarkInt(page)) }
+ * PaginatedLazyColumn(paginator, Modifier.fillMaxSize(), key = { it.id }) { item -> ItemRow(item) }
  * ```
  */
 @Composable
@@ -58,6 +67,7 @@ fun <T> PaginatedLazyColumn(
     onPrefetchError: ((Exception) -> Unit)? = null,
     loadGuard: PageLoadGuard<T> = PageLoadGuard.allowAll(),
     edgeGatedIndicators: Boolean = true,
+    autoScrollToJumpTarget: Boolean = true,
     contentType: (item: T) -> Any? = { null },
     prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
     appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
@@ -69,7 +79,6 @@ fun <T> PaginatedLazyColumn(
 ) {
     val uiState by paginator.uiState.collectAsState(initial = PaginatorUiState.Idle)
 
-    // Full-screen states render their slot (if any) in place of the list.
     when (val current = uiState) {
         is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }
         is PaginatorUiState.Empty -> if (emptyContent != null) { emptyContent(); return }
@@ -78,6 +87,8 @@ fun <T> PaginatedLazyColumn(
     }
 
     val items = (uiState as? PaginatorUiState.Content<T>)?.items.orEmpty()
+
+    JumpScrollEffect(paginator, state, items, key, autoScrollToJumpTarget)
 
     if (prefetch != null) {
         val controller = paginator.rememberPrefetchController(
@@ -122,5 +133,42 @@ fun <T> PaginatedLazyColumn(
                 itemContent(items[index])
             }
         }
+    }
+}
+
+/**
+ * Observes [Paginator.jumpEvents] and scrolls [state] to the jumped-to page once it lands. The
+ * target may sit anywhere in the reset window (cached neighbours are absorbed), so it is located by
+ * the key of its first item rather than assuming index 0; the request is held until the page is
+ * terminal so a later (post-absorption) snapshot can re-correct the position.
+ */
+@Composable
+internal fun <T> JumpScrollEffect(
+    paginator: Paginator<T>,
+    state: LazyListState,
+    items: List<T>,
+    key: (item: T) -> Any,
+    enabled: Boolean,
+) {
+    var pendingScrollPage by remember(paginator) { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(paginator, enabled) {
+        if (!enabled) return@LaunchedEffect
+        paginator.navigationEvents.collect { event ->
+            if (event is PaginatorNavigationEvent.Jumped) pendingScrollPage = event.target.page
+        }
+    }
+
+    LaunchedEffect(pendingScrollPage, items) {
+        if (!enabled) return@LaunchedEffect
+        val page = pendingScrollPage ?: return@LaunchedEffect
+        val pageState = paginator.core.getStateOf(page)
+        val firstItem = pageState?.data?.firstOrNull()
+        if (firstItem != null) {
+            val targetKey = key(firstItem)
+            val index = items.indexOfFirst { key(it) == targetKey }
+            if (index >= 0) state.scrollToItem(index)
+        }
+        if (pageState != null && !pageState.isProgressState()) pendingScrollPage = null
     }
 }

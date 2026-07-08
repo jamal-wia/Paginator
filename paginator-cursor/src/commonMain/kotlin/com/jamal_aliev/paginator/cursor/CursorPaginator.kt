@@ -21,6 +21,7 @@ import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.core.logger.info
 import com.jamal_aliev.paginator.core.logger.warn
+import com.jamal_aliev.paginator.core.navigation.PaginatorNavigationEvent
 import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.serialization.CursorPaginatorSnapshot
 import kotlinx.coroutines.CancellationException
@@ -28,7 +29,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
@@ -102,6 +106,21 @@ open class CursorPaginator<K : Any, T>(
 
     var recyclingBookmark = false
     protected var bookmarkIndex: Int = 0
+
+    private val _navigationEvents = MutableSharedFlow<PaginatorNavigationEvent<CursorBookmark<K>>>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
+     * Emits a [PaginatorNavigationEvent] whenever navigation lands — currently
+     * [PaginatorNavigationEvent.Jumped] from [jump] and the [jumpForward] / [jumpBack] calls that
+     * delegate to it. Lets a UI layer react (e.g. scroll a list to the jumped-to page) **regardless
+     * of where navigation was triggered** (e.g. `paginator.jump(...)` from a ViewModel), since the
+     * event comes from the paginator itself. Transient (no replay); collect it while the UI is on
+     * screen — the Compose turnkeys do this for you.
+     */
+    val navigationEvents: Flow<PaginatorNavigationEvent<CursorBookmark<K>>> get() = _navigationEvents
 
     var lockJump = false
     var lockGoNextPage: Boolean = false
@@ -287,6 +306,7 @@ open class CursorPaginator<K : Any, T>(
                 logger.debug(LogComponent.NAVIGATION) { "jump: self=${bookmark.self} cache hit" }
                 syncBookmarkIndex(effectiveCursor)
                 refreshDirtyCursorsInContext()
+                _navigationEvents.tryEmit(PaginatorNavigationEvent.Jumped(effectiveCursor))
                 return@coroutineScope effectiveCursor to cachedState
             }
 
@@ -354,6 +374,7 @@ open class CursorPaginator<K : Any, T>(
             persistSuccessState(resultCursor, resultState)
             syncBookmarkIndex(resultCursor)
             refreshDirtyCursorsInContext()
+            _navigationEvents.tryEmit(PaginatorNavigationEvent.Jumped(resultCursor))
             return@coroutineScope resultCursor to resultState
         } catch (e: CancellationException) {
             if (shouldCleanup) {

@@ -14,6 +14,7 @@ import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.core.logger.info
 import com.jamal_aliev.paginator.core.logger.warn
+import com.jamal_aliev.paginator.core.navigation.PaginatorNavigationEvent
 import com.jamal_aliev.paginator.offset.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.PagingCache
@@ -28,7 +29,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
@@ -126,6 +130,24 @@ open class Paginator<T>(
      */
     var recyclingBookmark = false
     protected var bookmarkIndex: Int = 0
+
+    private val _navigationEvents = MutableSharedFlow<PaginatorNavigationEvent<BookmarkInt>>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
+     * Emits a [PaginatorNavigationEvent] whenever navigation lands — currently
+     * [PaginatorNavigationEvent.Jumped] from [jump] and the [jumpForward] / [jumpBack] calls that
+     * delegate to it. This lets a UI layer react (e.g. scroll a list to the jumped-to page)
+     * **regardless of where navigation was triggered** — including `paginator.jump(...)` from a
+     * ViewModel — since the event comes from the paginator itself, not from an intercepted call site.
+     *
+     * The flow is transient (no replay): an event fired while nothing is collecting is simply not
+     * delivered. Collect it while the UI is on screen — the Compose `PaginatedLazyColumn` /
+     * `PaginatedLazyRow` do this for you.
+     */
+    val navigationEvents: Flow<PaginatorNavigationEvent<BookmarkInt>> get() = _navigationEvents
 
     /**
      * Synchronises [bookmarkIndex] so that it sits right after the last bookmark
@@ -439,6 +461,7 @@ open class Paginator<T>(
                 logger.debug(LogComponent.NAVIGATION) { "jump: page=${bookmark.page} cache hit" }
                 syncBookmarkIndex(bookmark.page)
                 refreshDirtyPagesInContext()
+                _navigationEvents.tryEmit(PaginatorNavigationEvent.Jumped(bookmark))
                 return@coroutineScope bookmark to probablySuccessBookmarkPage
             }
 
@@ -522,6 +545,7 @@ open class Paginator<T>(
             persistSuccessState(resultState)
             syncBookmarkIndex(bookmark.page)
             refreshDirtyPagesInContext()
+            _navigationEvents.tryEmit(PaginatorNavigationEvent.Jumped(bookmark))
             return@coroutineScope bookmark to resultState
         } catch (e: CancellationException) {
             if (shouldCleanup) {
