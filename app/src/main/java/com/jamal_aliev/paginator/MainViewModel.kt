@@ -24,7 +24,10 @@ import com.jamal_aliev.paginator.offset.serialization.restoreStateFromJson
 import com.jamal_aliev.paginator.offset.serialization.saveStateToJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOn
@@ -40,6 +43,15 @@ class MainViewModel(
 
     private val _state = MutableStateFlow(MainViewState())
     val state = _state.asStateFlow()
+
+    /**
+     * One-shot request to scroll the list to a given page after a jump / bookmark navigation.
+     * The LazyList keeps its own scroll offset and does not react to data changes, so a jump must
+     * explicitly tell the UI where to land — otherwise the list only swaps its items while staying
+     * at the previous (now meaningless) offset.
+     */
+    private val _scrollToPage = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val scrollToPage: SharedFlow<Int> = _scrollToPage.asSharedFlow()
 
     /** Bridges every page load to the central dialog so the user picks the backend response. */
     val loadController = LoadController()
@@ -195,6 +207,7 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 paginator.jump(bookmark = BookmarkInt(page))
+                _scrollToPage.emit(page)
             } catch (e: FinalPageExceededException) {
                 _state.update { it.copy(errorMessage = "Page ${e.attemptedPage} exceeds final page ${e.finalPage}") }
             } catch (e: Exception) {
@@ -209,6 +222,8 @@ class MainViewModel(
                 val result = paginator.jumpForward()
                 if (result == null) {
                     _state.update { it.copy(errorMessage = "No more bookmarks forward") }
+                } else {
+                    _scrollToPage.emit(result.first.page)
                 }
             } catch (e: FinalPageExceededException) {
                 _state.update { it.copy(errorMessage = "Bookmark exceeds final page ${e.finalPage}") }
@@ -224,6 +239,8 @@ class MainViewModel(
                 val result = paginator.jumpBack()
                 if (result == null) {
                     _state.update { it.copy(errorMessage = "No more bookmarks backward") }
+                } else {
+                    _scrollToPage.emit(result.first.page)
                 }
             } catch (e: FinalPageExceededException) {
                 _state.update { it.copy(errorMessage = "Bookmark exceeds final page ${e.finalPage}") }

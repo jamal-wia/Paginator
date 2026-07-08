@@ -445,6 +445,28 @@ class MainActivity : ComponentActivity() {
             derivedStateOf { !lazyListState.canScrollForward }
         }
 
+        // A jump / bookmark navigation replaces the visible window with different pages, but the
+        // LazyList keeps its old offset and would otherwise show a stale position. The ViewModel
+        // emits the target page; we scroll to that page's leading item once it lands in the
+        // snapshot. Keyed on state.data so it waits for the page to be delivered, and re-runs while
+        // the page is still loading (its index can shift as neighbouring pages are absorbed),
+        // settling once the page reaches a terminal state.
+        var pendingScrollPage by remember { mutableStateOf<Int?>(null) }
+        LaunchedEffect(Unit) {
+            viewModel.scrollToPage.collect { page -> pendingScrollPage = page }
+        }
+        LaunchedEffect(pendingScrollPage, state.data) {
+            val page = pendingScrollPage ?: return@LaunchedEffect
+            val target = state.data.firstOrNull { it.page == page } ?: return@LaunchedEffect
+            val index = headerIndexOfPage(state.data, page)
+            if (index >= 0) lazyListState.scrollToItem(index)
+            // Do NOT clear on "scroll done": jump absorbs a cached neighbour page ABOVE the target
+            // after the progress snapshot, so the target's index shifts in a later snapshot. Clear
+            // only once the page is terminal (no longer loading) — i.e. after the final, correct
+            // scroll — otherwise the correction is skipped and the list lands one page off.
+            if (!target.isProgressState()) pendingScrollPage = null
+        }
+
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,
             onRefresh = { viewModel.restart() },
@@ -813,6 +835,47 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /**
+     * Flattened LazyColumn index of [targetPage]'s leading item (its `header_${page}` slot), or
+     * `-1` if the page is not present in [data]. Used to scroll the list to the exact page a jump
+     * navigated to.
+     */
+    private fun headerIndexOfPage(
+        data: List<OffsetPageState<String>>,
+        targetPage: Int
+    ): Int {
+        var index = 0
+        for (pageState in data) {
+            if (pageState.page == targetPage) return index
+            index += emittedItemCount(pageState)
+        }
+        return -1
+    }
+
+    /**
+     * Number of LazyColumn items [PaginatedContent] emits for [pageState]. MUST stay in sync with
+     * the `when` branches there — it is the counterpart used to locate a page by index.
+     */
+    private fun emittedItemCount(pageState: OffsetPageState<String>): Int = when {
+        pageState.isSuccessState() -> 1 + pageState.data.size            // header + rows
+        pageState.isEmptyState() -> 1                                    // header + empty card
+        pageState.isErrorState() -> 1 + pageState.data.size             // header + card + cached rows
+        pageState.isProgressState() -> {
+            val directional =
+                pageState.isRealProgressState(PreviousProgressState::class) ||
+                    pageState.isRealProgressState(NextProgressState::class)
+            if (pageState.data.isNotEmpty()) {
+                // header + cached rows + inline spinner (directional loads use the external bar)
+                1 + pageState.data.size + if (directional) 0 else 1
+            } else {
+                // directional empty progress renders nothing inline (external bar only)
+                if (directional) 0 else 1
+            }
+        }
+
+        else -> 0
     }
 
     /**
