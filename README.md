@@ -211,23 +211,20 @@ in `com.jamal_aliev.paginator.core`.
 `paginator-compose-offset` / `paginator-compose-cursor` provide scroll-driven prefetch for
 `LazyColumn` / `LazyRow` / `LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal
 counterparts) — no manual `LaunchedEffect` / `snapshotFlow` plumbing. The recommended entry point
-is `rememberPaginated` + the `paginated { }` DSL — zero manual numbers (`dataItemCount` is read
-from `paginator.uiState`, header / footer counts are tallied by the DSL):
+is the turnkey `PaginatedLazyColumn` — it renders `paginator.uiState`, wires prefetch, and places
+the "loading previous / next page" indicators **outside** the list so a page load never jumps the
+scroll:
 
 ```kotlin
-val listState = rememberLazyListState()
-val paged = paginator.rememberPaginated(state = listState)
-
-LazyColumn(state = listState) {
-    paginated(paged) {
-        header { StickyTitle() }
-        items(uiState.items, key = { it.id }) { Row(it) }
-        appendIndicator { AppendIndicator(uiState.appendState) }
-    }
+PaginatedLazyColumn(paginator, Modifier.fillMaxSize(), key = { it.id }) { item ->
+    Row(item)
 }
 ```
 
-A one-call `PrefetchOnScroll(state, dataItemCount, …)` and a low-level
+Need a custom body (sticky headers, mixed content)? Drop to the `rememberPaginated` +
+`paginated { }` DSL — zero manual numbers (`dataItemCount` is read from `paginator.uiState`, header
+/ footer counts are tallied by the DSL) — and add `PaginatorScrollEdgeIndicators` to keep the
+anchor-safe indicators. A one-call `PrefetchOnScroll(state, dataItemCount, …)` and a low-level
 `rememberPrefetchController` + `BindToLazyList` are also available if you want to keep
 counts explicit or hold a reference to the controller. See
 [docs/7. prefetch.md](docs/7.%20prefetch.md) for the full
@@ -489,7 +486,9 @@ differs only in **how pages are addressed**. Read the full guide at
   paginator-* artifacts without versions; the BOM keeps the suite aligned on your classpath
   and only constrains Paginator artifacts (no impact on Compose / Kotlin / AndroidX versions)
 - **Compose Multiplatform bindings (`paginator-compose-offset` / `paginator-compose-cursor`)** --
-  `PaginatedLazyList`, `PaginatedLazyGrid`, `PaginatedLazyStaggeredGrid` plus `rememberPaginated`
+  the turnkey, scroll-anchor-safe `PaginatedLazyColumn` (and `PaginatorScrollEdgeIndicators` for a
+  custom body); plus the lower-level `PaginatedLazyList`, `PaginatedLazyGrid`,
+  `PaginatedLazyStaggeredGrid` and `rememberPaginated`
   + the `paginated { }` DSL for zero-boilerplate prefetch on `LazyColumn` / `LazyRow` /
   `LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal counterparts); a
   one-call `PrefetchOnScroll(state, dataItemCount, …)` and a low-level
