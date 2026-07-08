@@ -134,7 +134,7 @@ fun <T> PaginatorScrollEdgeIndicators(
  */
 internal fun <T> PaginatorUiState<T>.prependProgressState(): PageState.ProgressState<T>? =
     (this as? PaginatorUiState.Content<T>)?.prependState
-        ?.let { if (it is PageState.ProgressState) it else null }
+        ?.let { it as? PageState.ProgressState }
 
 /**
  * The loading progress state at the bottom of the visible snapshot, or `null` when the bottom is a
@@ -142,7 +142,7 @@ internal fun <T> PaginatorUiState<T>.prependProgressState(): PageState.ProgressS
  */
 internal fun <T> PaginatorUiState<T>.appendProgressState(): PageState.ProgressState<T>? =
     (this as? PaginatorUiState.Content<T>)?.appendState
-        ?.let { if (it is PageState.ProgressState) it else null }
+        ?.let { it as? PageState.ProgressState }
 
 private val DefaultIndicatorColor = Color(0xFF9E9E9E)
 
