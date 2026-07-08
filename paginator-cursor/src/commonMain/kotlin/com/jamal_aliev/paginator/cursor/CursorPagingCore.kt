@@ -186,8 +186,49 @@ open class CursorPagingCore<K : Any, T>(
             }
         }
         if (validIndices.isEmpty()) {
-            startContextCursor = null
-            endContextCursor = null
+            // No FULL (== capacity) page to anchor the context window on. A partial (short / last)
+            // success page is still a valid VISIBLE anchor, so clearing the window here is wrong —
+            // it stops the reactive snapshot for feeds shorter than one page (issue #2). Fall back
+            // to the nearest non-empty success page by chain distance and set the window across its
+            // contiguous success run directly (expand* walks accept only FULL pages). Only a cache
+            // with no non-empty success page at all stays cleared.
+            val startIdx: Int =
+                startCursor?.self?.let { s -> ordered.indexOfFirst { it.self == s } } ?: -1
+            val endIdx: Int =
+                endCursor?.self?.let { e -> ordered.indexOfFirst { it.self == e } } ?: -1
+            var bestIdx = -1
+            var bestDist = Int.MAX_VALUE
+            for (i in ordered.indices) {
+                if (!cache.getStateOf(ordered[i].self).isSuccessState()) continue
+                val dist: Int = when {
+                    startIdx >= 0 && i < startIdx -> startIdx - i
+                    endIdx >= 0 && i > endIdx -> i - endIdx
+                    else -> 0
+                }
+                if (dist < bestDist) {
+                    bestDist = dist
+                    bestIdx = i
+                }
+            }
+            if (bestIdx == -1) {
+                startContextCursor = null
+                endContextCursor = null
+                return
+            }
+            val anchorCursor: CursorBookmark<K> = ordered[bestIdx]
+            val anchorState: CursorPageState<K, T>? = cache.getStateOf(anchorCursor.self)
+            val startAnchor: CursorBookmark<K> = walkWhile(
+                anchorState, anchorCursor,
+                next = { _, c -> cache.walkBackward(c) },
+                predicate = { it.isSuccessState() },
+            )?.second ?: anchorCursor
+            val endAnchor: CursorBookmark<K> = walkWhile(
+                anchorState, anchorCursor,
+                next = { _, c -> cache.walkForward(c) },
+                predicate = { it.isSuccessState() },
+            )?.second ?: anchorCursor
+            startContextCursor = startAnchor
+            endContextCursor = endAnchor
             return
         }
 

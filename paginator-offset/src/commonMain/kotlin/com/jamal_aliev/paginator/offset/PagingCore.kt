@@ -17,6 +17,7 @@ import com.jamal_aliev.paginator.offset.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.offset.serialization.PageEntry
 import com.jamal_aliev.paginator.offset.serialization.PagingCoreSnapshot
+import kotlin.math.abs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -185,8 +186,29 @@ open class PagingCore<T>(
             // example 1(0), 2(1), 3(2), 21(3), 22(4), 23(5)
             val validStates = this.states.filter(::isFilledSuccessState)
             if (validStates.isEmpty()) {
-                startContextPage = 0
-                endContextPage = 0
+                // No FULL (== capacity) page to anchor the context window on. A partial
+                // (short / last) success page is still a valid VISIBLE anchor, so collapsing the
+                // window to 0,0 here is wrong — it stops the reactive snapshot for lists shorter
+                // than one page (issue #2). Fall back to the nearest non-empty success page and
+                // set the window across the contiguous run of success pages directly (the expand*
+                // walks accept only FULL pages, so they can't do it). Only a cache with no
+                // non-empty success page at all legitimately stays at 0,0.
+                val anchor = this.states
+                    .filter { it.isSuccessState() }
+                    .minByOrNull { minOf(abs(it.page - sPoint), abs(it.page - ePoint)) }
+                if (anchor == null) {
+                    startContextPage = 0
+                    endContextPage = 0
+                } else {
+                    val startAnchor =
+                        walkWhile(anchor, next = { it - 1 }, predicate = { it.isSuccessState() })
+                            ?: anchor
+                    val endAnchor =
+                        walkWhile(anchor, next = { it + 1 }, predicate = { it.isSuccessState() })
+                            ?: anchor
+                    startContextPage = startAnchor.page
+                    endContextPage = endAnchor.page
+                }
                 return
             }
 
