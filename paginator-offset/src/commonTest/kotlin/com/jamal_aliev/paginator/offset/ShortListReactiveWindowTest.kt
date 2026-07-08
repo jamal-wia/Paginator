@@ -65,4 +65,34 @@ class ShortListReactiveWindowTest {
         assertEquals(1, paginator.cache.endContextPage)
         assertEquals(listOf(1, 2, 3), paginator.core.snapshot.first().flatMap { it.data })
     }
+
+    /**
+     * The re-anchor case that distinguishes a real fix from merely swapping the `validStates`
+     * predicate: the window must MOVE onto a *different* still-cached partial page, which requires
+     * setting it directly (the shared `expand*` walks bail on a partial pivot and would leave the
+     * window on the now-dead page).
+     */
+    @Test
+    fun `deleting the viewed short group re-anchors onto another cached short group`() = runTest {
+        // Two disconnected short pages: page 1 and page 11, each 3 items (partial, capacity 50).
+        val paginator = MutablePaginator<String> { page: Int ->
+            if (page == 1 || page == 11) LoadResult(List(3) { "p${page}_$it" }) else LoadResult(emptyList())
+        }.apply { core.resize(capacity = 50, resize = false, silently = true) }
+
+        paginator.jump(BookmarkInt(1))   // cache the partial page 1
+        paginator.jump(BookmarkInt(11))  // view the partial page 11
+        assertEquals(11, paginator.cache.startContextPage)
+        assertEquals(11, paginator.cache.endContextPage)
+
+        // Delete every item of the viewed partial page 11.
+        repeat(3) { paginator.removeElement(page = 11, index = 0) }
+
+        // Must re-anchor to the still-cached partial page 1 — not sit on the now-dead page 11.
+        assertTrue(paginator.core.isStarted, "window must re-anchor, not collapse")
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(1, paginator.cache.endContextPage)
+        val emitted = paginator.core.snapshot.first()
+        assertEquals(listOf(1), emitted.map { it.page })
+        assertEquals(listOf("p1_0", "p1_1", "p1_2"), emitted.flatMap { it.data })
+    }
 }
