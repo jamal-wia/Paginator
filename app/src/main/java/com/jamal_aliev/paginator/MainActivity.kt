@@ -4,6 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -50,6 +55,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -409,142 +415,186 @@ class MainActivity : ComponentActivity() {
         // triggered explicitly via the Prev / Next / Jump / Bookmark controls so every page
         // request goes through the central "choose backend response" dialog.
 
+        // "Loading previous page" is surfaced by an animated bar rendered as a SIBLING above the
+        // LazyColumn (see PageLoadingBar) rather than as a list item. A LazyColumn keeps its
+        // scroll position by anchoring on the first visible item's key; if the top loading item
+        // were inside the list, it would be that anchor, and when it is replaced by the freshly
+        // loaded page the anchor key disappears and the list "jumps" to the top of the new page.
+        // Keeping the indicator out of the list means the anchor stays a real content row, so the
+        // list holds its position and the newly loaded previous page is inserted above the fold.
+        val prependLoading = state.data.firstOrNull()?.let { first ->
+            first.isProgressState() && first.isRealProgressState(PreviousProgressState::class)
+        } ?: false
+        // The symmetric "loading next page" bar below the list. Appending at the bottom does not
+        // move the scroll anchor (it stays the top-most visible row), so unlike the top bar this
+        // is a cosmetic mirror rather than a jump fix — it just keeps the "indicator is not a list
+        // item" pattern uniform on both ends.
+        val appendLoading = state.data.lastOrNull()?.let { last ->
+            last.isProgressState() && last.isRealProgressState(NextProgressState::class)
+        } ?: false
+
+        // The bars live OUTSIDE the LazyColumn, so — unlike the old inline list items — they do not
+        // scroll away on their own; left unconditioned they stay pinned while the user scrolls.
+        // Gate each bar on the matching scroll edge so it behaves like the old inline indicator:
+        // the top bar shows only while the list is at the very top, the bottom bar only at the very
+        // bottom. canScroll* flips only at the edges, so this does not recompose on every frame.
+        val atTop by remember {
+            derivedStateOf { !lazyListState.canScrollBackward }
+        }
+        val atBottom by remember {
+            derivedStateOf { !lazyListState.canScrollForward }
+        }
+
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,
             onRefresh = { viewModel.restart() },
             modifier = modifier
         ) {
-            LazyColumn(
-                state = lazyListState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                state.data.forEach { pageState: OffsetPageState<String> ->
-                    when {
-                        pageState.isSuccessState() -> {
-                            item(key = "header_success_${pageState.page}") {
-                                PageHeader(
-                                    page = pageState.page,
-                                    label = "SUCCESS",
-                                    itemCount = pageState.data.size,
-                                    maxItems = SampleRepository.PAGE_SIZE,
-                                    color = Color(0xFF2E7D32)
-                                )
-                            }
-                            items(
-                                count = pageState.data.size,
-                                key = { "success_${pageState.page}_$it" }
-                            ) { index ->
-                                SuccessItem(
-                                    text = pageState.data[index],
-                                    index = index,
-                                    isLast = index == pageState.data.lastIndex,
-                                    isIncomplete = pageState.data.size < SampleRepository.PAGE_SIZE
-                                )
-                            }
-                        }
+            Column(modifier = Modifier.fillMaxSize()) {
+                AnimatedVisibility(
+                    visible = prependLoading && atTop,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    PageLoadingBar(text = "Loading previous page...")
+                }
 
-                        pageState.isEmptyState() -> {
-                            item(key = "empty_${pageState.page}") {
-                                PageHeader(
-                                    page = pageState.page,
-                                    label = "EMPTY",
-                                    itemCount = 0,
-                                    maxItems = SampleRepository.PAGE_SIZE,
-                                    color = Color(0xFF757575)
-                                )
-                                EmptyPageCard(pageState.page)
-                            }
-                        }
-
-                        pageState.isErrorState() -> {
-                            item(key = "error_${pageState.page}") {
-                                PageHeader(
-                                    page = pageState.page,
-                                    label = "ERROR",
-                                    itemCount = pageState.data.size,
-                                    maxItems = SampleRepository.PAGE_SIZE,
-                                    color = Color(0xFFC62828)
-                                )
-                                ErrorPageCard(
-                                    page = pageState.page,
-                                    message = pageState.exception.message ?: "Unknown error",
-                                    hasData = pageState.data.isNotEmpty()
-                                )
-                            }
-                            if (pageState.data.isNotEmpty()) {
-                                items(
-                                    count = pageState.data.size,
-                                    key = { "error_data_${pageState.page}_$it" }
-                                ) { index ->
-                                    CachedDataItem(
-                                        text = pageState.data[index],
-                                        index = index
-                                    )
-                                }
-                            }
-                        }
-
-                        pageState.isProgressState() -> {
-                            val isPrevious = pageState.isRealProgressState(PreviousProgressState::class)
-
-                            if (pageState.data.isNotEmpty()) {
-                                item(key = "header_progress_data_${pageState.page}") {
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    state.data.forEach { pageState: OffsetPageState<String> ->
+                        // Keys are kept independent of the page's current state (Progress /
+                        // Success / Error) so a row keeps the same key across state transitions.
+                        // That lets LazyColumn treat a reloaded row as "moved", not
+                        // "removed + inserted", preserving the scroll anchor.
+                        when {
+                            pageState.isSuccessState() -> {
+                                item(key = "header_${pageState.page}") {
                                     PageHeader(
                                         page = pageState.page,
-                                        label = if (isPrevious)
-                                            "LOADING PREV (with cached data)"
-                                        else
-                                            "LOADING NEXT (with cached data)",
+                                        label = "SUCCESS",
                                         itemCount = pageState.data.size,
                                         maxItems = SampleRepository.PAGE_SIZE,
-                                        color = Color(0xFFE65100)
+                                        color = Color(0xFF2E7D32)
                                     )
-                                }
-                                if (isPrevious) {
-                                    item(key = "progress_indicator_before_data_${pageState.page}") {
-                                        ProgressCard(
-                                            page = pageState.page,
-                                            hasData = true
-                                        )
-                                    }
                                 }
                                 items(
                                     count = pageState.data.size,
-                                    key = { "progress_data_${pageState.page}_$it" }
+                                    key = { "item_${pageState.page}_$it" }
                                 ) { index ->
-                                    CachedDataItem(
+                                    SuccessItem(
                                         text = pageState.data[index],
-                                        index = index
+                                        index = index,
+                                        isLast = index == pageState.data.lastIndex,
+                                        isIncomplete = pageState.data.size < SampleRepository.PAGE_SIZE
                                     )
                                 }
-                                if (!isPrevious) {
-                                    item(key = "progress_indicator_after_data_${pageState.page}") {
-                                        ProgressCard(
-                                            page = pageState.page,
-                                            hasData = true
+                            }
+
+                            pageState.isEmptyState() -> {
+                                item(key = "header_${pageState.page}") {
+                                    PageHeader(
+                                        page = pageState.page,
+                                        label = "EMPTY",
+                                        itemCount = 0,
+                                        maxItems = SampleRepository.PAGE_SIZE,
+                                        color = Color(0xFF757575)
+                                    )
+                                    EmptyPageCard(pageState.page)
+                                }
+                            }
+
+                            pageState.isErrorState() -> {
+                                item(key = "header_${pageState.page}") {
+                                    PageHeader(
+                                        page = pageState.page,
+                                        label = "ERROR",
+                                        itemCount = pageState.data.size,
+                                        maxItems = SampleRepository.PAGE_SIZE,
+                                        color = Color(0xFFC62828)
+                                    )
+                                    ErrorPageCard(
+                                        page = pageState.page,
+                                        message = pageState.exception.message ?: "Unknown error",
+                                        hasData = pageState.data.isNotEmpty()
+                                    )
+                                }
+                                if (pageState.data.isNotEmpty()) {
+                                    items(
+                                        count = pageState.data.size,
+                                        key = { "item_${pageState.page}_$it" }
+                                    ) { index ->
+                                        CachedDataItem(
+                                            text = pageState.data[index],
+                                            index = index
                                         )
                                     }
                                 }
-                            } else {
-                                item(key = "progress_${pageState.page}") {
-                                    PageHeader(
-                                        page = pageState.page,
-                                        label = if (isPrevious)
-                                            "LOADING PREV"
-                                        else
-                                            "LOADING",
-                                        itemCount = 0,
-                                        maxItems = SampleRepository.PAGE_SIZE,
-                                        color = Color(0xFF1565C0)
-                                    )
-                                    if (isPrevious) {
-                                        ProgressCard(
+                            }
+
+                            pageState.isProgressState() -> {
+                                val isPrevious =
+                                    pageState.isRealProgressState(PreviousProgressState::class)
+                                val isNext =
+                                    pageState.isRealProgressState(NextProgressState::class)
+
+                                val directional = isPrevious || isNext
+
+                                // A ProgressState can carry cached data that MUST stay visible: an
+                                // incomplete page re-requested by goNextPage keeps its partial items
+                                // while it reloads (docs "Capacity & Incomplete Pages"), and any
+                                // progress-with-data page shows its cached rows. So the cached rows
+                                // are ALWAYS rendered here regardless of direction — only the
+                                // spinner's placement differs (external bar vs. inline card).
+                                if (pageState.data.isNotEmpty()) {
+                                    item(key = "header_${pageState.page}") {
+                                        PageHeader(
                                             page = pageState.page,
-                                            hasData = false
+                                            label = "LOADING (with cached data)",
+                                            itemCount = pageState.data.size,
+                                            maxItems = SampleRepository.PAGE_SIZE,
+                                            color = Color(0xFFE65100)
                                         )
-                                    } else {
+                                    }
+                                    items(
+                                        count = pageState.data.size,
+                                        key = { "item_${pageState.page}_$it" }
+                                    ) { index ->
+                                        CachedDataItem(
+                                            text = pageState.data[index],
+                                            index = index
+                                        )
+                                    }
+                                    // Directional loads show the spinner in the external top/bottom
+                                    // bar (right beside these rows); a non-directional (jump /
+                                    // refresh) load gets an inline spinner after the cached rows.
+                                    if (!directional) {
+                                        item(key = "progress_indicator_after_data_${pageState.page}") {
+                                            ProgressCard(
+                                                page = pageState.page,
+                                                hasData = true
+                                            )
+                                        }
+                                    }
+                                } else if (!directional) {
+                                    // No cached data. Directional loads are represented solely by
+                                    // the external bar; a non-directional empty load shows an inline
+                                    // card. Same leading-slot key as every other state of this page
+                                    // so the scroll anchor survives the transition (e.g. "empty
+                                    // error at the top → Retry → loading" morphs in place).
+                                    item(key = "header_${pageState.page}") {
+                                        PageHeader(
+                                            page = pageState.page,
+                                            label = "LOADING",
+                                            itemCount = 0,
+                                            maxItems = SampleRepository.PAGE_SIZE,
+                                            color = Color(0xFF1565C0)
+                                        )
                                         ProgressCard(
                                             page = pageState.page,
                                             hasData = false
@@ -554,6 +604,14 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                }
+
+                AnimatedVisibility(
+                    visible = appendLoading && atBottom,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    PageLoadingBar(text = "Loading next page...")
                 }
             }
         }
@@ -754,6 +812,39 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+
+    /**
+     * A page-loading indicator rendered as a sibling of the [LazyColumn] (not as a list item),
+     * used both above the list (loading the previous page) and below it (loading the next page).
+     * Wrapped in an [AnimatedVisibility] it expands in / shrinks out, smoothly pushing the list
+     * while a page loads and releasing it when the page arrives — without ever becoming the list's
+     * scroll anchor, so the visible rows keep their position.
+     */
+    @Composable
+    private fun PageLoadingBar(text: String) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFE3F2FD))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.5.dp,
+                color = Color(0xFF1565C0)
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 
