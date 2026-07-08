@@ -95,6 +95,7 @@ kotlin {
             implementation(project(":paginator-core"))
             api(libs.compose.multiplatform.runtime)
             api(libs.compose.multiplatform.foundation)
+            api(libs.compose.multiplatform.animation)
             implementation(libs.kotlinx.coroutines.core)
         }
         commonTest.dependencies {

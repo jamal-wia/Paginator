@@ -184,6 +184,14 @@ One line of setup in the ViewModel, one line of integration in LazyColumn — an
 works "on its own." Try reproducing this behavior in Paging 3 without loading indicators in the
 middle of the list. Let's see how long that takes.
 
+And when the user scrolls *up* for older messages, the freshly loaded page must not shove the
+current view around. Render the "loading previous" indicator **outside** the list — with
+`PaginatorScrollEdgeIndicators`, or the turnkey `PaginatedLazyColumn` from
+`paginator-compose-offset` / `paginator-compose-cursor` — and the list keeps its position: the
+older page is inserted above the fold instead of yanking you to its top. In Paging 3 this is the
+infamous prepend-jump you fight with `RecyclerView` scroll anchoring; here it is one wrapper
+composable.
+
 ## Task 3: New message from WebSocket
 
 A push arrives: `{"type": "message.new", "message": {...}}`. We need to insert it at the very top (
