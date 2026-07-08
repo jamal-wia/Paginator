@@ -16,7 +16,7 @@
 
 ```kotlin
 dependencies {
-    implementation(platform("io.github.jamal-wia:paginator-bom:10.2.0"))
+    implementation(platform("io.github.jamal-wia:paginator-bom:10.2.1"))
 
     // Выберите стратегию (или обе, если в проекте нужны оба варианта)
     implementation("io.github.jamal-wia:paginator-offset")   // page-number ленты
@@ -607,8 +607,8 @@ ViewModel, репозиторий или use-case.
 ## Ссылки
 
 - Репозиторий: [github.com/jamal-wia/Paginator](https://github.com/jamal-wia/Paginator)
-- Maven Central: `io.github.jamal-wia:paginator-offset:10.2.0` /
-  `paginator-cursor:10.2.0` (или через `paginator-bom`)
+- Maven Central: `io.github.jamal-wia:paginator-offset:10.2.1` /
+  `paginator-cursor:10.2.1` (или через `paginator-bom`)
 - Документация: [docs/](https://github.com/jamal-wia/Paginator/tree/master/docs)
 - Сравнение по фичам:
   [Paging 3 хорош. Пока вам не понадобится что-то ещё](Paging%203%20хорош.%20Пока%20вам%20не%20понадобится%20что-то%20ещё.md)
