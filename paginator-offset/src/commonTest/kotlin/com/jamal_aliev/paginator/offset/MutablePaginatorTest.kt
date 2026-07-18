@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -138,71 +139,81 @@ class MutablePaginatorTest {
         assertEquals(11, paginator.cache.startContextPage)
         assertEquals(13, paginator.cache.endContextPage)
 
+        // Removing a page re-labels every cached page above it to `page - 1`, gaps included:
+        // the elements are still there, only their page number changes. `PageState` equality is
+        // by id, so comparing against the original `data[i]` also proves identity was preserved.
+        fun assertLayout(
+            expected: Map<Int, OffsetPageState<String>>,
+            startContext: Int,
+            endContext: Int,
+        ) {
+            assertEquals(expected.keys.sorted(), paginator.cache.pages)
+            expected.forEach { (page: Int, state: OffsetPageState<String>) ->
+                val actual: OffsetPageState<String> = assertNotNull(paginator[page], "page $page")
+                assertEquals(state, actual, "identity of page $page")
+                assertEquals(page, actual.page, "label of page $page")
+            }
+            assertEquals(startContext, paginator.cache.startContextPage)
+            assertEquals(endContext, paginator.cache.endContextPage)
+        }
+
+        // Removed below every island: page 3 and both far islands slide down by one.
         assertEquals(data[1], paginator.removeState(pageToRemove = 2))
-        assertEquals(data[0], paginator[1])
-        assertEquals(data[2], paginator[2])
-        assertNull(paginator[3])
-        assertEquals(data[4], paginator[11])
-        assertEquals(data[5], paginator[12])
-        assertNull(paginator[13])
-        assertEquals(data[7], paginator[21])
-        assertEquals(data[8], paginator[22])
-        assertNull(paginator[23])
-        assertEquals(11, paginator.cache.startContextPage)
-        assertEquals(12, paginator.cache.endContextPage)
+        assertLayout(
+            expected = mapOf(
+                1 to data[0], 2 to data[2],
+                10 to data[3], 11 to data[4], 12 to data[5],
+                20 to data[6], 21 to data[7], 22 to data[8],
+            ),
+            startContext = 10, // the window was showing 11..13; those pages are now 10..12
+            endContext = 12,
+        )
 
+        // Removed the topmost page: nothing sits above it, so nothing shifts.
         assertEquals(data[8], paginator.removeState(pageToRemove = 22))
-        assertEquals(data[0], paginator[1])
-        assertEquals(data[2], paginator[2])
-        assertNull(paginator[3])
-        assertEquals(data[4], paginator[11])
-        assertEquals(data[5], paginator[12])
-        assertNull(paginator[13])
-        assertEquals(data[7], paginator[21])
-        assertNull(paginator[22])
-        assertNull(paginator[23])
-        assertEquals(11, paginator.cache.startContextPage)
-        assertEquals(12, paginator.cache.endContextPage)
+        assertLayout(
+            expected = mapOf(
+                1 to data[0], 2 to data[2],
+                10 to data[3], 11 to data[4], 12 to data[5],
+                20 to data[6], 21 to data[7],
+            ),
+            startContext = 10, // removal happened above the window
+            endContext = 12,
+        )
 
+        // Removed the window's right edge: the window shrinks by one, the island above slides.
         assertEquals(data[5], paginator.removeState(pageToRemove = 12))
-        assertEquals(data[0], paginator[1])
-        assertEquals(data[2], paginator[2])
-        assertNull(paginator[3])
-        assertEquals(data[4], paginator[11])
-        assertNull(paginator[12])
-        assertNull(paginator[13])
-        assertNull(paginator[21])
-        assertNull(paginator[22])
-        assertNull(paginator[23])
-        assertEquals(11, paginator.cache.startContextPage)
-        assertEquals(11, paginator.cache.endContextPage)
+        assertLayout(
+            expected = mapOf(
+                1 to data[0], 2 to data[2],
+                10 to data[3], 11 to data[4],
+                19 to data[6], 20 to data[7],
+            ),
+            startContext = 10,
+            endContext = 11,
+        )
 
+        // Removed page 1: everything above slides down, including the window.
         assertEquals(data[0], paginator.removeState(pageToRemove = 1))
-        assertEquals(data[2], paginator[1])
-        assertNull(paginator[2])
-        assertNull(paginator[3])
-        assertNull(paginator[11])
-        assertNull(paginator[12])
-        assertNull(paginator[13])
-        assertNull(paginator[21])
-        assertNull(paginator[22])
-        assertNull(paginator[23])
-        assertEquals(1, paginator.cache.startContextPage)
-        assertEquals(1, paginator.cache.endContextPage)
+        assertLayout(
+            expected = mapOf(
+                1 to data[2],
+                9 to data[3], 10 to data[4],
+                18 to data[6], 19 to data[7],
+            ),
+            startContext = 9,
+            endContext = 10,
+        )
 
         assertEquals(data[2], paginator.removeState(pageToRemove = 1))
-        assertNull(paginator[1])
-        assertNull(paginator[2])
-        assertNull(paginator[3])
-        assertNull(paginator[11])
-        assertNull(paginator[12])
-        assertNull(paginator[13])
-        assertNull(paginator[21])
-        assertNull(paginator[22])
-        assertNull(paginator[23])
-        assertEquals(0, paginator.cache.size)
-        assertEquals(0, paginator.cache.startContextPage)
-        assertEquals(0, paginator.cache.endContextPage)
+        assertLayout(
+            expected = mapOf(
+                8 to data[3], 9 to data[4],
+                17 to data[6], 18 to data[7],
+            ),
+            startContext = 8,
+            endContext = 9,
+        )
     }
 
 

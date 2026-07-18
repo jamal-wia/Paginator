@@ -5,7 +5,6 @@ import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
-import com.jamal_aliev.paginator.offset.extension.far
 import com.jamal_aliev.paginator.offset.extension.smartForEach
 import com.jamal_aliev.paginator.offset.extension.walkBackwardWhile
 import com.jamal_aliev.paginator.offset.extension.walkForwardWhile
@@ -134,15 +133,26 @@ open class MutablePaginator<T>(
     }
 
     /**
-     * Removes the state of the specified page from the cache and adjusts surrounding pages and context.
+     * Removes the state of the specified page from the cache and re-labels the pages above it.
      *
-     * This function handles both simple removals and complex cases where pages are non-contiguous:
-     * - Finds the state of the page [pageToRemove] in the cache.
-     * - If the page exists, removes it and, if necessary, collapses consecutive pages to maintain
-     *   correct page numbering.
-     * - Detects gaps in the page sequence and ensures context boundaries are updated correctly.
-     * - Handles edge cases such as removing the first page, last page, or pages in the middle of a gap.
-     * - If [silently] is false, takes a snapshot of the current paginator state via [core].snapshot().
+     * Removing a page means one page worth of elements disappeared from the feed, so on the
+     * server every page after [pageToRemove] shifted down by one. This function mirrors that:
+     * the page is dropped and **every** cached page above it is re-labelled to `page - 1`,
+     * keeping the local page numbers aligned with the server's.
+     *
+     * The shift crosses gaps. With pages `1,2` and `5,6` cached, removing page `2` yields
+     * `1` and `4,5` — the far island moves down as a whole, into page numbers that were never
+     * loaded. That is deliberate: the *data* is real and already cached, only its label changes.
+     * Leaving the island at `5,6` would desynchronise it from the server and produce duplicated
+     * elements as soon as the (now shifted) neighbouring page is loaded.
+     *
+     * The context window follows the same shift, so the pages the UI is looking at stay the
+     * pages it is looking at. If the window collapsed onto the removed page and nothing slid
+     * into its slot, the window is re-anchored via [PagingCore.findNearContextPage].
+     *
+     * Removal is skipped entirely while the cache is not started ([PagingCache.isStarted]):
+     * without a context window there is nothing to keep aligned, and the cache is typically
+     * being seeded manually at that point.
      *
      * @param pageToRemove The page number whose state should be removed.
      * @param silently If true, removal will not trigger a snapshot update.
@@ -154,104 +164,66 @@ open class MutablePaginator<T>(
     ): OffsetPageState<T>? {
         logger.debug(LogComponent.MUTATION) { "removeState: page=$pageToRemove" }
 
-        fun collapse(startPage: Int, compression: Int) {
-            var currentState: OffsetPageState<T> = checkNotNull(
-                value = cache.removeFromCache(startPage)
-            ) { "it's impossible to start collapse from this page" }
-            var remaining: Int = compression
-            while (remaining > 0) {
-                val collapsedState: OffsetPageState<T> =
-                    currentState.copy(page = currentState.page - 1)
-                val pageState: OffsetPageState<T> = cache.getStateOf(currentState.page - 1) ?: break
-                cache.setState(state = collapsedState, silently = true)
-                currentState = pageState
-                remaining--
-            }
-        }
-
-        fun recalculateContext(removedPage: Int) {
-            // Using explicit comparison for performance: avoid creating a IntRange object
-            if (cache.startContextPage <= removedPage && removedPage <= cache.endContextPage) {
-                if (cache.endContextPage - cache.startContextPage > 0) {
-                    // Just shrink the context by one page
-                    core.endContextPage--
-                } else if (removedPage == 1) {
-                    // If the first page was removed, find the nearest page
-                    core.findNearContextPage()
-                } else {
-                    // Otherwise, find the nearest pages around the removed page
-                    core.findNearContextPage(removedPage - 1, removedPage + 1)
-                }
-            }
-        }
-
         val pagesBefore = cache.pages.filter { it >= pageToRemove }.toSet()
 
-        var pageStateWillRemove: OffsetPageState<T>?
+        val removedPageState: OffsetPageState<T>?
         if (!cache.isStarted) {
-            pageStateWillRemove = cache.removeFromCache(pageToRemove)
+            removedPageState = cache.removeFromCache(pageToRemove)
         } else {
-            pageStateWillRemove = cache.getStateOf(pageToRemove) ?: return null
-            var indexOfPageWillRemove = -1
-            var indexOfStartContext = -1
-            var haveRemoved = false
-            var previousPageState: OffsetPageState<T>? = null
-            smartForEach(
-                initialIndex = { states: List<OffsetPageState<T>> ->
-                    indexOfPageWillRemove =
-                        states.binarySearch { state: OffsetPageState<T> ->
-                            state.compareTo(pageStateWillRemove)
-                        }
-                    indexOfStartContext = indexOfPageWillRemove
-                    return@smartForEach indexOfPageWillRemove
-                }
-            ) { states: List<OffsetPageState<T>>, index: Int, currentState: OffsetPageState<T> ->
-                previousPageState = previousPageState ?: currentState
-                if (previousPageState far currentState) {
-                    // pages example: 1,2,3 gap 11,12,13
-                    if (!haveRemoved) {
-                        if (index - 1 == indexOfPageWillRemove) {
-                            cache.removeFromCache(pageStateWillRemove.page)
-                            recalculateContext(pageStateWillRemove.page)
-                        } else {
-                            collapse(previousPageState.page, index - 1 - indexOfPageWillRemove)
-                            recalculateContext(previousPageState.page)
-                        }
-                        if (index == states.lastIndex) {
-                            cache.removeFromCache(currentState.page)
-                            recalculateContext(currentState.page)
-                        }
-                        haveRemoved = true
-                    } else {
-                        collapse(previousPageState.page, index - 1 - indexOfStartContext)
-                        recalculateContext(previousPageState.page)
-                    }
-                    indexOfStartContext = index
-                } else if (index == states.lastIndex) {
-                    if (!haveRemoved) {
-                        if (index == indexOfPageWillRemove) {
-                            cache.removeFromCache(pageStateWillRemove.page)
-                            recalculateContext(pageStateWillRemove.page)
-                        } else {
-                            collapse(currentState.page, index - indexOfPageWillRemove)
-                            recalculateContext(currentState.page)
-                        }
-                        haveRemoved = true
-                    } else {
-                        collapse(currentState.page, index - indexOfStartContext)
-                        recalculateContext(currentState.page)
-                    }
-                }
-                previousPageState = currentState
-                return@smartForEach true
-            }
+            removedPageState = cache.getStateOf(pageToRemove) ?: return null
+            shiftPagesDown(removedPage = pageToRemove)
+            recalculateContext(removedPage = pageToRemove)
         }
         markAffectedAll(pagesBefore)
 
-        if (!silently && pageStateWillRemove != null) {
+        if (!silently && removedPageState != null) {
             core.snapshot()
         }
-        return pageStateWillRemove
+        return removedPageState
+    }
+
+    /**
+     * Drops [removedPage] and re-labels every cached page above it to `page - 1`.
+     *
+     * Pages are walked in ascending order, so the slot each state moves into has already been
+     * vacated by the previous iteration (or by the removal itself) — no state is ever
+     * overwritten. Gaps are crossed rather than treated as boundaries; see [removeState].
+     */
+    private fun shiftPagesDown(removedPage: Int) {
+        cache.removeFromCache(removedPage)
+        // `cache.pages` is sorted ascending; `filter` snapshots it before the loop mutates it.
+        val pagesAbove: List<Int> = cache.pages.filter { it > removedPage }
+        for (page: Int in pagesAbove) {
+            val state: OffsetPageState<T> = cache.removeFromCache(page) ?: continue
+            cache.setState(state = state.copy(page = page - 1), silently = true)
+        }
+    }
+
+    /** Slides the context window along with the pages that [shiftPagesDown] re-labelled. */
+    private fun recalculateContext(removedPage: Int) {
+        val start: Int = cache.startContextPage
+        val end: Int = cache.endContextPage
+
+        if (removedPage > end) return // the window sits below the removal — nothing moved
+
+        if (removedPage < start) { // the whole window slid down with its pages
+            core.startContextPage = start - 1
+            core.endContextPage = end - 1
+            return
+        }
+
+        // The removed page was inside the window.
+        if (end > start) {
+            // Pages above it slid in, so the window loses exactly one page from the right.
+            core.endContextPage = end - 1
+            return
+        }
+
+        // The window was exactly the removed page. If a page slid into its slot the window
+        // still points at real data; otherwise it has to be re-anchored.
+        if (removedPage in cache.pages) return
+        if (removedPage == 1) core.findNearContextPage()
+        else core.findNearContextPage(removedPage - 1, removedPage + 1)
     }
 
     /**
