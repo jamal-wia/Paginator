@@ -164,6 +164,47 @@ open class MutablePaginator<T>(
     ): OffsetPageState<T>? {
         logger.debug(LogComponent.MUTATION) { "removeState: page=$pageToRemove" }
 
+        // Drops `removedPage` and re-labels every cached page above it to `page - 1`.
+        // Pages are walked in ascending order, so the slot each state moves into has already
+        // been vacated by the previous iteration (or by the removal itself) — no state is
+        // ever overwritten. Gaps are crossed rather than treated as boundaries.
+        fun shiftPagesDown(removedPage: Int) {
+            cache.removeFromCache(removedPage)
+            // `cache.pages` is sorted ascending; `filter` snapshots it before the loop mutates it.
+            val pagesAbove: List<Int> = cache.pages.filter { it > removedPage }
+            for (page: Int in pagesAbove) {
+                val state: OffsetPageState<T> = cache.removeFromCache(page) ?: continue
+                cache.setState(state = state.copy(page = page - 1), silently = true)
+            }
+        }
+
+        // Slides the context window along with the pages that `shiftPagesDown` re-labelled.
+        fun recalculateContext(removedPage: Int) {
+            val start: Int = cache.startContextPage
+            val end: Int = cache.endContextPage
+
+            if (removedPage > end) return // the window sits below the removal — nothing moved
+
+            if (removedPage < start) { // the whole window slid down with its pages
+                core.startContextPage = start - 1
+                core.endContextPage = end - 1
+                return
+            }
+
+            // The removed page was inside the window.
+            if (end > start) {
+                // Pages above it slid in, so the window loses exactly one page from the right.
+                core.endContextPage = end - 1
+                return
+            }
+
+            // The window was exactly the removed page. If a page slid into its slot the window
+            // still points at real data; otherwise it has to be re-anchored.
+            if (removedPage in cache.pages) return
+            if (removedPage == 1) core.findNearContextPage()
+            else core.findNearContextPage(removedPage - 1, removedPage + 1)
+        }
+
         val pagesBefore = cache.pages.filter { it >= pageToRemove }.toSet()
 
         val removedPageState: OffsetPageState<T>?
@@ -180,50 +221,6 @@ open class MutablePaginator<T>(
             core.snapshot()
         }
         return removedPageState
-    }
-
-    /**
-     * Drops [removedPage] and re-labels every cached page above it to `page - 1`.
-     *
-     * Pages are walked in ascending order, so the slot each state moves into has already been
-     * vacated by the previous iteration (or by the removal itself) — no state is ever
-     * overwritten. Gaps are crossed rather than treated as boundaries; see [removeState].
-     */
-    private fun shiftPagesDown(removedPage: Int) {
-        cache.removeFromCache(removedPage)
-        // `cache.pages` is sorted ascending; `filter` snapshots it before the loop mutates it.
-        val pagesAbove: List<Int> = cache.pages.filter { it > removedPage }
-        for (page: Int in pagesAbove) {
-            val state: OffsetPageState<T> = cache.removeFromCache(page) ?: continue
-            cache.setState(state = state.copy(page = page - 1), silently = true)
-        }
-    }
-
-    /** Slides the context window along with the pages that [shiftPagesDown] re-labelled. */
-    private fun recalculateContext(removedPage: Int) {
-        val start: Int = cache.startContextPage
-        val end: Int = cache.endContextPage
-
-        if (removedPage > end) return // the window sits below the removal — nothing moved
-
-        if (removedPage < start) { // the whole window slid down with its pages
-            core.startContextPage = start - 1
-            core.endContextPage = end - 1
-            return
-        }
-
-        // The removed page was inside the window.
-        if (end > start) {
-            // Pages above it slid in, so the window loses exactly one page from the right.
-            core.endContextPage = end - 1
-            return
-        }
-
-        // The window was exactly the removed page. If a page slid into its slot the window
-        // still points at real data; otherwise it has to be re-anchored.
-        if (removedPage in cache.pages) return
-        if (removedPage == 1) core.findNearContextPage()
-        else core.findNearContextPage(removedPage - 1, removedPage + 1)
     }
 
     /**
