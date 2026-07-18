@@ -116,7 +116,7 @@ open class MutablePaginator<T>(
         }
     }
 
-    private fun markAffectedAll(pages: Set<Int>) {
+    private fun markAffectedAll(pages: Collection<Int>) {
         if (pages.isEmpty()) return
         while (true) {
             val current = _affectedPages.value
@@ -164,62 +164,61 @@ open class MutablePaginator<T>(
     ): OffsetPageState<T>? {
         logger.debug(LogComponent.MUTATION) { "removeState: page=$pageToRemove" }
 
-        // Drops `removedPage` and re-labels every cached page above it to `page - 1`.
-        // Pages are walked in ascending order, so the slot each state moves into has already
-        // been vacated by the previous iteration (or by the removal itself) — no state is
-        // ever overwritten. Gaps are crossed rather than treated as boundaries.
-        fun shiftPagesDown(removedPage: Int) {
-            cache.removeFromCache(removedPage)
-            // `cache.pages` is sorted ascending; `filter` snapshots it before the loop mutates it.
-            val pagesAbove: List<Int> = cache.pages.filter { it > removedPage }
-            for (page: Int in pagesAbove) {
+        // `cache.pages` materialises a fresh list on every access, so it is read exactly once.
+        // The snapshot is ascending and taken before any mutation, which is all the rest of
+        // this function needs: the shift order, the affected set, and the window arithmetic
+        // are all derived from it by index rather than by re-querying the cache.
+        val pages: List<Int> = cache.pages
+        val indexOfRemoved: Int = pages.binarySearch(pageToRemove)
+        if (indexOfRemoved < 0) return null
+
+        val removedPageState: OffsetPageState<T> =
+            cache.removeFromCache(pageToRemove) ?: return null
+
+        if (cache.isStarted) {
+            // Re-label every page above the removed one to `page - 1`. Ascending order means
+            // the slot each state moves into was vacated by the previous iteration (or by the
+            // removal itself), so no state is ever overwritten. Gaps are crossed rather than
+            // treated as boundaries — see the KDoc.
+            for (i: Int in indexOfRemoved + 1 until pages.size) {
+                val page: Int = pages[i]
                 val state: OffsetPageState<T> = cache.removeFromCache(page) ?: continue
                 cache.setState(state = state.copy(page = page - 1), silently = true)
             }
-        }
 
-        // Slides the context window along with the pages that `shiftPagesDown` re-labelled.
-        fun recalculateContext(removedPage: Int) {
+            // Slide the context window along with the pages it points at.
             val start: Int = cache.startContextPage
             val end: Int = cache.endContextPage
+            when {
+                pageToRemove > end -> Unit // the removal happened above the window
 
-            if (removedPage > end) return // the window sits below the removal — nothing moved
+                pageToRemove < start -> { // the whole window slid down with its pages
+                    core.startContextPage = start - 1
+                    core.endContextPage = end - 1
+                }
 
-            if (removedPage < start) { // the whole window slid down with its pages
-                core.startContextPage = start - 1
-                core.endContextPage = end - 1
-                return
+                // The removed page was inside a multi-page window: pages above it slid in, so
+                // the window loses exactly one page from the right.
+                end > start -> core.endContextPage = end - 1
+
+                // The window was exactly the removed page. The next cached page slides into
+                // the vacated slot only if it was adjacent; otherwise the window has to be
+                // re-anchored onto whatever is left.
+                indexOfRemoved + 1 < pages.size &&
+                        pages[indexOfRemoved + 1] == pageToRemove + 1 -> Unit
+
+                pageToRemove == 1 -> core.findNearContextPage()
+
+                else -> core.findNearContextPage(pageToRemove - 1, pageToRemove + 1)
             }
-
-            // The removed page was inside the window.
-            if (end > start) {
-                // Pages above it slid in, so the window loses exactly one page from the right.
-                core.endContextPage = end - 1
-                return
-            }
-
-            // The window was exactly the removed page. If a page slid into its slot the window
-            // still points at real data; otherwise it has to be re-anchored.
-            if (removedPage in cache.pages) return
-            if (removedPage == 1) core.findNearContextPage()
-            else core.findNearContextPage(removedPage - 1, removedPage + 1)
         }
 
-        val pagesBefore = cache.pages.filter { it >= pageToRemove }.toSet()
+        // Pages at or above the removed one are exactly the ones whose L2 representation
+        // changed: the removed page is gone, the rest carry new labels. `subList` is a view
+        // over the snapshot, not a copy.
+        markAffectedAll(pages.subList(indexOfRemoved, pages.size))
 
-        val removedPageState: OffsetPageState<T>?
-        if (!cache.isStarted) {
-            removedPageState = cache.removeFromCache(pageToRemove)
-        } else {
-            removedPageState = cache.getStateOf(pageToRemove) ?: return null
-            shiftPagesDown(removedPage = pageToRemove)
-            recalculateContext(removedPage = pageToRemove)
-        }
-        markAffectedAll(pagesBefore)
-
-        if (!silently && removedPageState != null) {
-            core.snapshot()
-        }
+        if (!silently) core.snapshot()
         return removedPageState
     }
 
