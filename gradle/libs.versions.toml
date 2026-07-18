@@ -3,6 +3,10 @@
 agp = "9.2.1"
 kotlin = "2.4.0"
 composeMultiplatform = "1.11.1"
+# JetBrains' multiplatform build of androidx.lifecycle — the one Compose
+# Multiplatform's LocalLifecycleOwner comes from. Do not swap for
+# androidx.lifecycle here: the Compose modules target iOS/JS/Wasm too.
+jetbrainsLifecycle = "2.11.0"
 mavenPublish = "0.37.0"
 
 # Android SDK levels (shared by every module's android { } block)
@@ -63,6 +67,7 @@ androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-multiplatform-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
 compose-multiplatform-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
 compose-multiplatform-animation = { module = "org.jetbrains.compose.animation:animation", version.ref = "composeMultiplatform" }
+compose-multiplatform-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "jetbrainsLifecycle" }
 
 # Third-party
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }

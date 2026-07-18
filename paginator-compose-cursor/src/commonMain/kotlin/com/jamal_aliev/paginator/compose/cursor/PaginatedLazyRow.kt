@@ -9,11 +9,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jamal_aliev.paginator.compose.core.PaginatorLoadingIndicator
 import com.jamal_aliev.paginator.compose.core.PaginatorScrollEdgeIndicators
 import com.jamal_aliev.paginator.core.page.PageState
@@ -55,7 +55,7 @@ fun <K : Any, T> PaginatedLazyRow(
     key: (item: T) -> Any,
     itemContent: @Composable LazyItemScope.(item: T) -> Unit,
 ) {
-    val uiState by paginator.uiState.collectAsState(initial = PaginatorUiState.Idle)
+    val uiState by paginator.uiState.collectAsStateWithLifecycle(initialValue = PaginatorUiState.Idle)
 
     when (val current = uiState) {
         is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }

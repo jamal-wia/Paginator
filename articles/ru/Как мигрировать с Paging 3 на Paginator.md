@@ -296,7 +296,7 @@ LazyColumn {
 Стало:
 
 ```kotlin
-val uiState by viewModel.uiState.collectAsState()
+val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 val listState = rememberLazyListState()
 val paged = viewModel.paginator.rememberPaginated(state = listState)
 

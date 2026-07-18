@@ -35,6 +35,10 @@ than speed.
   too.
 - Sync docs to code: `docs/` and **both** `articles/en` and `articles/ru` when affected.
 
+## Commits
+
+- Never add `Co-Authored-By:` trailers (or any other AI-attribution footer) to commit messages.
+
 ## Checklist
 
 `docs/` read → baseline `allTests` → implement → tests written → `allTests` green →

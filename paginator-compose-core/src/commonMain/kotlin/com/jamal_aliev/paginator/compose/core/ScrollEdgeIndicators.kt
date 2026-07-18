@@ -71,7 +71,7 @@ import com.jamal_aliev.paginator.core.page.PaginatorUiState
  * `Paginator` or `CursorPaginator`.
  *
  * ```
- * val uiState by paginator.uiState.collectAsState(PaginatorUiState.Idle)
+ * val uiState by paginator.uiState.collectAsStateWithLifecycle(PaginatorUiState.Idle)
  * val listState = rememberLazyListState()
  * PaginatorScrollEdgeIndicators(uiState, listState, Modifier.fillMaxSize()) {
  *     LazyColumn(Modifier.fillMaxSize(), state = listState) {   // content fills the weighted slot

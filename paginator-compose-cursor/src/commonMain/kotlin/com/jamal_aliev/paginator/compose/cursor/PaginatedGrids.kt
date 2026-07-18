@@ -11,10 +11,10 @@ import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jamal_aliev.paginator.compose.core.PaginatorLoadingIndicator
 import com.jamal_aliev.paginator.compose.core.PaginatorScrollEdgeIndicators
 import com.jamal_aliev.paginator.core.page.PageState
@@ -50,7 +50,7 @@ fun <K : Any, T> PaginatedLazyVerticalGrid(
     key: (item: T) -> Any,
     itemContent: @Composable LazyGridItemScope.(item: T) -> Unit,
 ) {
-    val uiState by paginator.uiState.collectAsState(initial = PaginatorUiState.Idle)
+    val uiState by paginator.uiState.collectAsStateWithLifecycle(initialValue = PaginatorUiState.Idle)
 
     when (val current = uiState) {
         is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }
@@ -140,7 +140,7 @@ fun <K : Any, T> PaginatedLazyHorizontalGrid(
     key: (item: T) -> Any,
     itemContent: @Composable LazyGridItemScope.(item: T) -> Unit,
 ) {
-    val uiState by paginator.uiState.collectAsState(initial = PaginatorUiState.Idle)
+    val uiState by paginator.uiState.collectAsStateWithLifecycle(initialValue = PaginatorUiState.Idle)
 
     when (val current = uiState) {
         is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }
