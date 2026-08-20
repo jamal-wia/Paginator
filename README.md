@@ -116,7 +116,7 @@ use — the BOM keeps the suite aligned on your classpath:
 ```kotlin
 dependencies {
   // Pin all Paginator artifacts together. Latest version: see the Maven Central badge above.
-  implementation(platform("io.github.jamal-wia:paginator-bom:10.2.1"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:10.2.2"))
 
   // Pick exactly one paginator strategy (or both, if your app needs both)
   implementation("io.github.jamal-wia:paginator-offset")   // page-number paginator
@@ -146,7 +146,7 @@ metadata. The `paginator-compose-*` modules go in the shared Compose source set;
 > ```kotlin
 > // top-level dependencies {} block — NOT inside kotlin { sourceSets { } }
 > dependencies {
->     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:10.2.1"))
+>     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:10.2.2"))
 > }
 >
 > // inside kotlin { sourceSets { commonMain.dependencies { } } } — no version needed
