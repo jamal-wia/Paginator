@@ -336,9 +336,20 @@ open class CursorPagingCore<K : Any, T>(
         return isCapacityUnlimited || state.data.size == capacity
     }
 
+    /**
+     * Trims [data] to at most [capacity] elements.
+     *
+     * If [isCapacityUnlimited] is `true` or `data.size <= capacity`, the input is
+     * returned as a mutable list (the input itself if it already is one, otherwise
+     * a copy) — callers that cache a page state built from the result can rely on
+     * its `data` being mutable for later CRUD mutations. Otherwise, a new mutable
+     * list containing the first [capacity] elements is returned.
+     */
     fun coerceToCapacity(data: List<T>): List<T> {
         val capacity = capacity
-        if (isCapacityUnlimited || data.size <= capacity) return data
+        if (isCapacityUnlimited || data.size <= capacity) {
+            return data as? MutableList<T> ?: ArrayList(data)
+        }
         return if (data.size / 2 >= capacity) {
             ArrayList<T>(capacity).apply { for (i in 0 until capacity) add(data[i]) }
         } else {
@@ -347,6 +358,7 @@ open class CursorPagingCore<K : Any, T>(
     }
 
     fun coerceToCapacity(state: CursorPageState<K, T>): CursorPageState<K, T> {
+        if (isCapacityUnlimited || state.data.size <= capacity) return state
         val newData = coerceToCapacity(state.data)
         return if (newData === state.data) state else state.copy(data = newData)
     }

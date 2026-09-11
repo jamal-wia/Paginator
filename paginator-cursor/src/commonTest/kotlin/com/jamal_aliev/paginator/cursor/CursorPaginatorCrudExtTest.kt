@@ -2,6 +2,7 @@ package com.jamal_aliev.paginator.cursor
 
 import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
+import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.extension.addElement
 import com.jamal_aliev.paginator.cursor.extension.distinctBy
@@ -16,6 +17,11 @@ import com.jamal_aliev.paginator.cursor.extension.setElement
 import com.jamal_aliev.paginator.cursor.extension.swapElements
 import com.jamal_aliev.paginator.cursor.extension.updateAll
 import com.jamal_aliev.paginator.cursor.extension.updateWhere
+import com.jamal_aliev.paginator.cursor.load.CursorLoadResult
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,6 +30,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CursorPaginatorCrudExtTest {
 
     /**
@@ -425,5 +432,44 @@ class CursorPaginatorCrudExtTest {
             transform = { "${it}_NEW" },
         )
         assertEquals(0, updated)
+    }
+
+    // =========================================================================
+    // CRUD mutation while the page is still Progress (mid-restart)
+    //
+    // Regression coverage: restart() without an initialCursor (the unanchored /
+    // first-page case) used to seed its transient Progress state with a literal
+    // emptyList(), which is not a MutableList. addElement/addAllElements does
+    // `data as MutableList` on the target page, so inserting into the tail while
+    // that first-page load was still in flight crashed with
+    // "data of target page state is not mutable".
+    // =========================================================================
+
+    @Test
+    fun `addElement while first page is still loading does not crash`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val paginator = MutableCursorPaginator<String, String>(
+            core = CursorPagingCore(initialCapacity = 10),
+        ) { _ ->
+            gate.await()
+            CursorLoadResult(
+                data = listOf("p0_item0"),
+                bookmark = CursorBookmark(prev = null, self = "p0", next = null),
+            )
+        }
+
+        val restartJob = launch { paginator.restart(silentlyLoading = true, silentlyResult = true) }
+        runCurrent() // let restart() run up to gate.await(), leaving the page in Progress
+
+        val tail = paginator.core.tailCursor()!!
+        assertTrue(paginator.cache.getStateOf(tail.self)!!.isProgressState())
+
+        // Used to throw IllegalArgumentException: "data of target page state is not mutable".
+        val inserted = paginator.addElement("optimistic", silently = true)
+        assertTrue(inserted)
+        assertTrue(paginator.cache.getStateOf(tail.self)!!.data.contains("optimistic"))
+
+        gate.complete(Unit)
+        restartJob.join()
     }
 }

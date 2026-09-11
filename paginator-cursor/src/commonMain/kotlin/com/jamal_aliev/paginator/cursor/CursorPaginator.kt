@@ -779,7 +779,7 @@ open class CursorPaginator<K : Any, T>(
             val progressCursor =
                 anchor ?: CursorBookmark<K>(prev = null, self = PROGRESS_SENTINEL as K, next = null)
             val progressState: CursorPageState.Progress<K, T> = core.coerceToCapacity(
-                state = initProgressState.invoke(progressCursor, emptyList(), null)
+                state = initProgressState.invoke(progressCursor, mutableListOf(), null)
             ) as CursorPageState.Progress<K, T>
             cache.setState(progressCursor, progressState, silently = true)
             core.startContextCursor = progressCursor
@@ -795,7 +795,7 @@ open class CursorPaginator<K : Any, T>(
                 logger.warn(LogComponent.NAVIGATION) { "restart: exception=$exception" }
                 // Replace the transient progress state with an error state carrying the exception.
                 val errorState = core.coerceToCapacity(
-                    state = initErrorState.invoke(exception, progressCursor, emptyList(), null)
+                    state = initErrorState.invoke(exception, progressCursor, mutableListOf(), null)
                 )
                 // Publish the error under the same (possibly sentinel) cursor the progress
                 // state used, instead of clearing the cache entry and nulling the context
