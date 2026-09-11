@@ -49,4 +49,17 @@ class CursorPaginatorUiStateTest {
         val state = paginator.uiState.first()
         assertTrue(state is PaginatorUiState.Empty)
     }
+
+    @Test
+    fun error_after_failed_unanchored_restart() = runTest {
+        // Regression test for issue #3: a failed restart() with no initialCursor (the
+        // first-page / not-yet-started case) used to null out both context cursors
+        // before calling core.snapshot(), leaving it with no range to compute and thus
+        // publishing nothing — uiState stayed stuck on the transient Loading state.
+        val paginator = failingCursorPaginator(RuntimeException("boom"))
+        paginator.restart()
+
+        val state = paginator.uiState.first()
+        assertTrue(state is PaginatorUiState.Error, "expected Error, got $state")
+    }
 }

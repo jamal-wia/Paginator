@@ -59,12 +59,16 @@ class CursorPaginatorNavigationTest {
     fun restart_propagates_load_failure_as_error_page_return_value() = runTest {
         // Simulates a server error on the initial load. The error page should surface
         // and the cache / context should remain consistent (not half-populated).
-        var attempts = 0
         val paginator = failingCursorPaginator(RuntimeException("initial failed"))
         paginator.restart(silentlyLoading = true, silentlyResult = true)
-        // After a failed restart the context must not be left pointing at a sentinel.
-        assertNull(paginator.core.startContextCursor)
-        assertNull(paginator.core.endContextCursor)
+        // The context must keep pointing at the (sentinel) cursor the error was cached
+        // under, so that core.snapshot() has a range to compute from. See issue #3:
+        // nulling these out here left snapshot() with nothing to publish.
+        assertNotNull(paginator.core.startContextCursor)
+        assertNotNull(paginator.core.endContextCursor)
+        assertTrue(
+            paginator.cache.getStateOf(paginator.core.startContextCursor!!.self)!!.isErrorState()
+        )
     }
 
     // ── jump ────────────────────────────────────────────────────────────────

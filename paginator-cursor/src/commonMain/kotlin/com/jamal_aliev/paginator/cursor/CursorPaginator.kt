@@ -797,14 +797,14 @@ open class CursorPaginator<K : Any, T>(
                 val errorState = core.coerceToCapacity(
                     state = initErrorState.invoke(exception, progressCursor, emptyList(), null)
                 )
-                // Drop the synthetic progress entry so we don't pollute the cache with sentinels.
-                if (progressCursor.self == PROGRESS_SENTINEL) {
-                    cache.removeFromCache(PROGRESS_SENTINEL as K)
-                    core.startContextCursor = null
-                    core.endContextCursor = null
-                }
+                // Publish the error under the same (possibly sentinel) cursor the progress
+                // state used, instead of clearing the cache entry and nulling the context
+                // cursors: startContextCursor/endContextCursor already point at progressCursor,
+                // and nulling them left core.snapshot() with no range to compute, so it
+                // silently stopped publishing anything for unanchored restarts (issue #3).
+                cache.setState(progressCursor, errorState, silently = true)
                 if (enableCacheFlow) core.repeatCacheFlow()
-                if (!silentlyResult) core.snapshot()
+                if (!silentlyResult) core.snapshot(progressCursor to progressCursor)
                 @Suppress("ThrowableNotThrown")
                 return@coroutineScope errorState
             }
