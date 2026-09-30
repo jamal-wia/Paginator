@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,12 +17,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jamal_aliev.paginator.compose.core.PaginatorLoadingIndicator
 import com.jamal_aliev.paginator.compose.core.PaginatorScrollEdgeIndicators
+import com.jamal_aliev.paginator.core.extension.toUiState
 import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
 import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
 import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 import com.jamal_aliev.paginator.offset.Paginator
-import com.jamal_aliev.paginator.offset.extension.uiState
 
 /**
  * Horizontal turnkey, scroll-anchor-safe paginated `LazyRow` for an offset [Paginator]. The
@@ -50,18 +51,21 @@ fun <T> PaginatedLazyRow(
     appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
         PaginatorLoadingIndicator(orientation = Orientation.Horizontal)
     },
+    prependErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    appendErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
     loadingContent: (@Composable () -> Unit)? = null,
     emptyContent: (@Composable () -> Unit)? = null,
     errorContent: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
     key: (item: T) -> Any,
-    itemContent: @Composable LazyItemScope.(item: T) -> Unit,
+    itemContent: @Composable LazyItemScope.(item: T, globalIndex: Int, indexInPage: Int, items: List<T>, page: PageState<T>) -> Unit,
 ) {
-    val uiState by paginator.uiState.collectAsStateWithLifecycle(initialValue = PaginatorUiState.Idle)
+    val pages by paginator.core.snapshot.collectAsStateWithLifecycle(initialValue = emptyList())
+    val uiState = remember(pages) { pages.toUiState(isStarted = paginator.core.isStarted) }
 
-    when (val current = uiState) {
+    when (uiState) {
         is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }
         is PaginatorUiState.Empty -> if (emptyContent != null) { emptyContent(); return }
-        is PaginatorUiState.Error -> if (errorContent != null) { errorContent(current.state); return }
+        is PaginatorUiState.Error -> if (errorContent != null) { errorContent(uiState.state); return }
         else -> Unit
     }
 
@@ -97,6 +101,8 @@ fun <T> PaginatedLazyRow(
         edgeGated = edgeGatedIndicators,
         prependIndicator = prependIndicator,
         appendIndicator = appendIndicator,
+        prependErrorIndicator = prependErrorIndicator,
+        appendErrorIndicator = appendErrorIndicator,
     ) {
         LazyRow(
             modifier = Modifier.fillMaxSize(),
@@ -105,12 +111,18 @@ fun <T> PaginatedLazyRow(
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = verticalAlignment,
         ) {
-            items(
-                count = items.size,
-                key = { index -> key(items[index]) },
-                contentType = { index -> contentType(items[index]) },
-            ) { index ->
-                itemContent(items[index])
+            var start = 0
+            for (pageState in pages) {
+                val offset = start
+                val data = pageState.data
+                items(
+                    count = data.size,
+                    key = { i -> key(data[i]) },
+                    contentType = { i -> contentType(data[i]) },
+                ) { i ->
+                    itemContent(data[i], offset + i, i, items, pageState)
+                }
+                start += data.size
             }
         }
     }

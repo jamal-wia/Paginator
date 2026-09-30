@@ -21,12 +21,12 @@ import com.jamal_aliev.paginator.compose.core.PaginatorLoadingIndicator
 import com.jamal_aliev.paginator.compose.core.PaginatorScrollEdgeIndicators
 import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.navigation.PaginatorNavigationEvent
+import com.jamal_aliev.paginator.core.extension.toUiState
 import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
 import com.jamal_aliev.paginator.core.prefetch.PageLoadGuard
 import com.jamal_aliev.paginator.core.prefetch.PrefetchOptions
 import com.jamal_aliev.paginator.offset.Paginator
-import com.jamal_aliev.paginator.offset.extension.uiState
 
 /**
  * Turnkey, scroll-anchor-safe paginated `LazyColumn` for an offset [Paginator].
@@ -43,6 +43,11 @@ import com.jamal_aliev.paginator.offset.extension.uiState
  * [Paginator.jumpEvents]. You keep driving navigation with the plain paginator; no scroll plumbing.
  * `goNextPage` / `goPreviousPage` never scroll (appending keeps the anchor; a prepended page is
  * inserted past the edge with the position preserved).
+ *
+ * **Boundary errors.** Pass [prependErrorIndicator] / [appendErrorIndicator] to render a failed
+ * previous / next page at the matching edge (outside the list, so retrying never jumps the scroll):
+ * `appendErrorIndicator = { e -> RetryRow(e.exception) { scope.launch { paginator.goNextPage() } } }`.
+ * Both default to `null` — no error UI.
  *
  * [key] is **required**: a stable per-item key lets the list keep its scroll position when a
  * previous page is prepended, and locates a jumped-to page. Full-screen [PaginatorUiState.Loading] /
@@ -71,13 +76,16 @@ fun <T> PaginatedLazyColumn(
     contentType: (item: T) -> Any? = { null },
     prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
     appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
+    prependErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    appendErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
     loadingContent: (@Composable () -> Unit)? = null,
     emptyContent: (@Composable () -> Unit)? = null,
     errorContent: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
     key: (item: T) -> Any,
-    itemContent: @Composable LazyItemScope.(item: T) -> Unit,
+    itemContent: @Composable LazyItemScope.(item: T, globalIndex: Int, indexInPage: Int, items: List<T>, page: PageState<T>) -> Unit,
 ) {
-    val uiState by paginator.uiState.collectAsStateWithLifecycle(initialValue = PaginatorUiState.Idle)
+    val pages by paginator.core.snapshot.collectAsStateWithLifecycle(initialValue = emptyList())
+    val uiState = remember(pages) { pages.toUiState(isStarted = paginator.core.isStarted) }
 
     when (val current = uiState) {
         is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }
@@ -117,6 +125,8 @@ fun <T> PaginatedLazyColumn(
         edgeGated = edgeGatedIndicators,
         prependIndicator = prependIndicator,
         appendIndicator = appendIndicator,
+        prependErrorIndicator = prependErrorIndicator,
+        appendErrorIndicator = appendErrorIndicator,
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -125,12 +135,18 @@ fun <T> PaginatedLazyColumn(
             verticalArrangement = verticalArrangement,
             horizontalAlignment = horizontalAlignment,
         ) {
-            items(
-                count = items.size,
-                key = { index -> key(items[index]) },
-                contentType = { index -> contentType(items[index]) },
-            ) { index ->
-                itemContent(items[index])
+            var start = 0
+            for (pageState in pages) {
+                val offset = start
+                val data = pageState.data
+                items(
+                    count = data.size,
+                    key = { i -> key(data[i]) },
+                    contentType = { i -> contentType(data[i]) },
+                ) { i ->
+                    itemContent(data[i], offset + i, i, items, pageState)
+                }
+                start += data.size
             }
         }
     }
