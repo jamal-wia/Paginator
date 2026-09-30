@@ -64,6 +64,39 @@ class ScrollEdgeIndicatorsTest {
     }
 
     @Test
+    fun error_state_returned_when_boundary_failed() {
+        val prependError = FakeError(emptyList<String>())
+        val appendError = FakeError(emptyList<String>())
+        val state = PaginatorUiState.Content(
+            prependState = prependError,
+            items = listOf("a"),
+            appendState = appendError,
+        )
+        assertSame(prependError, state.prependErrorState())
+        assertSame(appendError, state.appendErrorState())
+    }
+
+    @Test
+    fun loading_boundary_is_not_treated_as_an_error() {
+        val state = PaginatorUiState.Content(
+            prependState = FakeProgress(emptyList<String>()),
+            items = listOf("a"),
+            appendState = FakeProgress(emptyList<String>()),
+        )
+        assertNull(state.prependErrorState())
+        assertNull(state.appendErrorState())
+    }
+
+    @Test
+    fun non_content_states_have_no_error_boundaries() {
+        val error: PaginatorUiState<String> =
+            PaginatorUiState.Error(FakeError(emptyList<String>()))
+        assertNull(error.prependErrorState())
+        assertNull(error.appendErrorState())
+        assertNull(PaginatorUiState.Idle.prependErrorState())
+    }
+
+    @Test
     fun success_boundary_has_no_indicator() {
         val state = PaginatorUiState.Content<String>(
             prependState = null,

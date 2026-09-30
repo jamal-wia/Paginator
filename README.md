@@ -12,7 +12,7 @@ endless list · load more · Jetpack Paging 3 alternative · bidirectional pagin
 chat / messenger feed · GraphQL connections · coroutines · Flow.
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jamal-wia/Paginator)
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.jamal-wia/paginator)](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.jamal-wia/paginator-bom)](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator-bom) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 ![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin)
 ![Android](https://img.shields.io/badge/target-Android-green)
 ![JVM](https://img.shields.io/badge/target-JVM-blue)
@@ -116,7 +116,7 @@ use — the BOM keeps the suite aligned on your classpath:
 ```kotlin
 dependencies {
   // Pin all Paginator artifacts together. Latest version: see the Maven Central badge above.
-  implementation(platform("io.github.jamal-wia:paginator-bom:10.2.3"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:10.2.4"))
 
   // Pick exactly one paginator strategy (or both, if your app needs both)
   implementation("io.github.jamal-wia:paginator-offset")   // page-number paginator
@@ -146,7 +146,7 @@ metadata. The `paginator-compose-*` modules go in the shared Compose source set;
 > ```kotlin
 > // top-level dependencies {} block — NOT inside kotlin { sourceSets { } }
 > dependencies {
->     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:10.2.3"))
+>     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:10.2.4"))
 > }
 >
 > // inside kotlin { sourceSets { commonMain.dependencies { } } } — no version needed
