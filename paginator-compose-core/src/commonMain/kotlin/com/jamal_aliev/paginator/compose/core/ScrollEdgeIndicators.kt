@@ -63,11 +63,16 @@ import com.jamal_aliev.paginator.core.page.PaginatorUiState
  * scrolls out of view — without ever participating in scroll anchoring. Set it to `false` for a bar
  * that stays pinned while its page loads.
  *
+ * **Boundary errors.** When the first / last visible page failed to load, the matching
+ * [prependErrorIndicator] / [appendErrorIndicator] slot is rendered in the same edge position (and
+ * gated / animated exactly like the loading bar). It receives the [PageState.ErrorState], so it can
+ * read `exception` and offer a retry (e.g. `paginator.goNextPage()` / `goPreviousPage()`). Both
+ * slots default to `null` — no error UI, the previous behaviour. Because the error sits outside the
+ * lazy layout it never becomes a scroll anchor, so a retry that succeeds does not make the list jump.
+ *
  * [scrollState] is any [ScrollableState] — a `LazyListState`, `LazyGridState`, or
  * `LazyStaggeredGridState` — so this composable works with `LazyColumn` / `LazyRow`, grids, and
- * staggered grids alike, in either orientation. Error / retry states at the boundaries are
- * intentionally **not** rendered here — an error is usually a tappable inline element; render it
- * inside [content] (or observe `uiState` directly). It is also strategy-agnostic; use it with either
+ * staggered grids alike, in either orientation. It is also strategy-agnostic; use it with either
  * `Paginator` or `CursorPaginator`.
  *
  * ```
@@ -87,6 +92,8 @@ import com.jamal_aliev.paginator.core.page.PaginatorUiState
  * @param edgeGated when `true`, show each indicator only while the list is at the matching edge.
  * @param prependIndicator indicator for a loading previous page.
  * @param appendIndicator indicator for a loading next page.
+ * @param prependErrorIndicator error UI for a failed previous-page load; `null` renders nothing.
+ * @param appendErrorIndicator error UI for a failed next-page load; `null` renders nothing.
  * @param content the lazy layout; give it `Modifier.fillMaxSize()` and the same [scrollState].
  */
 @Composable
@@ -104,19 +111,25 @@ fun <T> PaginatorScrollEdgeIndicators(
     appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
         PaginatorLoadingIndicator(orientation = orientation)
     },
+    prependErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    appendErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    val prepend = uiState.prependProgressState()
-    val append = uiState.appendProgressState()
+    // A boundary is either loading or failed, never both; an error only counts when a slot for it
+    // was provided.
+    val prepend: PageState<T>? = uiState.prependProgressState()
+        ?: uiState.prependErrorState().takeIf { prependErrorIndicator != null }
+    val append: PageState<T>? = uiState.appendProgressState()
+        ?: uiState.appendErrorState().takeIf { appendErrorIndicator != null }
 
     // canScroll* flips only at the edges, so these do not recompose on every scroll frame.
     val atStart by remember(scrollState) { derivedStateOf { !scrollState.canScrollBackward } }
     val atEnd by remember(scrollState) { derivedStateOf { !scrollState.canScrollForward } }
 
-    // Retain the last non-null progress state so the collapse animation still has content to draw
+    // Retain the last non-null boundary state so the collapse animation still has content to draw
     // after the page has finished loading and `prepend`/`append` is already null.
-    var lastPrepend by remember { mutableStateOf<PageState.ProgressState<T>?>(null) }
-    var lastAppend by remember { mutableStateOf<PageState.ProgressState<T>?>(null) }
+    var lastPrepend by remember { mutableStateOf<PageState<T>?>(null) }
+    var lastAppend by remember { mutableStateOf<PageState<T>?>(null) }
     if (prepend != null) lastPrepend = prepend
     if (append != null) lastAppend = append
 
@@ -128,7 +141,11 @@ fun <T> PaginatorScrollEdgeIndicators(
             enter = enter,
             exit = exit,
         ) {
-            lastPrepend?.let { prependIndicator(it) }
+            when (val last = lastPrepend) {
+                is PageState.ProgressState -> prependIndicator(last)
+                is PageState.ErrorState -> prependErrorIndicator?.invoke(last)
+                else -> Unit
+            }
         }
     }
     val appendBar: @Composable () -> Unit = {
@@ -137,7 +154,11 @@ fun <T> PaginatorScrollEdgeIndicators(
             enter = enter,
             exit = exit,
         ) {
-            lastAppend?.let { appendIndicator(it) }
+            when (val last = lastAppend) {
+                is PageState.ProgressState -> appendIndicator(last)
+                is PageState.ErrorState -> appendErrorIndicator?.invoke(last)
+                else -> Unit
+            }
         }
     }
 
@@ -177,6 +198,22 @@ internal fun <T> PaginatorUiState<T>.prependProgressState(): PageState.ProgressS
 internal fun <T> PaginatorUiState<T>.appendProgressState(): PageState.ProgressState<T>? =
     (this as? PaginatorUiState.Content<T>)?.appendState
         ?.let { it as? PageState.ProgressState }
+
+/**
+ * The failed [PageState.ErrorState] at the top of the visible snapshot, or `null` when the top is a
+ * success page or is still loading.
+ */
+internal fun <T> PaginatorUiState<T>.prependErrorState(): PageState.ErrorState<T>? =
+    (this as? PaginatorUiState.Content<T>)?.prependState
+        ?.let { it as? PageState.ErrorState }
+
+/**
+ * The failed [PageState.ErrorState] at the bottom of the visible snapshot, or `null` when the bottom
+ * is a success page or is still loading.
+ */
+internal fun <T> PaginatorUiState<T>.appendErrorState(): PageState.ErrorState<T>? =
+    (this as? PaginatorUiState.Content<T>)?.appendState
+        ?.let { it as? PageState.ErrorState }
 
 private val DefaultIndicatorColor = Color(0xFF9E9E9E)
 
