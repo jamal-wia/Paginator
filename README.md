@@ -22,6 +22,12 @@ chat / messenger feed · GraphQL connections · coroutines · Flow.
 
 ## [**📲 Download Demo APK**](https://raw.githubusercontent.com/jamal-wia/Paginator/master/PaginatorDemo.apk)
 
+> 💬 **Questions, ideas, or stuck on something?** Don't hesitate to write to me — I read every
+> message and I'm happy to help anyone using Paginator, no question is too small. Reach me on
+> Telegram [@Jamal_Aliev_05](https://t.me/Jamal_Aliev_05), by email at
+> [aliev.djamal.2000@gmail.com](mailto:aliev.djamal.2000@gmail.com), or open an
+> [issue on GitHub](https://github.com/jamal-wia/Paginator/issues).
+
 **Paginator** is a powerful, flexible **pagination library for Kotlin Multiplatform (KMP)** —
 Android, iOS, JVM, Desktop, JS and Wasm — that goes far beyond simple "load next page" patterns. It
 is a
