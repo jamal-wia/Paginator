@@ -3,7 +3,9 @@ package com.jamal_aliev.paginator.compose.core
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -15,15 +17,17 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.ScrollableState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -32,21 +36,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Wraps a lazy layout with **scroll-anchor-safe** "loading previous / next page" indicators.
  *
- * The indicators are rendered as siblings of [content] inside a [Column] (or a [Row] when
- * [orientation] is [Orientation.Horizontal]) — deliberately **not** as items of the lazy layout.
+ * The indicators sit at the start / end edge of a [Box] around [content] — deliberately **not** as
+ * items of the lazy layout. They look like a row after the last (or before the first) item: as a
+ * bar animates in, [content] is placed shifted away by the bar's size, and shifts back as it animates
+ * out. The lazy viewport keeps a constant size, so the edge detection ([edgeGated]) cannot feed
+ * back on the bar itself.
  * A lazy list keeps its scroll position by anchoring on the first visible item's key; if a loading
  * indicator were an item at the edge of the list, it would become that anchor, and when it is
  * replaced by the freshly-loaded page the anchor key disappears and the list "jumps" to the start
@@ -133,7 +149,7 @@ fun <T> PaginatorScrollEdgeIndicators(
     if (prepend != null) lastPrepend = prepend
     if (append != null) lastAppend = append
 
-    // Defined outside the Column/Row so `AnimatedVisibility` resolves to the orientation-neutral
+    // Defined outside the Box so `AnimatedVisibility` resolves to the orientation-neutral
     // overload (we pass explicit enter/exit anyway).
     val prependBar: @Composable () -> Unit = {
         AnimatedVisibility(
@@ -162,17 +178,59 @@ fun <T> PaginatorScrollEdgeIndicators(
         }
     }
 
-    if (orientation == Orientation.Vertical) {
-        Column(modifier) {
+    // The bars take no extra space: the lazy layout keeps a constant size and is only *placed*
+    // shifted by the bars' current main-axis size, so a bar still looks like a row that pushes the
+    // list away. Resizing the lazy viewport instead would flip canScroll*, hide the bar, grow the
+    // viewport back and show the bar again — a visible blink at the edge.
+    EdgeIndicatorsLayout(
+        vertical = orientation == Orientation.Vertical,
+        modifier = modifier,
+        content = { Box { content() } },
+        prependBar = { Box { prependBar() } },
+        appendBar = { Box { appendBar() } },
+    )
+}
+
+/**
+ * Lays out [content] over the full incoming size, pins [prependBar] to the start edge and
+ * [appendBar] to the end edge, and places [content] shifted away from whichever bar is currently
+ * (partly) visible. The shift is applied at placement, in the same layout pass that measures the
+ * bars, so it never lags behind a bar's animation and needs no state. [placeRelative] makes the
+ * horizontal axis follow the layout direction.
+ */
+@Composable
+private fun EdgeIndicatorsLayout(
+    vertical: Boolean,
+    modifier: Modifier,
+    content: @Composable () -> Unit,
+    prependBar: @Composable () -> Unit,
+    appendBar: @Composable () -> Unit,
+) {
+    Layout(
+        content = {
+            content()
             prependBar()
-            Box(Modifier.weight(1f)) { content() }
             appendBar()
-        }
-    } else {
-        Row(modifier) {
-            prependBar()
-            Box(Modifier.weight(1f)) { content() }
-            appendBar()
+        },
+        modifier = modifier.clipToBounds(),
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val prepend = measurables[1].measure(loose)
+        val append = measurables[2].measure(loose)
+        val body = measurables[0].measure(constraints)
+
+        val width = maxOf(constraints.minWidth, body.width)
+        val height = maxOf(constraints.minHeight, body.height)
+        layout(width, height) {
+            if (vertical) {
+                body.placeRelative(0, prepend.height - append.height)
+                prepend.placeRelative(0, 0)
+                append.placeRelative(0, height - append.height)
+            } else {
+                body.placeRelative(prepend.width - append.width, 0)
+                prepend.placeRelative(0, 0)
+                append.placeRelative(width - append.width, 0)
+            }
         }
     }
 }
@@ -215,49 +273,129 @@ internal fun <T> PaginatorUiState<T>.appendErrorState(): PageState.ErrorState<T>
     (this as? PaginatorUiState.Content<T>)?.appendState
         ?.let { it as? PageState.ErrorState }
 
-private val DefaultIndicatorColor = Color(0xFF9E9E9E)
+private val AccentLight = Color(0xFF5B5FEF)
+private val AccentDark = Color(0xFF8E92FF)
+private val SurfaceLight = Color(0xFFFFFFFF)
+private val SurfaceDark = Color(0xFF2A2B33)
 
 /**
- * A dependency-light indeterminate spinner used as the default page-loading indicator. Drawn with
- * `foundation` only (no Material dependency); pass a [color] from your theme to match your app,
- * e.g. `PaginatorLoadingIndicator(color = MaterialTheme.colorScheme.primary)`. [orientation]
- * controls which cross-axis the bar fills (full width for a vertical list, full height for a
- * horizontal one).
+ * The default page-loading indicator: a spinner on a small floating badge. A gradient-tailed arc
+ * rotates while its length "breathes", with a soft glow on its head, over a faint track; the badge
+ * has a hairline border and an accent-tinted shadow, so it reads as a polished control on any
+ * background. Drawn with `foundation` only (no Material dependency).
+ *
+ * Light / dark surface and accent are picked from `isSystemInDarkTheme()`. Pass an explicit [color]
+ * to match your brand, e.g. `PaginatorLoadingIndicator(color = MaterialTheme.colorScheme.primary)`;
+ * the badge, track and glow are derived from it. [orientation] controls which cross-axis the bar
+ * fills (full width for a vertical list, full height for a horizontal one).
+ *
+ * @param color accent of the arc and glow; [Color.Unspecified] picks the built-in light / dark accent.
+ * @param diameter outer diameter of the spinner (the badge adds padding around it).
+ * @param strokeWidth thickness of the arc.
  */
 @Composable
 fun PaginatorLoadingIndicator(
     modifier: Modifier = Modifier,
-    color: Color = DefaultIndicatorColor,
-    diameter: Dp = 20.dp,
-    strokeWidth: Dp = 2.5.dp,
+    color: Color = Color.Unspecified,
+    diameter: Dp = 22.dp,
+    strokeWidth: Dp = 3.dp,
     orientation: Orientation = Orientation.Vertical,
 ) {
+    val dark = isSystemInDarkTheme()
+    val accent = color.takeOrElse { if (dark) AccentDark else AccentLight }
+    val surface = if (dark) SurfaceDark else SurfaceLight
+
     val transition = rememberInfiniteTransition(label = "PaginatorLoadingIndicator")
     val rotation by transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 900, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(durationMillis = 1100, easing = LinearEasing)),
         label = "rotation",
     )
+    val sweep by transition.animateFloat(
+        initialValue = 70f,
+        targetValue = 280f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 750, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "sweep",
+    )
+
     Box(
         modifier = modifier
             .then(
                 if (orientation == Orientation.Vertical) Modifier.fillMaxWidth()
                 else Modifier.fillMaxHeight()
             )
-            .padding(12.dp),
+            // Room for the badge's shadow: AnimatedVisibility clips its content to its own bounds.
+            .padding(horizontal = 16.dp, vertical = 18.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(diameter)) {
+        Canvas(
+            Modifier
+                .shadow(
+                    elevation = 6.dp,
+                    shape = CircleShape,
+                    ambientColor = accent.copy(alpha = 0.25f),
+                    spotColor = accent.copy(alpha = 0.45f),
+                )
+                .background(surface, CircleShape)
+                .border(1.dp, accent.copy(alpha = 0.14f), CircleShape)
+                .padding(10.dp)
+                .size(diameter)
+        ) {
             val stroke = strokeWidth.toPx()
+            val arcSize = Size(size.width - stroke, size.height - stroke)
+            val topLeft = Offset(stroke / 2f, stroke / 2f)
+
             drawArc(
-                color = color,
-                startAngle = rotation,
-                sweepAngle = 270f,
+                color = accent.copy(alpha = 0.14f),
+                startAngle = 0f,
+                sweepAngle = 360f,
                 useCenter = false,
-                style = Stroke(width = stroke, cap = StrokeCap.Round),
-                topLeft = Offset(stroke / 2f, stroke / 2f),
-                size = Size(size.width - stroke, size.height - stroke),
+                style = Stroke(width = stroke),
+                topLeft = topLeft,
+                size = arcSize,
+            )
+
+            // The sweep gradient fades the arc's tail to transparent and reaches full colour at the
+            // head, so the arc looks like a comet; the gradient is rotated together with the arc.
+            val fraction = sweep / 360f
+            val tail = Brush.sweepGradient(
+                0f to Color.Transparent,
+                fraction to accent,
+                1f to accent,
+                center = center,
+            )
+            rotate(rotation) {
+                drawArc(
+                    brush = tail,
+                    startAngle = 0f,
+                    sweepAngle = sweep,
+                    useCenter = false,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round),
+                    topLeft = topLeft,
+                    size = arcSize,
+                )
+            }
+
+            // Soft glow on the arc's head.
+            val radius = (size.width - stroke) / 2f
+            val headAngle = (rotation + sweep) * (PI / 180.0)
+            val head = Offset(
+                x = center.x + radius * cos(headAngle).toFloat(),
+                y = center.y + radius * sin(headAngle).toFloat(),
+            )
+            val glowRadius = stroke * 2.0f
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(accent.copy(alpha = 0.4f), Color.Transparent),
+                    center = head,
+                    radius = glowRadius,
+                ),
+                radius = glowRadius,
+                center = head,
             )
         }
     }

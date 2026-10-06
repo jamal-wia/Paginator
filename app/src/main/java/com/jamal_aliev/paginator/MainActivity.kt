@@ -65,7 +65,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -433,8 +435,12 @@ class MainActivity : ComponentActivity() {
             last.isProgressState() && last.isRealProgressState(NextProgressState::class)
         } ?: false
 
-        // The bars live OUTSIDE the LazyColumn, so — unlike the old inline list items — they do not
-        // scroll away on their own; left unconditioned they stay pinned while the user scrolls.
+        // The bars are NOT laid out beside the LazyColumn: a bar that took space would shrink the
+        // list viewport, flip canScroll* and make the bar blink in a show/hide feedback loop.
+        // Instead the list keeps a constant size and is placed shifted by the bars' current height
+        // (see PushedByBarsLayout).
+        // Being outside the list items, they do not scroll away on their own; left unconditioned
+        // they stay pinned while the user scrolls.
         // Gate each bar on the matching scroll edge so it behaves like the old inline indicator:
         // the top bar shows only while the list is at the very top, the bottom bar only at the very
         // bottom. canScroll* flips only at the edges, so this does not recompose on every frame.
@@ -472,20 +478,30 @@ class MainActivity : ComponentActivity() {
             onRefresh = { viewModel.restart() },
             modifier = modifier
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                AnimatedVisibility(
-                    visible = prependLoading && atTop,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    PageLoadingBar(text = "Loading previous page...")
+            PushedByBarsLayout(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    AnimatedVisibility(
+                        visible = prependLoading && atTop,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        PageLoadingBar(text = "Loading previous page...")
+                    }
+                },
+                bottomBar = {
+                    AnimatedVisibility(
+                        visible = appendLoading && atBottom,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        PageLoadingBar(text = "Loading next page...")
+                    }
                 }
-
+            ) {
                 LazyColumn(
                     state = lazyListState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
@@ -496,7 +512,7 @@ class MainActivity : ComponentActivity() {
                         // "removed + inserted", preserving the scroll anchor.
                         when {
                             pageState.isSuccessState() -> {
-                                item(key = "header_${pageState.page}") {
+                                item(key = "header_${pageState.page}", contentType = "header") {
                                     PageHeader(
                                         page = pageState.page,
                                         label = "SUCCESS",
@@ -507,7 +523,8 @@ class MainActivity : ComponentActivity() {
                                 }
                                 items(
                                     count = pageState.data.size,
-                                    key = { "item_${pageState.page}_$it" }
+                                    key = { "item_${pageState.page}_$it" },
+                                    contentType = { "item" }
                                 ) { index ->
                                     SuccessItem(
                                         text = pageState.data[index],
@@ -519,7 +536,7 @@ class MainActivity : ComponentActivity() {
                             }
 
                             pageState.isEmptyState() -> {
-                                item(key = "header_${pageState.page}") {
+                                item(key = "header_${pageState.page}", contentType = "header") {
                                     PageHeader(
                                         page = pageState.page,
                                         label = "EMPTY",
@@ -532,7 +549,7 @@ class MainActivity : ComponentActivity() {
                             }
 
                             pageState.isErrorState() -> {
-                                item(key = "header_${pageState.page}") {
+                                item(key = "header_${pageState.page}", contentType = "header") {
                                     PageHeader(
                                         page = pageState.page,
                                         label = "ERROR",
@@ -549,7 +566,8 @@ class MainActivity : ComponentActivity() {
                                 if (pageState.data.isNotEmpty()) {
                                     items(
                                         count = pageState.data.size,
-                                        key = { "item_${pageState.page}_$it" }
+                                        key = { "item_${pageState.page}_$it" },
+                                    contentType = { "item" }
                                     ) { index ->
                                         CachedDataItem(
                                             text = pageState.data[index],
@@ -574,7 +592,7 @@ class MainActivity : ComponentActivity() {
                                 // are ALWAYS rendered here regardless of direction — only the
                                 // spinner's placement differs (external bar vs. inline card).
                                 if (pageState.data.isNotEmpty()) {
-                                    item(key = "header_${pageState.page}") {
+                                    item(key = "header_${pageState.page}", contentType = "header") {
                                         PageHeader(
                                             page = pageState.page,
                                             label = "LOADING (with cached data)",
@@ -585,7 +603,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                     items(
                                         count = pageState.data.size,
-                                        key = { "item_${pageState.page}_$it" }
+                                        key = { "item_${pageState.page}_$it" },
+                                    contentType = { "item" }
                                     ) { index ->
                                         CachedDataItem(
                                             text = pageState.data[index],
@@ -596,7 +615,10 @@ class MainActivity : ComponentActivity() {
                                     // bar (right beside these rows); a non-directional (jump /
                                     // refresh) load gets an inline spinner after the cached rows.
                                     if (!directional) {
-                                        item(key = "progress_indicator_after_data_${pageState.page}") {
+                                        item(
+                                            key = "progress_indicator_after_data_${pageState.page}",
+                                            contentType = "progress"
+                                        ) {
                                             ProgressCard(
                                                 page = pageState.page,
                                                 hasData = true
@@ -609,7 +631,7 @@ class MainActivity : ComponentActivity() {
                                     // card. Same leading-slot key as every other state of this page
                                     // so the scroll anchor survives the transition (e.g. "empty
                                     // error at the top → Retry → loading" morphs in place).
-                                    item(key = "header_${pageState.page}") {
+                                    item(key = "header_${pageState.page}", contentType = "header") {
                                         PageHeader(
                                             page = pageState.page,
                                             label = "LOADING",
@@ -627,14 +649,40 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+        }
+    }
 
-                AnimatedVisibility(
-                    visible = appendLoading && atBottom,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    PageLoadingBar(text = "Loading next page...")
-                }
+    /**
+     * Lays [content] out over the full incoming size, pins [topBar] / [bottomBar] to the top /
+     * bottom edge, and places [content] shifted away from whichever bar is currently (partly)
+     * visible. The bars take no extra space, so the list viewport never resizes — a bar that did
+     * would flip canScroll*, hide itself and re-appear in a loop — yet they still read as rows that
+     * push the list away. The shift happens at placement, in the same pass that measures the bars.
+     */
+    @Composable
+    private fun PushedByBarsLayout(
+        modifier: Modifier,
+        topBar: @Composable () -> Unit,
+        bottomBar: @Composable () -> Unit,
+        content: @Composable () -> Unit,
+    ) {
+        Layout(
+            content = {
+                Box { content() }
+                Box { topBar() }
+                Box { bottomBar() }
+            },
+            modifier = modifier.clipToBounds()
+        ) { measurables, constraints ->
+            val loose = constraints.copy(minWidth = 0, minHeight = 0)
+            val top = measurables[1].measure(loose)
+            val bottom = measurables[2].measure(loose)
+            val body = measurables[0].measure(constraints)
+            layout(body.width, body.height) {
+                body.placeRelative(0, top.height - bottom.height)
+                top.placeRelative(0, 0)
+                bottom.placeRelative(0, body.height - bottom.height)
             }
         }
     }
