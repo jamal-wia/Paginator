@@ -18,8 +18,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -32,11 +30,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jamal_aliev.paginator.core.page.PageState
@@ -45,8 +45,11 @@ import com.jamal_aliev.paginator.core.page.PaginatorUiState
 /**
  * Wraps a lazy layout with **scroll-anchor-safe** "loading previous / next page" indicators.
  *
- * The indicators are rendered as siblings of [content] inside a [Column] (or a [Row] when
- * [orientation] is [Orientation.Horizontal]) — deliberately **not** as items of the lazy layout.
+ * The indicators sit at the start / end edge of a [Box] around [content] — deliberately **not** as
+ * items of the lazy layout. They look like a row after the last (or before the first) item: as a
+ * bar animates in, [content] is placed shifted away by the bar's size, and shifts back as it animates
+ * out. The lazy viewport keeps a constant size, so the edge detection ([edgeGated]) cannot feed
+ * back on the bar itself.
  * A lazy list keeps its scroll position by anchoring on the first visible item's key; if a loading
  * indicator were an item at the edge of the list, it would become that anchor, and when it is
  * replaced by the freshly-loaded page the anchor key disappears and the list "jumps" to the start
@@ -133,7 +136,7 @@ fun <T> PaginatorScrollEdgeIndicators(
     if (prepend != null) lastPrepend = prepend
     if (append != null) lastAppend = append
 
-    // Defined outside the Column/Row so `AnimatedVisibility` resolves to the orientation-neutral
+    // Defined outside the Box so `AnimatedVisibility` resolves to the orientation-neutral
     // overload (we pass explicit enter/exit anyway).
     val prependBar: @Composable () -> Unit = {
         AnimatedVisibility(
@@ -162,17 +165,59 @@ fun <T> PaginatorScrollEdgeIndicators(
         }
     }
 
-    if (orientation == Orientation.Vertical) {
-        Column(modifier) {
+    // The bars take no extra space: the lazy layout keeps a constant size and is only *placed*
+    // shifted by the bars' current main-axis size, so a bar still looks like a row that pushes the
+    // list away. Resizing the lazy viewport instead would flip canScroll*, hide the bar, grow the
+    // viewport back and show the bar again — a visible blink at the edge.
+    EdgeIndicatorsLayout(
+        vertical = orientation == Orientation.Vertical,
+        modifier = modifier,
+        content = { Box { content() } },
+        prependBar = { Box { prependBar() } },
+        appendBar = { Box { appendBar() } },
+    )
+}
+
+/**
+ * Lays out [content] over the full incoming size, pins [prependBar] to the start edge and
+ * [appendBar] to the end edge, and places [content] shifted away from whichever bar is currently
+ * (partly) visible. The shift is applied at placement, in the same layout pass that measures the
+ * bars, so it never lags behind a bar's animation and needs no state. [placeRelative] makes the
+ * horizontal axis follow the layout direction.
+ */
+@Composable
+private fun EdgeIndicatorsLayout(
+    vertical: Boolean,
+    modifier: Modifier,
+    content: @Composable () -> Unit,
+    prependBar: @Composable () -> Unit,
+    appendBar: @Composable () -> Unit,
+) {
+    Layout(
+        content = {
+            content()
             prependBar()
-            Box(Modifier.weight(1f)) { content() }
             appendBar()
-        }
-    } else {
-        Row(modifier) {
-            prependBar()
-            Box(Modifier.weight(1f)) { content() }
-            appendBar()
+        },
+        modifier = modifier.clipToBounds(),
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val prepend = measurables[1].measure(loose)
+        val append = measurables[2].measure(loose)
+        val body = measurables[0].measure(constraints)
+
+        val width = maxOf(constraints.minWidth, body.width)
+        val height = maxOf(constraints.minHeight, body.height)
+        layout(width, height) {
+            if (vertical) {
+                body.placeRelative(0, prepend.height - append.height)
+                prepend.placeRelative(0, 0)
+                append.placeRelative(0, height - append.height)
+            } else {
+                body.placeRelative(prepend.width - append.width, 0)
+                prepend.placeRelative(0, 0)
+                append.placeRelative(width - append.width, 0)
+            }
         }
     }
 }
