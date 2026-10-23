@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jamal_aliev.paginator.compose.core.PaginatedSlots
 import com.jamal_aliev.paginator.compose.core.PaginatorLoadingIndicator
 import com.jamal_aliev.paginator.compose.core.PaginatorScrollEdgeIndicators
 import com.jamal_aliev.paginator.core.extension.toUiState
@@ -44,20 +45,13 @@ fun <K : Any, T> PaginatedLazyRow(
     edgeGatedIndicators: Boolean = true,
     autoScrollToJumpTarget: Boolean = true,
     contentType: (item: T) -> Any? = { null },
-    prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
-        PaginatorLoadingIndicator(orientation = Orientation.Horizontal)
-    },
-    appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
-        PaginatorLoadingIndicator(orientation = Orientation.Horizontal)
-    },
-    prependErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
-    appendErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
-    loadingContent: (@Composable () -> Unit)? = null,
-    emptyContent: (@Composable () -> Unit)? = null,
-    errorContent: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    slots: PaginatedSlots<T> = PaginatedSlots(),
     key: (item: T) -> Any,
     itemContent: @Composable LazyItemScope.(item: T, globalIndex: Int, indexInPage: Int, items: List<T>, page: PageState<T>) -> Unit,
 ) {
+    val loadingContent = slots.loadingContent
+    val emptyContent = slots.emptyContent
+    val errorContent = slots.errorContent
     // visibleSnapshot also carries the anchorless first load (loading / error), which has no
     // cursor key and so never appears in the keyed core.snapshot.
     val pages by paginator.core.visibleSnapshot.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -99,13 +93,10 @@ fun <K : Any, T> PaginatedLazyRow(
     PaginatorScrollEdgeIndicators(
         uiState = uiState,
         scrollState = state,
+        slots = slots,
         modifier = modifier,
         orientation = Orientation.Horizontal,
         edgeGated = edgeGatedIndicators,
-        prependIndicator = prependIndicator,
-        appendIndicator = appendIndicator,
-        prependErrorIndicator = prependErrorIndicator,
-        appendErrorIndicator = appendErrorIndicator,
     ) {
         LazyRow(
             modifier = Modifier.fillMaxSize(),
@@ -129,4 +120,63 @@ fun <K : Any, T> PaginatedLazyRow(
             }
         }
     }
+}
+
+/** Pre-10.3.0 signature with the slots as separate parameters. */
+@Deprecated(
+    message = "Pass the indicator and state slots through `slots = PaginatedSlots(...)`.",
+)
+@Composable
+fun <K : Any, T> PaginatedLazyRow(
+    paginator: CursorPaginator<K, T>,
+    modifier: Modifier = Modifier,
+    state: LazyListState = rememberLazyListState(),
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
+    verticalAlignment: Alignment.Vertical = Alignment.Top,
+    prefetch: PrefetchOptions? = PrefetchOptions(),
+    onPrefetchError: ((Exception) -> Unit)? = null,
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
+    edgeGatedIndicators: Boolean = true,
+    autoScrollToJumpTarget: Boolean = true,
+    contentType: (item: T) -> Any? = { null },
+    prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
+        PaginatorLoadingIndicator(orientation = Orientation.Horizontal)
+    },
+    appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = {
+        PaginatorLoadingIndicator(orientation = Orientation.Horizontal)
+    },
+    prependErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    appendErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    loadingContent: (@Composable () -> Unit)? = null,
+    emptyContent: (@Composable () -> Unit)? = null,
+    errorContent: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    key: (item: T) -> Any,
+    itemContent: @Composable LazyItemScope.(item: T, globalIndex: Int, indexInPage: Int, items: List<T>, page: PageState<T>) -> Unit,
+) {
+    PaginatedLazyRow(
+        paginator = paginator,
+        modifier = modifier,
+        state = state,
+        contentPadding = contentPadding,
+        horizontalArrangement = horizontalArrangement,
+        verticalAlignment = verticalAlignment,
+        prefetch = prefetch,
+        onPrefetchError = onPrefetchError,
+        loadGuard = loadGuard,
+        edgeGatedIndicators = edgeGatedIndicators,
+        autoScrollToJumpTarget = autoScrollToJumpTarget,
+        contentType = contentType,
+        slots = PaginatedSlots(
+            prependIndicator = prependIndicator,
+            appendIndicator = appendIndicator,
+            prependErrorIndicator = prependErrorIndicator,
+            appendErrorIndicator = appendErrorIndicator,
+            loadingContent = loadingContent,
+            emptyContent = emptyContent,
+            errorContent = errorContent,
+        ),
+        key = key,
+        itemContent = itemContent,
+    )
 }

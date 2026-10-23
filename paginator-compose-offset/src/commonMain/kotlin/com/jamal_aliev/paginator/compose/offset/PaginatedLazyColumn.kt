@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jamal_aliev.paginator.compose.core.PaginatedSlots
 import com.jamal_aliev.paginator.compose.core.PaginatorLoadingIndicator
 import com.jamal_aliev.paginator.compose.core.PaginatorScrollEdgeIndicators
 import com.jamal_aliev.paginator.core.extension.isProgressState
@@ -44,20 +45,20 @@ import com.jamal_aliev.paginator.offset.Paginator
  * `goNextPage` / `goPreviousPage` never scroll (appending keeps the anchor; a prepended page is
  * inserted past the edge with the position preserved).
  *
- * **Boundary errors.** Pass [prependErrorIndicator] / [appendErrorIndicator] to render a failed
- * previous / next page at the matching edge (outside the list, so retrying never jumps the scroll):
- * `appendErrorIndicator = { e -> RetryRow(e.exception) { scope.launch { paginator.goNextPage() } } }`.
- * Both default to `null` — no error UI.
+ * **Slots.** Edge indicators and full-screen states go through [slots] ([PaginatedSlots]). To render a
+ * failed previous / next page at the matching edge (outside the list, so retrying never jumps the
+ * scroll): `slots = PaginatedSlots(appendErrorIndicator = { e -> RetryRow(e.exception) { retry() } })`.
+ * Error indicators default to `null` — no error UI.
  *
  * [key] is **required**: a stable per-item key lets the list keep its scroll position when a
  * previous page is prepended, and locates a jumped-to page. Full-screen [PaginatorUiState.Loading] /
  * [Empty][PaginatorUiState.Empty] / [Error][PaginatorUiState.Error] states render their optional
- * slot when provided. For fine-grained per-page control use `rememberPaginated` +
+ * [slots] entry when provided. For fine-grained per-page control use `rememberPaginated` +
  * `LazyColumn { paginated(holder) { … } }` instead.
  *
  * ```
  * // ViewModel: fun openDeeplink(page: Int) = viewModelScope.launch { paginator.jump(BookmarkInt(page)) }
- * PaginatedLazyColumn(paginator, Modifier.fillMaxSize(), key = { it.id }) { item -> ItemRow(item) }
+ * PaginatedLazyColumn(paginator, Modifier.fillMaxSize(), key = { it.id }) { item, _, _, _, _ -> ItemRow(item) }
  * ```
  */
 @Composable
@@ -74,16 +75,13 @@ fun <T> PaginatedLazyColumn(
     edgeGatedIndicators: Boolean = true,
     autoScrollToJumpTarget: Boolean = true,
     contentType: (item: T) -> Any? = { null },
-    prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
-    appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
-    prependErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
-    appendErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
-    loadingContent: (@Composable () -> Unit)? = null,
-    emptyContent: (@Composable () -> Unit)? = null,
-    errorContent: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    slots: PaginatedSlots<T> = PaginatedSlots(),
     key: (item: T) -> Any,
     itemContent: @Composable LazyItemScope.(item: T, globalIndex: Int, indexInPage: Int, items: List<T>, page: PageState<T>) -> Unit,
 ) {
+    val loadingContent = slots.loadingContent
+    val emptyContent = slots.emptyContent
+    val errorContent = slots.errorContent
     val pages by paginator.core.snapshot.collectAsStateWithLifecycle(initialValue = emptyList())
     val uiState = remember(pages) { pages.toUiState(isStarted = paginator.core.isStarted) }
 
@@ -121,12 +119,9 @@ fun <T> PaginatedLazyColumn(
     PaginatorScrollEdgeIndicators(
         uiState = uiState,
         scrollState = state,
+        slots = slots,
         modifier = modifier,
         edgeGated = edgeGatedIndicators,
-        prependIndicator = prependIndicator,
-        appendIndicator = appendIndicator,
-        prependErrorIndicator = prependErrorIndicator,
-        appendErrorIndicator = appendErrorIndicator,
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -150,6 +145,61 @@ fun <T> PaginatedLazyColumn(
             }
         }
     }
+}
+
+/** Pre-10.3.0 signature with the slots as separate parameters. */
+@Deprecated(
+    message = "Pass the indicator and state slots through `slots = PaginatedSlots(...)`.",
+)
+@Composable
+fun <T> PaginatedLazyColumn(
+    paginator: Paginator<T>,
+    modifier: Modifier = Modifier,
+    state: LazyListState = rememberLazyListState(),
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    prefetch: PrefetchOptions? = PrefetchOptions(),
+    onPrefetchError: ((Exception) -> Unit)? = null,
+    loadGuard: PageLoadGuard<T> = PageLoadGuard.allowAll(),
+    edgeGatedIndicators: Boolean = true,
+    autoScrollToJumpTarget: Boolean = true,
+    contentType: (item: T) -> Any? = { null },
+    prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
+    appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
+    prependErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    appendErrorIndicator: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    loadingContent: (@Composable () -> Unit)? = null,
+    emptyContent: (@Composable () -> Unit)? = null,
+    errorContent: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    key: (item: T) -> Any,
+    itemContent: @Composable LazyItemScope.(item: T, globalIndex: Int, indexInPage: Int, items: List<T>, page: PageState<T>) -> Unit,
+) {
+    PaginatedLazyColumn(
+        paginator = paginator,
+        modifier = modifier,
+        state = state,
+        contentPadding = contentPadding,
+        verticalArrangement = verticalArrangement,
+        horizontalAlignment = horizontalAlignment,
+        prefetch = prefetch,
+        onPrefetchError = onPrefetchError,
+        loadGuard = loadGuard,
+        edgeGatedIndicators = edgeGatedIndicators,
+        autoScrollToJumpTarget = autoScrollToJumpTarget,
+        contentType = contentType,
+        slots = PaginatedSlots(
+            prependIndicator = prependIndicator,
+            appendIndicator = appendIndicator,
+            prependErrorIndicator = prependErrorIndicator,
+            appendErrorIndicator = appendErrorIndicator,
+            loadingContent = loadingContent,
+            emptyContent = emptyContent,
+            errorContent = errorContent,
+        ),
+        key = key,
+        itemContent = itemContent,
+    )
 }
 
 /**
