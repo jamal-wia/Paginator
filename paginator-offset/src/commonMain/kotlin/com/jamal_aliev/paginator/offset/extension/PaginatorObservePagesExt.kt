@@ -3,6 +3,8 @@
 
 package com.jamal_aliev.paginator.offset.extension
 
+import com.jamal_aliev.paginator.core.extension.isEmptyState
+import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.warn
 import com.jamal_aliev.paginator.offset.MutablePaginator
@@ -374,7 +376,8 @@ private class LivePages<T>(
             }
         }
         for (page in cache.pages) {
-            if (page !in subscriptions && cache.peekStateOf(page) is OffsetPageState.Success) {
+            val state: OffsetPageState<T>? = cache.peekStateOf(page)
+            if (page !in subscriptions && (state.isSuccessState() || state.isEmptyState())) {
                 subscribeLocked(page, first = null)
             }
         }
@@ -390,7 +393,8 @@ private class LivePages<T>(
         val iterator = subscriptions.entries.iterator()
         while (iterator.hasNext()) {
             val (page, subscription) = iterator.next()
-            if (cache.peekStateOf(page) is OffsetPageState.Success) {
+            val state: OffsetPageState<T>? = cache.peekStateOf(page)
+            if (state.isSuccessState() || state.isEmptyState()) {
                 subscription.job.cancel()
                 pending.remove(page)
                 iterator.remove()
@@ -494,7 +498,7 @@ private class LivePages<T>(
                 val data: List<T> = core.coerceToCapacity(result.data.toMutableList())
                 val metadata = result.metadata ?: current.metadata
                 val updated: OffsetPageState<T> =
-                    if (current is OffsetPageState.Success) {
+                    if (current.isSuccessState() || current.isEmptyState()) {
                         if (current.data == data && current.metadata == metadata) continue
                         current.copy(data = data, metadata = metadata)
                     } else {

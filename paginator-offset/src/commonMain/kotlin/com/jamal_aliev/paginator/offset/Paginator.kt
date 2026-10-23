@@ -11,6 +11,8 @@ import com.jamal_aliev.paginator.core.exception.LockedException.JumpWasLockedExc
 import com.jamal_aliev.paginator.core.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.core.exception.LockedException.RestartWasLockedException
 import com.jamal_aliev.paginator.core.extension.isProgressState
+import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.core.extension.isEmptyState
 import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
@@ -702,7 +704,9 @@ open class Paginator<T>(
             // A cached partial page — the end of the feed — backed by a live query is current by
             // definition: reloading it would only re-run the query. It grows by itself when rows
             // arrive, and the window then extends over it.
-            if (nextPageState is OffsetPageState.Success && isLivePage?.invoke(nextPage) == true) {
+            if ((nextPageState.isSuccessState() || nextPageState.isEmptyState())
+                && isLivePage?.invoke(nextPage) == true
+            ) {
                 return@coroutineScope nextPageState
             }
 
