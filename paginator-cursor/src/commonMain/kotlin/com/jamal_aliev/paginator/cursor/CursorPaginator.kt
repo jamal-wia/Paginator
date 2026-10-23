@@ -868,6 +868,17 @@ open class CursorPaginator<K : Any, T>(
         logger.debug(LogComponent.LIFECYCLE) { "refresh: cursors=${cursors.map { it.self }}" }
 
         var savedStates: Map<K, Pair<CursorBookmark<K>?, CursorPageState<K, T>?>> = emptyMap()
+        // Ids of the Progress states installed under lock before loading. The lock is released
+        // while the pages load, so by the time the results are committed (or rolled back on
+        // cancellation) a page may have been evicted, cleared by restart/release, reloaded by
+        // jump or overwritten by a reactive source. Only a page still holding its own Progress
+        // state is written back; anything else is newer than the in-flight result and wins.
+        val progressIds: MutableMap<K, Long> = mutableMapOf()
+
+        fun ownsPage(self: K): Boolean {
+            val ownId: Long = progressIds[self] ?: return false
+            return cache.getStateOf(self)?.id == ownId
+        }
 
         try {
             navigationMutex.lock()
@@ -894,6 +905,7 @@ open class CursorPaginator<K : Any, T>(
                         )
                     ) as CursorPageState.Progress<K, T>
                     cache.setState(cachedCursor, progressState, silently = true)
+                    progressIds[cachedCursor.self] = progressState.id
                 }
             } finally {
                 navigationMutex.unlock()
@@ -914,10 +926,19 @@ open class CursorPaginator<K : Any, T>(
                 }
             }.awaitAll()
 
+            val committed: List<Pair<CursorBookmark<K>, CursorPageState<K, T>>>
             navigationMutex.lock()
             try {
-                results.forEach { (cursor, state) ->
+                committed = results.filterIndexed { index, _ -> ownsPage(cursors[index].self) }
+                committed.forEach { (cursor, state) ->
                     cache.setState(cursor, state, silently = true)
+                }
+                if (committed.size < results.size) {
+                    logger.debug(LogComponent.LIFECYCLE) {
+                        "refresh: skipped cursors changed during loading=" +
+                                cursors.filterIndexed { index, _ -> results[index] !in committed }
+                                    .map { it.self }
+                    }
                 }
                 // Re-anchor the context window if it collapsed onto non-filled pages.
                 // Happens when the backend deleted the currently viewed range while the
@@ -942,11 +963,11 @@ open class CursorPaginator<K : Any, T>(
             }
 
             core.persistentCache?.let { pc ->
-                val successes = results.filter { it.second is CursorPageState.Success<*, *> }
+                val successes = committed.filter { it.second is CursorPageState.Success<*, *> }
                 if (successes.isNotEmpty()) pc.saveAll(successes)
             }
 
-            core.clearDirty(cursors.map { it.self })
+            core.clearDirty(cursors.filterIndexed { index, _ -> results[index] in committed }.map { it.self })
 
             if (enableCacheFlow) core.repeatCacheFlow()
             if (!finalSilently) core.snapshot()
@@ -957,6 +978,7 @@ open class CursorPaginator<K : Any, T>(
                     navigationMutex.lock()
                     try {
                         savedStates.forEach { (self, saved) ->
+                            if (!ownsPage(self)) return@forEach
                             val (savedCursor, savedState) = saved
                             if (savedCursor != null && savedState != null) {
                                 cache.setState(savedCursor, savedState, silently = true)

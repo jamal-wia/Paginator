@@ -1035,6 +1035,17 @@ open class Paginator<T>(
         logger.debug(LogComponent.LIFECYCLE) { "refresh: pages=$pages" }
 
         var savedStates: Map<Int, OffsetPageState<T>?> = emptyMap()
+        // Ids of the Progress states installed in phase 1. The lock is released while the pages
+        // load, so by the time phase 3 (or the cancellation rollback) runs, a page may have been
+        // evicted, cleared by restart/release, reloaded by jump, relabelled by removeState or
+        // overwritten by a reactive source. Only a page still holding its own Progress state is
+        // written back; anything else is newer than the in-flight result and wins.
+        val progressIds: MutableMap<Int, Long> = mutableMapOf()
+
+        fun ownsPage(page: Int): Boolean {
+            val ownId: Long = progressIds[page] ?: return false
+            return cache.getStateOf(page)?.id == ownId
+        }
 
         try {
             // Phase 1: validate guards and set progress states under lock
@@ -1060,6 +1071,7 @@ open class Paginator<T>(
                         state = progressState,
                         silently = true
                     )
+                    progressIds[page] = progressState.id
                 }
             } finally {
                 navigationMutex.unlock()
@@ -1082,14 +1094,24 @@ open class Paginator<T>(
                     )
                 }
             }.awaitAll().let { results: List<OffsetPageState<T>> ->
-                // Phase 3: write results back under lock
+                // Phase 3: write results back under lock — only into pages this refresh still owns
+                val committed: List<OffsetPageState<T>>
                 navigationMutex.lock()
                 try {
-                    results.forEach { finalPageState: OffsetPageState<T> ->
+                    committed = results.filter { finalPageState: OffsetPageState<T> ->
+                        ownsPage(finalPageState.page)
+                    }
+                    committed.forEach { finalPageState: OffsetPageState<T> ->
                         cache.setState(
                             state = finalPageState,
                             silently = true
                         )
+                    }
+                    if (committed.size < results.size) {
+                        logger.debug(LogComponent.LIFECYCLE) {
+                            "refresh: skipped pages changed during loading=" +
+                                    (results.map { it.page } - committed.map { it.page }.toSet())
+                        }
                     }
                     // Re-anchor the context window if it collapsed onto non-filled pages.
                     // Happens when the backend deleted the currently viewed range while the
@@ -1116,14 +1138,14 @@ open class Paginator<T>(
 
                 // Phase 4: persist successful results to L2
                 core.persistentCache?.let { pc ->
-                    val successStates = results.filterIsInstance<OffsetPageState.Success<T>>()
+                    val successStates = committed.filterIsInstance<OffsetPageState.Success<T>>()
                     if (successStates.isNotEmpty()) {
                         pc.saveAll(successStates)
                     }
                 }
-            }
 
-            core.clearDirty(pages)
+                core.clearDirty(committed.map { it.page })
+            }
 
             if (enableCacheFlow) {
                 core.repeatCacheFlow()
@@ -1135,10 +1157,11 @@ open class Paginator<T>(
         } catch (e: CancellationException) {
             if (savedStates.isNotEmpty()) {
                 withContext(NonCancellable) {
-                    // TODO Maybe lock here is unnecessary
+                    // Under lock: ownsPage must not interleave with a concurrent writer
                     navigationMutex.lock()
                     try {
                         savedStates.forEach { (page, state) ->
+                            if (!ownsPage(page)) return@forEach
                             if (state != null) {
                                 cache.setState(state, silently = true)
                             } else {
