@@ -13,6 +13,7 @@ import com.jamal_aliev.paginator.cursor.CursorPagingCore.Companion.UNLIMITED_CAP
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
+import com.jamal_aliev.paginator.cursor.cache.UntrackedCursorPagingCache
 import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorBootstrapErrorPage
 import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorBootstrapProgressPage
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonElement
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
@@ -80,7 +82,7 @@ open class CursorPagingCore<K : Any, T>(
 
     /** All cached page states in head-to-tail order. */
     val states: List<CursorPageState<K, T>>
-        get() = cache.cursors.mapNotNull { cache.getStateOf(it.self) }
+        get() = cache.cursors.mapNotNull { readState(it.self) }
 
     /** The number of pages currently in the cache. */
     val size: Int get() = cache.size
@@ -245,7 +247,7 @@ open class CursorPagingCore<K : Any, T>(
         }
         // Resolve every cached state once — it is read per cursor below and again in the fallback,
         // so materialise it a single time instead of re-looking-up per pass.
-        val orderedStates: List<CursorPageState<K, T>?> = ordered.map { cache.getStateOf(it.self) }
+        val orderedStates: List<CursorPageState<K, T>?> = ordered.map { readState(it.self) }
 
         // Indices (in head-to-tail order) of pages that are currently filled-success.
         val validIndices = ArrayList<Int>()
@@ -295,7 +297,35 @@ open class CursorPagingCore<K : Any, T>(
     }
 
     /** Retrieves the cached [PageState] by its `self` key. */
-    fun getStateOf(self: K): CursorPageState<K, T>? = cache.getStateOf(self)
+    fun getStateOf(self: K): CursorPageState<K, T>? = readState(self)
+
+    /**
+     * While `true`, the core's own reads ([getStateOf], [states], the context walks and everything
+     * built on them — [snapshot], [findNearContextCursor], context expansion) go through
+     * [CursorPagingCache.peekStateOf], so they do not count as a use of the pages. Set only around
+     * bookkeeping that is not user access (applying a reactive source's events), under the
+     * navigation lock — see [withUntrackedReads].
+     */
+    @PublishedApi
+    internal var untrackedReads: Boolean = false
+
+    @PublishedApi
+    internal fun readState(self: K): CursorPageState<K, T>? =
+        if (untrackedReads) cache.peekStateOf(self) else cache.getStateOf(self)
+
+    /** [cache] seen through [UntrackedCursorPagingCache], used by `CursorPaginator.cache` in untracked mode. */
+    internal val untrackedCache: CursorPagingCache<K, T> by lazy { UntrackedCursorPagingCache(cache) }
+
+    /** Runs [block] with [untrackedReads] on. Not reentrant-safe across coroutines: hold the navigation lock. */
+    internal inline fun <R> withUntrackedReads(block: () -> R): R {
+        val previous = untrackedReads
+        untrackedReads = true
+        try {
+            return block()
+        } finally {
+            untrackedReads = previous
+        }
+    }
 
     /** Retrieves the cached [CursorBookmark<K>] by its `self` key. */
     fun getCursorOf(self: K): CursorBookmark<K>? = cache.getCursorOf(self)
@@ -403,7 +433,7 @@ open class CursorPagingCore<K : Any, T>(
         while (true) {
             val nextCursor: CursorBookmark<K> =
                 next.invoke(currentState, currentCursor) ?: return currentState to currentCursor
-            val nextState: CursorPageState<K, T>? = cache.getStateOf(nextCursor.self)
+            val nextState: CursorPageState<K, T>? = readState(nextCursor.self)
             if (nextState != null && predicate.invoke(nextState)) {
                 currentState = nextState
                 currentCursor = nextCursor
@@ -427,7 +457,9 @@ open class CursorPagingCore<K : Any, T>(
 
     /** Forces a re-emission of the current cache into [asFlow] subscribers. */
     fun repeatCacheFlow() {
-        _cacheFlow.value = states
+        // Publishing the whole cache to asFlow() observers is not a use of every page: read it
+        // untracked, so an LRU order or a TTL timer is not reshaped on each navigation call.
+        _cacheFlow.value = withUntrackedReads { states }
     }
 
     // ── Snapshot ────────────────────────────────────────────────────────────
@@ -552,8 +584,8 @@ open class CursorPagingCore<K : Any, T>(
             if (!isStarted) return@run null
             val start = startContextCursor ?: return@run null
             val end = endContextCursor ?: return@run null
-            val pivotBackwardState = cache.getStateOf(start.self) ?: return@run null
-            val pivotForwardState = cache.getStateOf(end.self) ?: return@run null
+            val pivotBackwardState = readState(start.self) ?: return@run null
+            val pivotForwardState = readState(end.self) ?: return@run null
 
             val backwardExpand = walkWhile(
                 pivotBackwardState, start,
@@ -609,12 +641,26 @@ open class CursorPagingCore<K : Any, T>(
         val result = ArrayList<CursorPageState<K, T>>()
         var current: CursorBookmark<K>? = start
         while (current != null && visited.add(current.self)) {
-            val state = cache.getStateOf(current.self)
+            val state = readState(current.self)
             if (state != null) result.add(state)
             if (current.self == end.self) break
             current = cache.walkForward(current)
         }
         return result
+    }
+
+    // ── Wholesale replacement ───────────────────────────────────────────────
+
+    /**
+     * Bumped whenever the cache content is **replaced wholesale** rather than changed page by page
+     * — [restoreState] (also when silent), a transaction rollback and [release]. Consumers that keep
+     * state in sync with the cache (the reactive bridge of `observe`) treat it as "every page may
+     * now hold foreign data" and resynchronise.
+     */
+    internal val cacheReplacements = MutableStateFlow(0L)
+
+    internal fun markCacheReplaced() {
+        cacheReplacements.update { it + 1 }
     }
 
     // ── Dirty tracking ──────────────────────────────────────────────────────
@@ -738,6 +784,7 @@ open class CursorPagingCore<K : Any, T>(
         }
         this.capacity = capacity
         _dirtyCursors.clear()
+        markCacheReplaced()
     }
 
     // ── Serialization ───────────────────────────────────────────────────────
@@ -754,7 +801,7 @@ open class CursorPagingCore<K : Any, T>(
             if (inContext != null) allCursors.filter { it.self in inContext } else allCursors
 
         val entries = filtered.mapNotNull { cursor ->
-            val state = cache.getStateOf(cursor.self) ?: return@mapNotNull null
+            val state = readState(cursor.self) ?: return@mapNotNull null
             val wasDirty = isDirty(cursor.self)
                     || state.isErrorState()
                     || state.isProgressState()
@@ -811,6 +858,7 @@ open class CursorPagingCore<K : Any, T>(
             fromSnapshot.startContextSelf?.let(selfDecoder)?.let { cache.getCursorOf(it) }
         endContextCursor =
             fromSnapshot.endContextSelf?.let(selfDecoder)?.let { cache.getCursorOf(it) }
+        markCacheReplaced()
 
         if (!silently) snapshot()
     }

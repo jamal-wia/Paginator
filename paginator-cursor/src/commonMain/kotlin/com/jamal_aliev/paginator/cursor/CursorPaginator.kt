@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 
@@ -82,10 +83,23 @@ open class CursorPaginator<K : Any, T>(
     var load: suspend CursorPaginator<K, T>.(cursor: CursorBookmark<K>?) -> CursorLoadResult<K, T>,
 ) {
 
-    val cache: CursorPagingCache<K, T> get() = core.cache
+    /**
+     * The paginator's cache ([CursorPagingCore.cache]). While the core runs in untracked mode
+     * ([CursorPagingCore.withUntrackedReads] — internal bookkeeping such as applying reactive
+     * events) this is a view whose accesses do not count as a use of the pages for eviction
+     * strategies.
+     */
+    val cache: CursorPagingCache<K, T> get() = if (core.untrackedReads) core.untrackedCache else core.cache
 
     /** Mutex serialising all mutations to cache across concurrent coroutines. */
     protected val navigationMutex = Mutex()
+
+    /**
+     * Runs [block] under [navigationMutex], for extensions in this module that write into the
+     * cache from outside navigation (e.g. [com.jamal_aliev.paginator.cursor.extension.observe]).
+     */
+    internal suspend fun <R> withNavigationLock(block: suspend () -> R): R =
+        navigationMutex.withLock { block() }
 
     /** Logger for paginator operations. Mirrors [Paginator.logger]. */
     var logger: PaginatorLogger? = null
@@ -1137,7 +1151,7 @@ open class CursorPaginator<K : Any, T>(
      * Synchronises [bookmarkIndex] so that it sits right after the last bookmark
      * whose `self` key was reached during navigation.
      */
-    private fun syncBookmarkIndex(cursor: CursorBookmark<K>) {
+    internal fun syncBookmarkIndex(cursor: CursorBookmark<K>) {
         if (bookmarks.isEmpty()) return
         val index = bookmarks.indexOfFirst { it.self == cursor.self }
         bookmarkIndex = if (index == -1) bookmarks.size else (index + 1)
@@ -1239,6 +1253,7 @@ open class CursorPaginator<K : Any, T>(
         lockGoPreviousPage = savepoint.lockGoPreviousPage
         lockRestart = savepoint.lockRestart
         lockRefresh = savepoint.lockRefresh
+        core.markCacheReplaced()
 
         core.snapshot()
         if (core.enableCacheFlow) core.repeatCacheFlow()

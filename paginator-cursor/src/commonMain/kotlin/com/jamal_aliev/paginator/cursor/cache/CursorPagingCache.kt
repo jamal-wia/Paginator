@@ -50,6 +50,29 @@ interface CursorPagingCache<K : Any, T> {
     /** Retrieves the cached state for the page identified by [self], or `null`. */
     fun getStateOf(self: K): CursorPageState<K, T>?
 
+    /**
+     * Replaces the state of a page **already in the cache** without counting the write as a use of
+     * the page — for background updates that did not come from the user, such as a reactive
+     * source's events applied by `observe`.
+     *
+     * Eviction strategies that track usage override it so the write leaves their bookkeeping
+     * untouched: [CursorMostRecentPagingCache][com.jamal_aliev.paginator.cursor.cache.eviction.CursorMostRecentPagingCache]
+     * keeps the page's place in its recency order and
+     * [CursorTimeLimitedPagingCache][com.jamal_aliev.paginator.cursor.cache.eviction.CursorTimeLimitedPagingCache]
+     * keeps its TTL timer. Strategies delegating with `by` forward it to the next cache in the chain.
+     * The default is a plain [setState], which is correct for any cache that tracks no usage.
+     */
+    fun setStateUntracked(cursor: CursorBookmark<K>, state: CursorPageState<K, T>, silently: Boolean = false) {
+        setState(cursor, state, silently)
+    }
+
+    /**
+     * Reads the state of the page [self] like [getStateOf] but without counting the read as a use of
+     * the page (see [setStateUntracked]) — for internal checks that are not user access. The default
+     * is a plain [getStateOf].
+     */
+    fun peekStateOf(self: K): CursorPageState<K, T>? = getStateOf(self)
+
     /** Retrieves the cached [CursorBookmark<K>] for the page identified by [self], or `null`. */
     fun getCursorOf(self: K): CursorBookmark<K>?
 

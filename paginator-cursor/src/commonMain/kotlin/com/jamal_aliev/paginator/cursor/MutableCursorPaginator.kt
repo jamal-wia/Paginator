@@ -199,6 +199,9 @@ open class MutableCursorPaginator<K : Any, T>(
                 || !core.isFilledSuccessState(core.getStateOf(endC.self))
         if (windowBroken && core.size > 0) {
             core.findNearContextCursor(startC, endC)
+            // A re-anchored window sits somewhere new: realign the bookmark cursor so
+            // jumpForward / jumpBack resume from there, as after a jump or a refresh.
+            core.startContextCursor?.let { syncBookmarkIndex(it) }
         }
 
         markAffected(selfToRemove)

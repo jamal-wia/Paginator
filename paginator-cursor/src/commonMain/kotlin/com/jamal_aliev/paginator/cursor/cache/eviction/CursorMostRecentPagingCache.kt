@@ -59,6 +59,14 @@ class CursorMostRecentPagingCache<K : Any, T>(
         return result
     }
 
+    /** Replaces an already-cached page without moving it in the recency order. */
+    override fun setStateUntracked(cursor: CursorBookmark<K>, state: CursorPageState<K, T>, silently: Boolean) {
+        cache.setStateUntracked(cursor, state, silently)
+    }
+
+    /** Reads a page without moving it in the recency order. */
+    override fun peekStateOf(self: K): CursorPageState<K, T>? = cache.peekStateOf(self)
+
     override fun getElement(self: K, index: Int): T? {
         val result = cache.getElement(self, index)
         if (result != null) touch(self)
@@ -93,7 +101,7 @@ class CursorMostRecentPagingCache<K : Any, T>(
 
             val victim = accessOrder.firstOrNull { self ->
                 self != justAdded &&
-                        cache.getStateOf(self) != null &&
+                        cache.peekStateOf(self) != null &&
                         (protectedSet == null || self !in protectedSet)
             } ?: break
 

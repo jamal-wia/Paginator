@@ -59,6 +59,14 @@ class CursorTimeLimitedPagingCache<K : Any, T>(
         return result
     }
 
+    /** Replaces an already-cached page without restarting its TTL timer. */
+    override fun setStateUntracked(cursor: CursorBookmark<K>, state: CursorPageState<K, T>, silently: Boolean) {
+        cache.setStateUntracked(cursor, state, silently)
+    }
+
+    /** Reads a page without restarting its TTL timer, even with [refreshOnAccess]. */
+    override fun peekStateOf(self: K): CursorPageState<K, T>? = cache.peekStateOf(self)
+
     override fun getElement(self: K, index: Int): T? {
         val result = cache.getElement(self, index)
         if (result != null && refreshOnAccess) timestamps[self] = timeSource.markNow()
@@ -89,7 +97,7 @@ class CursorTimeLimitedPagingCache<K : Any, T>(
             .filter { (_, mark) -> mark.elapsedNow() > ttl }
             .map { (self, _) -> self }
             .filter { self ->
-                cache.getStateOf(self) != null &&
+                cache.peekStateOf(self) != null &&
                         (protectedSet == null || self !in protectedSet)
             }
 
