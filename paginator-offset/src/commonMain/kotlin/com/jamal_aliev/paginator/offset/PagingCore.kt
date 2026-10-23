@@ -367,6 +367,22 @@ open class PagingCore<T>(
     }
 
     /**
+     * Re-anchors the context window after its pages were rewritten (a refresh, a live database
+     * update): [findNearContextPage] over [startPoint]..[endPoint], except that when nothing is left
+     * to anchor on — every cached page came back empty, e.g. the table was cleared — the window
+     * stays on [startPoint] if that page is still cached, the way a jump lands on an empty page. The
+     * window must not collapse to `0,0` there: [snapshot] would then publish nothing and the UI
+     * would keep showing rows that no longer exist instead of the empty state.
+     */
+    internal fun reanchorAfterRewrite(startPoint: Int, endPoint: Int) {
+        findNearContextPage(startPoint = startPoint, endPoint = endPoint)
+        if (!isStarted && cache.peekStateOf(startPoint) != null) {
+            startContextPage = startPoint
+            endContextPage = startPoint
+        }
+    }
+
+    /**
      * Retrieves the cached [OffsetPageState] for the given [page] number.
      *
      * @param page The page number to look up.
@@ -616,7 +632,9 @@ open class PagingCore<T>(
      * that collectors receive the latest state.
      */
     fun repeatCacheFlow() {
-        _cacheFlow.value = states
+        // Publishing the whole cache to asFlow() observers is not a use of every page: read it
+        // untracked, so an LRU order or a TTL timer is not reshaped on each navigation call.
+        _cacheFlow.value = withUntrackedReads { states }
     }
 
     // ──────────────────────────────────────────────────────────────────────────

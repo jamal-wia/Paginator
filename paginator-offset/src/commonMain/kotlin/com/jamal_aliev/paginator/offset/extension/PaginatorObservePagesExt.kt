@@ -17,6 +17,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
@@ -220,7 +222,7 @@ private class LivePages<T>(
      * dead source is not resubscribed in a loop — only a reload of the page, its removal from the
      * cache or a capacity change clears it.
      */
-    private class Subscription(val capacity: Int) {
+    private class Subscription(val capacity: Int, val awaitedByLoad: Boolean) {
         lateinit var job: Job
 
         /** Has delivered its first emission — it takes part in [settle] rounds. Guarded by registryLock. */
@@ -312,10 +314,14 @@ private class LivePages<T>(
                     if (subscriptions[page] === subscription) {
                         subscriptions.remove(page)
                         pending.remove(page)
+                        // This can run after the navigation's rollback has already been reconciled
+                        // (multi-threaded dispatchers): force the next pass and wake the applier.
+                        reconciledAt = -1
                     }
                 }
             }
             subscription.job.cancel()
+            wakeUp.trySend(Unit)
             throw e
         }
     }
@@ -347,7 +353,11 @@ private class LivePages<T>(
         val iterator = subscriptions.entries.iterator()
         while (iterator.hasNext()) {
             val (page, subscription) = iterator.next()
-            if (cache.peekStateOf(page) == null || subscription.capacity != capacity) {
+            // A query a load is still waiting on survives a capacity change: cancelling it would
+            // turn that load (e.g. a refresh) into an error. Once it has delivered, the next pass
+            // restarts it with the new capacity.
+            val stale = subscription.capacity != capacity && !(subscription.awaitedByLoad && !subscription.live)
+            if (cache.peekStateOf(page) == null || stale) {
                 subscription.job.cancel()
                 pending.remove(page)
                 iterator.remove()
@@ -388,7 +398,7 @@ private class LivePages<T>(
         subscriptions.remove(page)?.job?.cancel()
         pending.remove(page)
         failed.remove(page)
-        val subscription = Subscription(capacity = paginator.core.capacity)
+        val subscription = Subscription(capacity = paginator.core.capacity, awaitedByLoad = first != null)
         subscription.job = scope.launch { collect(page, subscription, first) }
         // Also covers a job that never ran (scope already cancelled), so a waiting load never hangs.
         subscription.job.invokeOnCompletion {
@@ -423,11 +433,17 @@ private class LivePages<T>(
                 }
                 if (isCurrent) wakeUp.trySend(Unit)
             }
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: Throwable) {
+            // A CancellationException is ours only if this coroutine is being cancelled; one thrown
+            // by the source while we are still active (withTimeout, Flow.timeout) is a failure.
+            if (e is CancellationException && !currentCoroutineContext().isActive) throw e
             if (first != null && !delivered) {
-                first.completeExceptionally(e)
+                // Never hand a CancellationException to the waiting load: the navigation would take
+                // it for its own cancellation. It is a source failure, so the page becomes an Error.
+                first.completeExceptionally(
+                    if (e is CancellationException) IllegalStateException("observePages: the source of page $page was cancelled", e)
+                    else e
+                )
             } else {
                 // Keep the last data visible but have the next navigation reload — and so
                 // re-subscribe — the page; marking it dirty touches the core, so the applier does it.
@@ -504,8 +520,9 @@ private class LivePages<T>(
                 .all { page -> core.isFilledSuccessState(cache.peekStateOf(page)) }
             if (!windowFilled) {
                 // A page of the window shrank or emptied — at an edge or inside. Re-anchor like a
-                // CRUD removal does, so a non-filled page never stays buried inside the window.
-                core.findNearContextPage(startPoint = startBefore, endPoint = endBefore)
+                // refresh does, so a non-filled page never stays buried inside the window (and an
+                // emptied table shows the empty state instead of its deleted rows).
+                core.reanchorAfterRewrite(startPoint = startBefore, endPoint = endBefore)
             } else {
                 // An edge may have grown into a full page: absorb the filled neighbours.
                 core.expandStartContextPage(cache.peekStateOf(startBefore))

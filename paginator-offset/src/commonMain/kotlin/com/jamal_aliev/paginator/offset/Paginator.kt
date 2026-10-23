@@ -1164,7 +1164,7 @@ open class Paginator<T>(
                         && (!core.isFilledSuccessState(cache.getStateOf(cache.startContextPage))
                                 || !core.isFilledSuccessState(cache.getStateOf(cache.endContextPage)))
                     ) {
-                        core.findNearContextPage(
+                        core.reanchorAfterRewrite(
                             startPoint = cache.startContextPage,
                             endPoint = cache.endContextPage
                         )

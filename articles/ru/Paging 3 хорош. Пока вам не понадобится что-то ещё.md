@@ -257,7 +257,7 @@ paginator.uiState.collect { state ->
 
 - Двухуровневый кэш (L1 в памяти + ваш L2, обычно Room). *С 10.3.0 L2 объявлен устаревшим —
   вместо него используйте Room как единственный источник правды через реактивный источник.*
-- Живые страницы из БД — `observePages { page -> dao.observeUsers(limit, offset) }` держит по одному
+- Живые страницы из БД — `observePages(viewModelScope) { page -> dao.observeUsers(limit, offset) }` держит по одному
   Room-запросу на каждую страницу в кэше: подписка при загрузке, отписка при вытеснении.
 - Стратегии вытеснения L1 — LRU, FIFO, TTL, sliding window, композируемые через оператор `+`.
 - Транзакции с rollback через `transaction { }`.
