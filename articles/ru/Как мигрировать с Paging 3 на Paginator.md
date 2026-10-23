@@ -310,9 +310,9 @@ LazyColumn(state = listState) {
 ```
 
 `rememberPaginated` + `paginated { }` сами считают `dataItemCount`, `headerCount` и `footerCount`,
-расставляют `LaunchedEffect`/`snapshotFlow`, биндят prefetch к `LazyListState`. Если хочется
-обойтись без DSL и держать счётчики руками — есть `PrefetchOnScroll(state, dataItemCount, …)`.
-Подробности по слоям интеграции — в
+расставляют `LaunchedEffect`/`snapshotFlow`, биндят prefetch к `LazyListState`. Если свой `LazyColumn`
+не нужен — готовый `PaginatedLazyColumn` сделает всё это сам и вынесет индикаторы за пределы списка
+(слоты — через `slots = PaginatedSlots(...)`). Как выбрать способ интеграции — в
 [docs/7. prefetch.md](https://github.com/jamal-wia/Paginator/blob/master/docs/7.%20prefetch.md).
 
 Важный нюанс: в Paging 3 `LazyPagingItems` *одновременно* и контейнер данных, и индикатор
