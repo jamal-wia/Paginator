@@ -79,6 +79,14 @@ class TimeLimitedPagingCache<T>(
         return result
     }
 
+    /** Replaces an already-cached page without restarting its TTL timer. */
+    override fun setStateUntracked(state: OffsetPageState<T>, silently: Boolean) {
+        cache.setStateUntracked(state, silently)
+    }
+
+    /** Reads a page without restarting its TTL timer, even with [refreshOnAccess]. */
+    override fun peekStateOf(page: Int): OffsetPageState<T>? = cache.peekStateOf(page)
+
     override fun getElement(page: Int, index: Int): T? {
         val result = cache.getElement(page, index)
         if (result != null && refreshOnAccess) {

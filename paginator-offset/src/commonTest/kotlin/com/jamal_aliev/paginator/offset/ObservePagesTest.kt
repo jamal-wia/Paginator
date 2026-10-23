@@ -7,6 +7,9 @@ import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.eviction.QueuedPagingCache
+import com.jamal_aliev.paginator.offset.cache.eviction.TimeLimitedPagingCache
+import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.extension.observe
 import com.jamal_aliev.paginator.offset.extension.observePageResults
 import com.jamal_aliev.paginator.offset.extension.observePages
@@ -31,6 +34,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 class ObservePagesTest {
 
@@ -78,7 +83,8 @@ class ObservePagesTest {
         onError: ((Int, Throwable) -> Unit)? = null,
     ) = paginator.observePages(backgroundScope, onError) { page -> table.observePage(page, core.capacity) }
 
-    private fun MutablePaginator<String>.dataOf(page: Int): List<String> = cache.getStateOf(page)!!.data
+    // peekStateOf: reading a page in an assertion must not count as a use for LRU / TTL caches.
+    private fun MutablePaginator<String>.dataOf(page: Int): List<String> = cache.peekStateOf(page)!!.data
 
     @Test
     fun `each loaded page takes its first emission and only cached pages are subscribed`() = runTest {
@@ -428,5 +434,70 @@ class ObservePagesTest {
 
         assertEquals(listOf("r3", "written during the transaction", "r5"), paginator.dataOf(2))
         assertEquals(listOf(1, 2), table.activePages.sorted())
+    }
+
+    // ── Eviction strategies: live bookkeeping and updates are not user access ──────────────────
+
+    private fun TestScope.observeWith(cache: PagingCache<String>, table: FakeTable): MutablePaginator<String> =
+        livePaginator(core = PagingCore(cache = cache)).also { observe(it, table) }
+
+    @Test
+    fun `LRU evicts the least recently visited page while pages are observed`() = runTest {
+        val table = FakeTable(rowCount = 60)
+        val paginator = observeWith(MostRecentPagingCache(maxSize = 3, protectContextWindow = false), table)
+
+        for (page in listOf(1, 5, 9, 1)) {
+            paginator.jump(BookmarkInt(page))
+            runCurrent()
+        }
+        paginator.jump(BookmarkInt(13))
+        runCurrent()
+
+        // Page 1 was just revisited; page 5 is the least recently used one. (The jumps publish
+        // snapshots, which run observePages' bookkeeping — it must not count as a use.)
+        assertEquals(listOf(1, 9, 13), paginator.cache.pages)
+        assertEquals(listOf(1, 9, 13), table.activePages.sorted())
+    }
+
+    @Test
+    fun `a database change does not make an off-screen page recent for LRU`() = runTest {
+        val table = FakeTable(rowCount = 60)
+        val paginator = observeWith(MostRecentPagingCache(maxSize = 3, protectContextWindow = false), table)
+        // Visited 9, then 5, then 1: page 9 is the least recently used one.
+        for (page in listOf(9, 5, 1)) {
+            paginator.jump(BookmarkInt(page))
+            runCurrent()
+        }
+
+        table.update(index = 24, value = "edited") // first row of page 9, off screen
+        runCurrent()
+        assertEquals("edited", paginator.dataOf(9).first())
+        paginator.jump(BookmarkInt(13))
+        runCurrent()
+
+        assertEquals(listOf(1, 5, 13), paginator.cache.pages)
+    }
+
+    @Test
+    fun `a database change does not restart the TTL of a page`() = runTest {
+        val time = TestTimeSource()
+        val table = FakeTable(rowCount = 60)
+        val paginator = observeWith(
+            TimeLimitedPagingCache(ttl = 10.seconds, protectContextWindow = false, timeSource = time),
+            table,
+        )
+        paginator.jump(BookmarkInt(1))
+        paginator.jump(BookmarkInt(5))
+        runCurrent()
+        time += 11.seconds
+
+        table.update(index = 0, value = "edited") // page 1 changes after its TTL ran out
+        runCurrent()
+        assertEquals("edited", paginator.dataOf(1).first())
+        paginator.jump(BookmarkInt(9))
+        runCurrent()
+
+        assertEquals(listOf(9), paginator.cache.pages)
+        assertEquals(listOf(9), table.activePages)
     }
 }

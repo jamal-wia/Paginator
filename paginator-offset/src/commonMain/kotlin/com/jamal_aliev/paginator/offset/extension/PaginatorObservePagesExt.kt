@@ -7,6 +7,7 @@ import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.warn
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.Paginator
+import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.CancellationException
@@ -160,6 +161,10 @@ fun <T> MutablePaginator<T>.observePageResults(
 /**
  * The per-page subscriptions behind [observePages].
  *
+ * Cache access: every read and live write here uses [PagingCache.peekStateOf] /
+ * [PagingCache.setStateUntracked] — bookkeeping and database emissions are not user access, so
+ * they must not move pages in an LRU order or restart a TTL timer.
+ *
  * Locking: [registryLock] guards [subscriptions] and [pending]. Cache writes additionally hold the
  * paginator's navigation lock, always taken **before** [registryLock] — the live `load` runs under
  * the navigation lock already (jump / goNextPage / …), so the reverse order would deadlock.
@@ -233,14 +238,14 @@ private class LivePages<T>(
         val iterator = subscriptions.entries.iterator()
         while (iterator.hasNext()) {
             val (page, subscription) = iterator.next()
-            if (cache.getStateOf(page) == null || subscription.capacity != capacity) {
+            if (cache.peekStateOf(page) == null || subscription.capacity != capacity) {
                 subscription.job.cancel()
                 pending.remove(page)
                 iterator.remove()
             }
         }
         for (page in cache.pages) {
-            if (page !in subscriptions && cache.getStateOf(page) is OffsetPageState.Success) {
+            if (page !in subscriptions && cache.peekStateOf(page) is OffsetPageState.Success) {
                 subscribeLocked(page, first = null)
             }
         }
@@ -256,7 +261,7 @@ private class LivePages<T>(
         val iterator = subscriptions.entries.iterator()
         while (iterator.hasNext()) {
             val (page, subscription) = iterator.next()
-            if (cache.getStateOf(page) is OffsetPageState.Success) {
+            if (cache.peekStateOf(page) is OffsetPageState.Success) {
                 subscription.job.cancel()
                 pending.remove(page)
                 iterator.remove()
@@ -315,7 +320,7 @@ private class LivePages<T>(
                 onError(page, e)
                 // Keep the last data visible but have the next navigation reload — and so
                 // re-subscribe — the page.
-                if (paginator.cache.getStateOf(page) != null) paginator.core.markDirty(page)
+                if (paginator.cache.peekStateOf(page) != null) paginator.core.markDirty(page)
             }
         }
     }
@@ -338,7 +343,7 @@ private class LivePages<T>(
         val changedPages = mutableListOf<Int>()
         for ((page, result) in batch) {
             try {
-                val current: OffsetPageState<T> = cache.getStateOf(page) ?: continue
+                val current: OffsetPageState<T> = cache.peekStateOf(page) ?: continue
                 val data: List<T> = core.coerceToCapacity(result.data.toMutableList())
                 val metadata = result.metadata ?: current.metadata
                 val updated: OffsetPageState<T> =
@@ -350,7 +355,7 @@ private class LivePages<T>(
                         // a new id makes the refresh drop its older result instead of overwriting.
                         core.initializerSuccessPage(page, data, metadata)
                     }
-                cache.setState(updated, silently = true)
+                cache.setStateUntracked(updated, silently = true)
                 changedPages += page
             } catch (e: CancellationException) {
                 throw e
@@ -363,8 +368,8 @@ private class LivePages<T>(
         val startBefore: Int = cache.startContextPage
         val endBefore: Int = cache.endContextPage
         if (cache.isStarted) {
-            val startState: OffsetPageState<T>? = cache.getStateOf(startBefore)
-            val endState: OffsetPageState<T>? = cache.getStateOf(endBefore)
+            val startState: OffsetPageState<T>? = cache.peekStateOf(startBefore)
+            val endState: OffsetPageState<T>? = cache.peekStateOf(endBefore)
             if (!core.isFilledSuccessState(startState) || !core.isFilledSuccessState(endState)) {
                 // A window edge shrank or emptied: re-anchor exactly like a CRUD removal does.
                 core.findNearContextPage(startPoint = startBefore, endPoint = endBefore)

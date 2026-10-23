@@ -79,6 +79,14 @@ class MostRecentPagingCache<T>(
         return result
     }
 
+    /** Replaces an already-cached page without moving it in the recency order. */
+    override fun setStateUntracked(state: OffsetPageState<T>, silently: Boolean) {
+        cache.setStateUntracked(state, silently)
+    }
+
+    /** Reads a page without moving it in the recency order. */
+    override fun peekStateOf(page: Int): OffsetPageState<T>? = cache.peekStateOf(page)
+
     override fun getElement(page: Int, index: Int): T? {
         val result = cache.getElement(page, index)
         if (result != null) touchPage(page)
