@@ -16,7 +16,7 @@
 
 ```kotlin
 dependencies {
-    implementation(platform("io.github.jamal-wia:paginator-bom:10.2.5"))
+    implementation(platform("io.github.jamal-wia:paginator-bom:10.3.0"))
 
     // Выберите стратегию (или обе, если в проекте нужны оба варианта)
     implementation("io.github.jamal-wia:paginator-offset")   // page-number ленты
@@ -310,9 +310,9 @@ LazyColumn(state = listState) {
 ```
 
 `rememberPaginated` + `paginated { }` сами считают `dataItemCount`, `headerCount` и `footerCount`,
-расставляют `LaunchedEffect`/`snapshotFlow`, биндят prefetch к `LazyListState`. Если хочется
-обойтись без DSL и держать счётчики руками — есть `PrefetchOnScroll(state, dataItemCount, …)`.
-Подробности по слоям интеграции — в
+расставляют `LaunchedEffect`/`snapshotFlow`, биндят prefetch к `LazyListState`. Если свой `LazyColumn`
+не нужен — готовый `PaginatedLazyColumn` сделает всё это сам и вынесет индикаторы за пределы списка
+(слоты — через `slots = PaginatedSlots(...)`). Как выбрать способ интеграции — в
 [docs/7. prefetch.md](https://github.com/jamal-wia/Paginator/blob/master/docs/7.%20prefetch.md).
 
 Важный нюанс: в Paging 3 `LazyPagingItems` *одновременно* и контейнер данных, и индикатор
@@ -403,6 +403,16 @@ class FeedViewModel(
 ---
 
 ## Шаг 6. `RemoteMediator` + Room → `persistentCache` (L2)
+
+> **Обновление для 10.3.0:** L2-кэш (`PersistentPagingCache`, `persistentCache`, `flush()`,
+> `warmUpFromPersistent`) **объявлен устаревшим (deprecated)**. Он больше не поддерживается вместе с
+> остальным функционалом библиотеки и может вызывать неочевидные баги, поэтому в новом коде его не
+> используйте. Держите Room единственным источником правды и подключайте его к пагинатору через
+> реактивный источник — например,
+> `paginator.observePages(viewModelScope) { page -> dao.observeMessages(limit, offset) }`: по одному живому запросу на
+> каждую страницу в кэше; см.
+> [Reactive Sources](https://github.com/jamal-wia/Paginator/blob/master/docs/15.%20reactive-sources.md).
+> Раздел ниже описывает старый подход и оставлен для существующих проектов.
 
 Если ваш экран делал классический Paging 3 + Room + `RemoteMediator` — то есть хранил данные в БД,
 а Paging 3 рисовал то, что лежит в БД, — переход в Paginator делается так:
@@ -607,8 +617,8 @@ ViewModel, репозиторий или use-case.
 ## Ссылки
 
 - Репозиторий: [github.com/jamal-wia/Paginator](https://github.com/jamal-wia/Paginator)
-- Maven Central: `io.github.jamal-wia:paginator-offset:10.2.5` /
-  `paginator-cursor:10.2.5` (или через `paginator-bom`)
+- Maven Central: `io.github.jamal-wia:paginator-offset:10.3.0` /
+  `paginator-cursor:10.3.0` (или через `paginator-bom`)
 - Документация: [docs/](https://github.com/jamal-wia/Paginator/tree/master/docs)
 - Сравнение по фичам:
   [Paging 3 хорош. Пока вам не понадобится что-то ещё](Paging%203%20хорош.%20Пока%20вам%20не%20понадобится%20что-то%20ещё.md)

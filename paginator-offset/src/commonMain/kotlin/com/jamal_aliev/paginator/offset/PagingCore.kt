@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.core.extension.isErrorState
@@ -9,6 +12,7 @@ import com.jamal_aliev.paginator.offset.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.offset.PagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.offset.cache.PagingCache
+import com.jamal_aliev.paginator.offset.cache.UntrackedPagingCache
 import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.offset.extension.gap
 import com.jamal_aliev.paginator.offset.initializer.InitializerErrorPage
@@ -22,6 +26,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonElement
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
@@ -55,6 +60,12 @@ import kotlin.contracts.contract
  */
 open class PagingCore<T>(
     val cache: PagingCache<T> = InMemoryPagingCache<T>(),
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observePages() or observe() instead.",
+    )
     val persistentCache: PersistentPagingCache<T>? = null,
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {
@@ -75,7 +86,7 @@ open class PagingCore<T>(
 
     /** All cached page states, sorted by page number. */
     val states: List<OffsetPageState<T>>
-        get() = cache.pages.mapNotNull { cache.getStateOf(it) }
+        get() = cache.pages.mapNotNull { readState(it) }
 
     /** The number of pages currently in the cache. */
     val size: Int get() = cache.size
@@ -357,13 +368,57 @@ open class PagingCore<T>(
     }
 
     /**
+     * Re-anchors the context window after its pages were rewritten (a refresh, a live database
+     * update): [findNearContextPage] over [startPoint]..[endPoint], except that when nothing is left
+     * to anchor on — every cached page came back empty, e.g. the table was cleared — the window
+     * stays on [startPoint] if that page is still cached, the way a jump lands on an empty page. The
+     * window must not collapse to `0,0` there: [snapshot] would then publish nothing and the UI
+     * would keep showing rows that no longer exist instead of the empty state.
+     */
+    internal fun reanchorAfterRewrite(startPoint: Int, endPoint: Int) {
+        findNearContextPage(startPoint = startPoint, endPoint = endPoint)
+        if (!isStarted && cache.peekStateOf(startPoint) != null) {
+            startContextPage = startPoint
+            endContextPage = startPoint
+        }
+    }
+
+    /**
      * Retrieves the cached [OffsetPageState] for the given [page] number.
      *
      * @param page The page number to look up.
      * @return The cached [OffsetPageState], or `null` if the page is not in the cache.
      */
     fun getStateOf(page: Int): OffsetPageState<T>? {
-        return cache.getStateOf(page)
+        return readState(page)
+    }
+
+    /**
+     * While `true`, the core's own reads ([getStateOf], [states], [walkWhile] and everything built
+     * on them — [snapshot], [scan], [findNearContextPage], context expansion) go through
+     * [PagingCache.peekStateOf], so they do not count as a use of the pages. Set only around
+     * bookkeeping that is not user access (the live-update applier of `observePages`), under the
+     * navigation lock — see [withUntrackedReads].
+     */
+    @PublishedApi
+    internal var untrackedReads: Boolean = false
+
+    @PublishedApi
+    internal fun readState(page: Int): OffsetPageState<T>? =
+        if (untrackedReads) cache.peekStateOf(page) else cache.getStateOf(page)
+
+    /** [cache] seen through [UntrackedPagingCache], used by `Paginator.cache` in untracked mode. */
+    internal val untrackedCache: PagingCache<T> by lazy { UntrackedPagingCache(cache) }
+
+    /** Runs [block] with [untrackedReads] on. Not reentrant-safe across coroutines: hold the navigation lock. */
+    internal inline fun <R> withUntrackedReads(block: () -> R): R {
+        val previous = untrackedReads
+        untrackedReads = true
+        try {
+            return block()
+        } finally {
+            untrackedReads = previous
+        }
     }
 
     /**
@@ -376,6 +431,12 @@ open class PagingCore<T>(
      * @param page The page number to load from persistent storage.
      * @return The restored [OffsetPageState], or `null` if not found.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observePages() or observe() instead.",
+    )
     suspend fun loadFromPersistentCache(page: Int): OffsetPageState<T>? {
         val pc = persistentCache ?: return null
         val persisted = pc.load(page) ?: return null
@@ -398,6 +459,7 @@ open class PagingCore<T>(
         silently: Boolean = false
     ) {
         cache.setState(state, silently = true)
+        markCacheChanged()
         if (!silently) {
             snapshot()
         }
@@ -410,7 +472,7 @@ open class PagingCore<T>(
      * @return The removed [OffsetPageState], or `null` if the page was not in the cache.
      */
     fun removeFromCache(page: Int): OffsetPageState<T>? {
-        return cache.removeFromCache(page)
+        return cache.removeFromCache(page).also { markCacheChanged() }
     }
 
     /**
@@ -418,6 +480,7 @@ open class PagingCore<T>(
      */
     fun clear() {
         cache.clear()
+        markCacheChanged()
     }
 
     /**
@@ -538,7 +601,7 @@ open class PagingCore<T>(
         var resultState: OffsetPageState<T> = pivotState
         while (true) {
             val nextPage: Int = next.invoke(resultState.page)
-            val nextState: OffsetPageState<T>? = cache.getStateOf(nextPage)
+            val nextState: OffsetPageState<T>? = readState(nextPage)
 
             if (nextState != null && predicate.invoke(nextState)) {
                 resultState = nextState
@@ -573,7 +636,9 @@ open class PagingCore<T>(
      * that collectors receive the latest state.
      */
     fun repeatCacheFlow() {
-        _cacheFlow.value = states
+        // Publishing the whole cache to asFlow() observers is not a use of every page: read it
+        // untracked, so an LRU order or a TTL timer is not reshaped on each navigation call.
+        _cacheFlow.value = withUntrackedReads { states }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -705,6 +770,31 @@ open class PagingCore<T>(
             }
         }
         return result
+    }
+
+    /**
+     * Bumped whenever the cache content is **replaced wholesale** rather than changed page by page
+     * — [restoreState] (also when silent), a transaction rollback and [release]. Consumers that keep
+     * per-page state in sync with the cache (the live queries of `observePages`) treat it as "every
+     * page may now hold foreign data" and resynchronise.
+     */
+    internal val cacheReplacements = MutableStateFlow(0L)
+
+    internal fun markCacheReplaced() {
+        cacheReplacements.update { it + 1 }
+    }
+
+    /**
+     * Bumped when an operation that may have changed **which** pages are cached has finished — a
+     * navigation call, element-level CRUD, a direct [setState] / [removeFromCache] / [clear] or a
+     * [resize] — including silent ones and including evictions a strategy performed inside them.
+     * Lets `observePages` keep its per-page queries in step with the cache even when no snapshot
+     * is emitted.
+     */
+    internal val cacheChanges = MutableStateFlow(0L)
+
+    internal fun markCacheChanged() {
+        cacheChanges.update { it + 1 }
     }
 
     /** Internal set of page numbers marked as dirty (needing refresh). */
@@ -893,6 +983,7 @@ open class PagingCore<T>(
             }
         }
 
+        markCacheChanged()
         if (!silently && capacity > 0) {
             snapshot()
         }
@@ -918,6 +1009,7 @@ open class PagingCore<T>(
         }
         this.capacity = capacity
         _dirtyPages.clear()
+        markCacheReplaced()
     }
 
     /**
@@ -1010,6 +1102,7 @@ open class PagingCore<T>(
         capacity = snapshot.capacity
         startContextPage = snapshot.startContextPage
         endContextPage = snapshot.endContextPage
+        markCacheReplaced()
 
         if (!silently) {
             snapshot()

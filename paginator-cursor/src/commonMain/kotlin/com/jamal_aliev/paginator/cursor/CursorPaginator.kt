@@ -1,8 +1,13 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.cursor
 
 import com.jamal_aliev.paginator.cursor.CursorPagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.bookmark.CursorBootstrapKey
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
+import com.jamal_aliev.paginator.cursor.exception.CursorBootstrapFailedException
 import com.jamal_aliev.paginator.cursor.exception.CursorLoadGuardedException
 import com.jamal_aliev.paginator.cursor.exception.EndOfCursorFeedException
 import com.jamal_aliev.paginator.core.exception.LockedException.GoNextPageWasLockedException
@@ -22,6 +27,7 @@ import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.core.logger.info
 import com.jamal_aliev.paginator.core.logger.warn
 import com.jamal_aliev.paginator.core.navigation.PaginatorNavigationEvent
+import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.serialization.CursorPaginatorSnapshot
 import kotlinx.coroutines.CancellationException
@@ -35,6 +41,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 
@@ -76,10 +83,23 @@ open class CursorPaginator<K : Any, T>(
     var load: suspend CursorPaginator<K, T>.(cursor: CursorBookmark<K>?) -> CursorLoadResult<K, T>,
 ) {
 
-    val cache: CursorPagingCache<K, T> get() = core.cache
+    /**
+     * The paginator's cache ([CursorPagingCore.cache]). While the core runs in untracked mode
+     * ([CursorPagingCore.withUntrackedReads] — internal bookkeeping such as applying reactive
+     * events) this is a view whose accesses do not count as a use of the pages for eviction
+     * strategies.
+     */
+    val cache: CursorPagingCache<K, T> get() = if (core.untrackedReads) core.untrackedCache else core.cache
 
     /** Mutex serialising all mutations to cache across concurrent coroutines. */
     protected val navigationMutex = Mutex()
+
+    /**
+     * Runs [block] under [navigationMutex], for extensions in this module that write into the
+     * cache from outside navigation (e.g. [com.jamal_aliev.paginator.cursor.extension.observe]).
+     */
+    internal suspend fun <R> withNavigationLock(block: suspend () -> R): R =
+        navigationMutex.withLock { block() }
 
     /** Logger for paginator operations. Mirrors [Paginator.logger]. */
     var logger: PaginatorLogger? = null
@@ -287,6 +307,8 @@ open class CursorPaginator<K : Any, T>(
 
         navigationMutex.lock()
         try {
+            // A jump starts the feed from a real key, ending any anchorless bootstrap phase.
+            core.setBootstrapState(state = null, emit = false)
             // Check L1 first, then L2.
             var cachedState: CursorPageState<K, T>? = cache.getStateOf(bookmark.self)
             var effectiveCursor: CursorBookmark<K> = cache.getCursorOf(bookmark.self) ?: bookmark
@@ -421,7 +443,7 @@ open class CursorPaginator<K : Any, T>(
             // Implicit bootstrap: the goNext guard signature takes a non-null cursor,
             // which isn't applicable to the initial restart. Skip the guard here —
             // the caller can always run restart() explicitly with a nullable-cursor guard.
-            return@coroutineScope restartInternal(
+            val bootstrap: PageState<T>? = restartInternal(
                 silentlyLoading = silentlyLoading,
                 silentlyResult = silentlyResult,
                 loadGuard = { _, _ -> true },
@@ -429,7 +451,19 @@ open class CursorPaginator<K : Any, T>(
                 initProgressState = initProgressState,
                 initSuccessState = initSuccessState,
                 initErrorState = initErrorState,
+                implicit = true,
             )
+            when (bootstrap) {
+                // Another call started the feed while this one waited: continue as a normal step.
+                null -> Unit
+                is CursorPageState<*, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    return@coroutineScope bootstrap as CursorPageState<K, T>
+                }
+                // An anchorless first load that failed has no keyed page to return.
+                is PageState.ErrorState<T> -> throw CursorBootstrapFailedException(bootstrap)
+                else -> error("Unexpected bootstrap result: $bootstrap")
+            }
         }
 
         var savedCursor: CursorBookmark<K>? = null
@@ -737,8 +771,17 @@ open class CursorPaginator<K : Any, T>(
     /**
      * Shared implementation behind [restart] and the implicit-restart branch of
      * [goNextPage] when the paginator has not been started yet.
+     *
+     * With an [initialCursor] the first page has a key from the start and goes through the cache
+     * like any other load. Without one there is no key until the source answers, so the transient
+     * Progress / Error state is published through [CursorPagingCore.bootstrapState] instead of
+     * being cached under a fake key; the cache stays empty until the first page arrives.
+     *
+     * @param implicit `true` for the [goNextPage] bootstrap: if another call started the feed while
+     *   this one waited for the lock, nothing is loaded and `null` is returned.
+     * @return The resulting state — a [CursorPageState] once a page is cached, the bootstrap
+     *   [PageState.ErrorState] when the anchorless first load failed, or `null` (see [implicit]).
      */
-    @PublishedApi
     internal suspend fun restartInternal(
         silentlyLoading: Boolean,
         silentlyResult: Boolean,
@@ -747,45 +790,47 @@ open class CursorPaginator<K : Any, T>(
         initProgressState: InitializerCursorProgressPage<K, T>,
         initSuccessState: InitializerCursorSuccessPage<K, T>,
         initErrorState: InitializerCursorErrorPage<K, T>,
-    ): CursorPageState<K, T> = coroutineScope {
+        implicit: Boolean = false,
+    ): PageState<T>? = coroutineScope {
         val anchor: CursorBookmark<K>? = initialCursor
-
-        var savedStart: CursorBookmark<K>? = core.startContextCursor
-        var savedEnd: CursorBookmark<K>? = core.endContextCursor
         var shouldCleanup = false
 
         navigationMutex.lock()
         try {
-            savedStart = core.startContextCursor
-            savedEnd = core.endContextCursor
+            if (implicit && cache.isStarted) return@coroutineScope null
 
             cache.clear()
+            // clear() keeps the context cursors, which would now point at pages that are gone.
+            core.startContextCursor = null
+            core.endContextCursor = null
             core.clearAllDirty()
 
             if (!loadGuard.invoke(anchor, null)) {
-                if (anchor != null) throw CursorLoadGuardedException(attemptedCursor = anchor)
-                else throw CursorLoadGuardedException(
-                    attemptedCursor = CursorBookmark<K>(
-                        prev = null,
-                        self = RESTART_SENTINEL as K,
-                        next = null
-                    )
+                throw CursorLoadGuardedException(
+                    attemptedCursor = anchor
+                        ?: CursorBookmark<Any>(prev = null, self = CursorBootstrapKey, next = null)
                 )
             }
 
             shouldCleanup = true
 
             // Emit a transient progress state before hitting the network.
-            val progressCursor =
-                anchor ?: CursorBookmark<K>(prev = null, self = PROGRESS_SENTINEL as K, next = null)
-            val progressState: CursorPageState.Progress<K, T> = core.coerceToCapacity(
-                state = initProgressState.invoke(progressCursor, mutableListOf(), null)
-            ) as CursorPageState.Progress<K, T>
-            cache.setState(progressCursor, progressState, silently = true)
-            core.startContextCursor = progressCursor
-            core.endContextCursor = progressCursor
-            if (enableCacheFlow) core.repeatCacheFlow()
-            if (!silentlyLoading) core.snapshot()
+            if (anchor != null) {
+                core.setBootstrapState(state = null, emit = false)
+                val progressState: CursorPageState.Progress<K, T> = core.coerceToCapacity(
+                    state = initProgressState.invoke(anchor, mutableListOf(), null)
+                ) as CursorPageState.Progress<K, T>
+                cache.setState(anchor, progressState, silently = true)
+                core.startContextCursor = anchor
+                core.endContextCursor = anchor
+                if (enableCacheFlow) core.repeatCacheFlow()
+                if (!silentlyLoading) core.snapshot()
+            } else {
+                core.setBootstrapState(
+                    state = core.initializerBootstrapProgressPage.invoke(),
+                    emit = !silentlyLoading,
+                )
+            }
 
             val loadResult: CursorLoadResult<K, T> = try {
                 load.invoke(this@CursorPaginator, anchor)
@@ -793,19 +838,23 @@ open class CursorPaginator<K : Any, T>(
                 throw cancel
             } catch (exception: Exception) {
                 logger.warn(LogComponent.NAVIGATION) { "restart: exception=$exception" }
-                // Replace the transient progress state with an error state carrying the exception.
+                shouldCleanup = false
+                if (anchor == null) {
+                    // No key to cache the failure under: it stays the bootstrap state, so
+                    // uiState / visibleSnapshot keep publishing it (issue #3) and the next
+                    // goNextPage() or restart() retries with load(null).
+                    val errorState: PageState.ErrorState<T> =
+                        core.initializerBootstrapErrorPage.invoke(exception)
+                    core.setBootstrapState(state = errorState, emit = !silentlyResult)
+                    if (enableCacheFlow) core.repeatCacheFlow()
+                    return@coroutineScope errorState
+                }
                 val errorState = core.coerceToCapacity(
-                    state = initErrorState.invoke(exception, progressCursor, mutableListOf(), null)
+                    state = initErrorState.invoke(exception, anchor, mutableListOf(), null)
                 )
-                // Publish the error under the same (possibly sentinel) cursor the progress
-                // state used, instead of clearing the cache entry and nulling the context
-                // cursors: startContextCursor/endContextCursor already point at progressCursor,
-                // and nulling them left core.snapshot() with no range to compute, so it
-                // silently stopped publishing anything for unanchored restarts (issue #3).
-                cache.setState(progressCursor, errorState, silently = true)
+                cache.setState(anchor, errorState, silently = true)
                 if (enableCacheFlow) core.repeatCacheFlow()
-                if (!silentlyResult) core.snapshot(progressCursor to progressCursor)
-                @Suppress("ThrowableNotThrown")
+                if (!silentlyResult) core.snapshot(anchor to anchor)
                 return@coroutineScope errorState
             }
 
@@ -820,10 +869,11 @@ open class CursorPaginator<K : Any, T>(
             )
 
             shouldCleanup = false
-            // Replace the sentinel progress entry with the real one.
-            if (progressCursor.self != resultCursor.self) {
-                cache.removeFromCache(progressCursor.self)
+            // The source may answer with a different self than the anchor hint.
+            if (anchor != null && anchor.self != resultCursor.self) {
+                cache.removeFromCache(anchor.self)
             }
+            core.setBootstrapState(state = null, emit = false)
             cache.setState(resultCursor, resultState, silently = true)
             core.startContextCursor = resultCursor
             core.endContextCursor = resultCursor
@@ -839,10 +889,12 @@ open class CursorPaginator<K : Any, T>(
         } catch (e: CancellationException) {
             if (shouldCleanup) {
                 withContext(NonCancellable) {
-                    core.startContextCursor = savedStart
-                    core.endContextCursor = savedEnd
-                    cache.removeFromCache(PROGRESS_SENTINEL as K)
-                    core.snapshot()
+                    // The cache was cleared before loading, so there is nothing to go back to:
+                    // drop the transient state and leave the paginator not started.
+                    if (anchor != null) cache.removeFromCache(anchor.self)
+                    core.startContextCursor = null
+                    core.endContextCursor = null
+                    core.setBootstrapState(state = null, emit = true)
                 }
             }
             throw e
@@ -868,6 +920,34 @@ open class CursorPaginator<K : Any, T>(
         logger.debug(LogComponent.LIFECYCLE) { "refresh: cursors=${cursors.map { it.self }}" }
 
         var savedStates: Map<K, Pair<CursorBookmark<K>?, CursorPageState<K, T>?>> = emptyMap()
+        // Ids of the Progress states installed under lock before loading. The lock is released
+        // while the pages load, so by the time the results are committed (or rolled back on
+        // cancellation) a page may have been evicted, cleared by restart/release, reloaded by
+        // jump or overwritten by a reactive source. Only a page still holding its own Progress
+        // state is written back; anything else is newer than the in-flight result and wins.
+        val progressIds: MutableMap<K, Long> = mutableMapOf()
+
+        fun ownsPage(self: K): Boolean {
+            val ownId: Long = progressIds[self] ?: return false
+            return cache.getStateOf(self)?.id == ownId
+        }
+
+        // Dirty flags of the refreshed pages are taken over before loading, so a page marked dirty
+        // while the refresh is loading keeps its flag. Pages the refresh does not end up writing
+        // get their original flag back.
+        var dirtyAtStart: List<K> = emptyList()
+        var committedSelves: Set<K> = emptySet()
+
+        // A page the refresh did not write gets its flag back only while it still holds the
+        // refresh's own Progress state or its pre-refresh state; a page another writer replaced
+        // meanwhile (a reload, a reactive update) already holds fresher data.
+        fun restoreUncommittedDirtyFlags() {
+            core.markDirty(dirtyAtStart.filter { self ->
+                if (self in committedSelves) return@filter false
+                val currentId: Long = cache.getStateOf(self)?.id ?: return@filter false
+                currentId == progressIds[self] || currentId == savedStates[self]?.second?.id
+            })
+        }
 
         try {
             navigationMutex.lock()
@@ -894,7 +974,10 @@ open class CursorPaginator<K : Any, T>(
                         )
                     ) as CursorPageState.Progress<K, T>
                     cache.setState(cachedCursor, progressState, silently = true)
+                    progressIds[cachedCursor.self] = progressState.id
                 }
+                dirtyAtStart = cursors.map { it.self }.filter { core.isDirty(it) }
+                core.clearDirty(cursors.map { it.self })
             } finally {
                 navigationMutex.unlock()
             }
@@ -914,10 +997,21 @@ open class CursorPaginator<K : Any, T>(
                 }
             }.awaitAll()
 
+            val committed: List<Pair<CursorBookmark<K>, CursorPageState<K, T>>>
             navigationMutex.lock()
             try {
-                results.forEach { (cursor, state) ->
+                committed = results.filterIndexed { index, _ -> ownsPage(cursors[index].self) }
+                committedSelves = cursors.filterIndexed { index, _ -> results[index] in committed }
+                    .mapTo(HashSet()) { it.self }
+                committed.forEach { (cursor, state) ->
                     cache.setState(cursor, state, silently = true)
+                }
+                if (committed.size < results.size) {
+                    logger.debug(LogComponent.LIFECYCLE) {
+                        "refresh: skipped cursors changed during loading=" +
+                                cursors.filterIndexed { index, _ -> results[index] !in committed }
+                                    .map { it.self }
+                    }
                 }
                 // Re-anchor the context window if it collapsed onto non-filled pages.
                 // Happens when the backend deleted the currently viewed range while the
@@ -942,21 +1036,23 @@ open class CursorPaginator<K : Any, T>(
             }
 
             core.persistentCache?.let { pc ->
-                val successes = results.filter { it.second is CursorPageState.Success<*, *> }
+                val successes = committed.filter { it.second is CursorPageState.Success<*, *> }
                 if (successes.isNotEmpty()) pc.saveAll(successes)
             }
 
-            core.clearDirty(cursors.map { it.self })
+            restoreUncommittedDirtyFlags()
 
             if (enableCacheFlow) core.repeatCacheFlow()
             if (!finalSilently) core.snapshot()
             logger.debug(LogComponent.LIFECYCLE) { "refresh: done" }
         } catch (e: CancellationException) {
+            restoreUncommittedDirtyFlags()
             if (savedStates.isNotEmpty()) {
                 withContext(NonCancellable) {
                     navigationMutex.lock()
                     try {
                         savedStates.forEach { (self, saved) ->
+                            if (!ownsPage(self)) return@forEach
                             val (savedCursor, savedState) = saved
                             if (savedCursor != null && savedState != null) {
                                 cache.setState(savedCursor, savedState, silently = true)
@@ -1055,7 +1151,7 @@ open class CursorPaginator<K : Any, T>(
      * Synchronises [bookmarkIndex] so that it sits right after the last bookmark
      * whose `self` key was reached during navigation.
      */
-    private fun syncBookmarkIndex(cursor: CursorBookmark<K>) {
+    internal fun syncBookmarkIndex(cursor: CursorBookmark<K>) {
         if (bookmarks.isEmpty()) return
         val index = bookmarks.indexOfFirst { it.self == cursor.self }
         bookmarkIndex = if (index == -1) bookmarks.size else (index + 1)
@@ -1157,6 +1253,7 @@ open class CursorPaginator<K : Any, T>(
         lockGoPreviousPage = savepoint.lockGoPreviousPage
         lockRestart = savepoint.lockRestart
         lockRefresh = savepoint.lockRefresh
+        core.markCacheReplaced()
 
         core.snapshot()
         if (core.enableCacheFlow) core.repeatCacheFlow()
@@ -1252,18 +1349,6 @@ open class CursorPaginator<K : Any, T>(
 
     override fun hashCode(): Int = super.hashCode()
 
-    companion object {
-        /**
-         * Sentinel cache key for the transient progress page emitted by [restart] before the
-         * real bookmark is known. It is a unique [Any] instance: since `K` is erased at runtime,
-         * it can be stored under a `K`-typed bookmark via an unchecked cast and compared by
-         * identity. No real user key can ever equal it.
-         */
-        @PublishedApi
-        internal val PROGRESS_SENTINEL: Any = Any()
-
-        /** Sentinel key used to describe a guard-rejected [restart] that had no anchor cursor. */
-        @PublishedApi
-        internal val RESTART_SENTINEL: Any = Any()
-    }
+    // Kept (empty) for binary compatibility: it used to hold the restart sentinels.
+    companion object
 }

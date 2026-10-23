@@ -10,3 +10,19 @@ plugins {
     alias(libs.plugins.maven.publish) apply false
 }
 
+
+// kotlin-js-store/yarn.lock is git-ignored (see .gitignore), so it is a local, regenerable file.
+// Let Gradle refresh it instead of failing `allTests` with "Lock file was changed" whenever the
+// JS / Wasm npm dependency graph moves (a Kotlin, Compose or test-runner bump).
+plugins.withType<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin> {
+    the<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension>().apply {
+        yarnLockMismatchReport = org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockMismatchReport.WARNING
+        yarnLockAutoReplace = true
+    }
+}
+plugins.withType<org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnPlugin> {
+    the<org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnRootExtension>().apply {
+        yarnLockMismatchReport = org.jetbrains.kotlin.gradle.targets.js.yarn.YarnLockMismatchReport.WARNING
+        yarnLockAutoReplace = true
+    }
+}

@@ -50,7 +50,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `overflow page uses the configured success initializer (custom subclass preserved)`() = runTest {
+    fun `overflow page uses the configured success initializer - custom subclass preserved`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3)
         paginator.core.initializerSuccessPage = { page, data, _ -> MySuccess(page, data) }
 
@@ -64,7 +64,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `overflow page gets a fresh id, not shared with the source page`() = runTest {
+    fun `overflow page gets a fresh id - not shared with the source page`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3)
         val sourceId = paginator.cache.getStateOf(1)!!.id
 
@@ -74,7 +74,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `overflow from an Error page creates an Error overflow page (CRUD on Error is legal)`() = runTest {
+    fun `overflow from an Error page creates an Error overflow page - CRUD on Error is legal`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3)
         val boom = RuntimeException("boom")
         // Turn page 1 into a full Error page carrying stale data.
@@ -93,7 +93,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `overflow from a Progress page creates a Progress overflow page (CRUD on Progress is legal)`() = runTest {
+    fun `overflow from a Progress page creates a Progress overflow page - CRUD on Progress is legal`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3)
         paginator.cache.setState(
             OffsetPageState.Progress(page = 1, data = mutableListOf("a", "b", "c")),
@@ -109,7 +109,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `passing null initPageState opts out — overflow is dropped, no page created`() = runTest {
+    fun `passing null initPageState opts out — overflow is dropped - no page created`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 1, capacity = 3) // page1 full
 
         // Explicit null disables the overflow algorithm: the element has nowhere to go and is dropped.
@@ -125,7 +125,7 @@ class AddElementOverflowTest {
     // =========================================================================
 
     @Test
-    fun `prependElement overflow creates a trailing page by default (not dropped)`() = runTest {
+    fun `prependElement overflow creates a trailing page by default - not dropped`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3) // both pages full
 
         paginator.prependElement("new", silently = true)
@@ -138,7 +138,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `prependElement overflow is dropped when initSuccessPageState is null (opt-out)`() = runTest {
+    fun `prependElement overflow is dropped when initSuccessPageState is null - opt-out`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
 
         paginator.prependElement("new", silently = true, initSuccessPageState = null)
@@ -149,7 +149,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `prependElement overflow uses a custom factory (subclass preserved)`() = runTest {
+    fun `prependElement overflow uses a custom factory - subclass preserved`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
 
         paginator.prependElement(
@@ -162,7 +162,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `moveElement overflow is dropped when initPageState is null (opt-out)`() = runTest {
+    fun `moveElement overflow is dropped when initPageState is null - opt-out`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
 
         // Move p1_item0 to the head of the (full) page 2 → the tail overflows past the end.
@@ -179,7 +179,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `insertAfter overflow is dropped when initPageState is null (opt-out)`() = runTest {
+    fun `insertAfter overflow is dropped when initPageState is null - opt-out`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
 
         val inserted = paginator.insertAfter("X", silently = true, initPageState = null) {
@@ -192,7 +192,7 @@ class AddElementOverflowTest {
     }
 
     @Test
-    fun `insertBefore overflow is dropped when initPageState is null (opt-out)`() = runTest {
+    fun `insertBefore overflow is dropped when initPageState is null - opt-out`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
 
         val inserted = paginator.insertBefore("X", silently = true, initPageState = null) {

@@ -371,7 +371,7 @@ class CrudOperationsTest {
     }
 
     @Test
-    fun `addAllElements throws when target page missing and initPageState is null (opt-out)`() = runTest {
+    fun `addAllElements throws when target page missing and initPageState is null - opt-out`() = runTest {
         val paginator = createPopulatedPaginator(pageCount = 2, capacity = 3)
         assertFailsWith<IndexOutOfBoundsException> {
             paginator.addAllElements(

@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.core.exception.FinalPageExceededException
@@ -8,6 +11,8 @@ import com.jamal_aliev.paginator.core.exception.LockedException.JumpWasLockedExc
 import com.jamal_aliev.paginator.core.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.core.exception.LockedException.RestartWasLockedException
 import com.jamal_aliev.paginator.core.extension.isProgressState
+import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.core.extension.isEmptyState
 import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
@@ -35,6 +40,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 
@@ -78,10 +84,39 @@ open class Paginator<T>(
     var load: suspend Paginator<T>.(page: Int) -> LoadResult<T>
 ) : Comparable<Paginator<*>> {
 
-    val cache: PagingCache<T> get() = core.cache
+    /**
+     * The paginator's cache ([PagingCore.cache]). While the core runs in untracked mode
+     * ([PagingCore.withUntrackedReads] — internal bookkeeping such as applying reactive events) this
+     * is a view whose accesses do not count as a use of the pages for eviction strategies.
+     */
+    val cache: PagingCache<T> get() = if (core.untrackedReads) core.untrackedCache else core.cache
 
     /** Mutex serialising all mutations to cache across concurrent coroutines. */
     protected val navigationMutex = Mutex()
+
+    /**
+     * Runs [block] under [navigationMutex], for extensions in this module that write into the
+     * cache from outside navigation (e.g. [com.jamal_aliev.paginator.offset.extension.observePages]).
+     */
+    internal suspend fun <R> withNavigationLock(block: suspend () -> R): R =
+        navigationMutex.withLock { block() }
+
+    /**
+     * Set by `observePages` while it is active: whether [page] is backed by a running live query.
+     * Such a page is always up to date, so [goNextPage] does not reload it when it is the cached
+     * partial end of the feed — it fills itself when new rows arrive. Called under [navigationMutex].
+     */
+    internal var isLivePage: (suspend (page: Int) -> Boolean)? = null
+
+    /**
+     * Releases [navigationMutex] after a critical section that may have changed the cached pages,
+     * signalling [PagingCore.cacheChanges] first. ([withNavigationLock] deliberately does not
+     * signal: `observePages` reconciles through it and would otherwise wake itself up forever.)
+     */
+    private fun unlockNavigation() {
+        core.markCacheChanged()
+        navigationMutex.unlock()
+    }
 
     /**
      * Logger for observing paginator operations.
@@ -154,7 +189,7 @@ open class Paginator<T>(
      * whose page is ≤ [page]. This keeps [jumpForward]/[jumpBack] consistent
      * after a direct [jump] to an arbitrary page.
      */
-    private fun syncBookmarkIndex(page: Int) {
+    internal fun syncBookmarkIndex(page: Int) {
         if (bookmarks.isEmpty()) return
         val index = bookmarks.indexOfFirst { it.page > page }
         bookmarkIndex = if (index == -1) bookmarks.size else index
@@ -562,7 +597,7 @@ open class Paginator<T>(
             }
             throw e
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -671,6 +706,15 @@ open class Paginator<T>(
                 return@coroutineScope nextPageState
             }
 
+            // A cached partial page — the end of the feed — backed by a live query is current by
+            // definition: reloading it would only re-run the query. It grows by itself when rows
+            // arrive, and the window then extends over it.
+            if ((nextPageState.isSuccessState() || nextPageState.isEmptyState())
+                && isLivePage?.invoke(nextPage) == true
+            ) {
+                return@coroutineScope nextPageState
+            }
+
             if (!loadGuard.invoke(nextPage, nextPageState)) {
                 throw LoadGuardedException(attemptedPage = nextPage)
             }
@@ -738,7 +782,7 @@ open class Paginator<T>(
             }
             throw e
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -882,7 +926,7 @@ open class Paginator<T>(
             }
             throw e
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -997,7 +1041,7 @@ open class Paginator<T>(
             }
             throw e
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -1035,6 +1079,34 @@ open class Paginator<T>(
         logger.debug(LogComponent.LIFECYCLE) { "refresh: pages=$pages" }
 
         var savedStates: Map<Int, OffsetPageState<T>?> = emptyMap()
+        // Ids of the Progress states installed in phase 1. The lock is released while the pages
+        // load, so by the time phase 3 (or the cancellation rollback) runs, a page may have been
+        // evicted, cleared by restart/release, reloaded by jump, relabelled by removeState or
+        // overwritten by a reactive source. Only a page still holding its own Progress state is
+        // written back; anything else is newer than the in-flight result and wins.
+        val progressIds: MutableMap<Int, Long> = mutableMapOf()
+
+        fun ownsPage(page: Int): Boolean {
+            val ownId: Long = progressIds[page] ?: return false
+            return cache.getStateOf(page)?.id == ownId
+        }
+
+        // Dirty flags of the refreshed pages are taken over in phase 1, so a page marked dirty
+        // while the refresh is loading keeps its flag. Pages the refresh does not end up writing
+        // get their original flag back.
+        var dirtyAtStart: List<Int> = emptyList()
+        var committedPages: Set<Int> = emptySet()
+
+        // A page the refresh did not write gets its flag back only while it still holds the
+        // refresh's own Progress state or its pre-refresh state; a page another writer replaced
+        // meanwhile (a reload, a live database update) already holds fresher data.
+        fun restoreUncommittedDirtyFlags() {
+            core.markDirty(dirtyAtStart.filter { page ->
+                if (page in committedPages) return@filter false
+                val currentId: Long = cache.getStateOf(page)?.id ?: return@filter false
+                currentId == progressIds[page] || currentId == savedStates[page]?.id
+            })
+        }
 
         try {
             // Phase 1: validate guards and set progress states under lock
@@ -1060,9 +1132,12 @@ open class Paginator<T>(
                         state = progressState,
                         silently = true
                     )
+                    progressIds[page] = progressState.id
                 }
+                dirtyAtStart = pages.filter { core.isDirty(it) }
+                core.clearDirty(pages)
             } finally {
-                navigationMutex.unlock()
+                unlockNavigation()
             }
             if (enableCacheFlow) {
                 core.repeatCacheFlow()
@@ -1082,14 +1157,25 @@ open class Paginator<T>(
                     )
                 }
             }.awaitAll().let { results: List<OffsetPageState<T>> ->
-                // Phase 3: write results back under lock
+                // Phase 3: write results back under lock — only into pages this refresh still owns
+                val committed: List<OffsetPageState<T>>
                 navigationMutex.lock()
                 try {
-                    results.forEach { finalPageState: OffsetPageState<T> ->
+                    committed = results.filter { finalPageState: OffsetPageState<T> ->
+                        ownsPage(finalPageState.page)
+                    }
+                    committedPages = committed.mapTo(HashSet()) { it.page }
+                    committed.forEach { finalPageState: OffsetPageState<T> ->
                         cache.setState(
                             state = finalPageState,
                             silently = true
                         )
+                    }
+                    if (committed.size < results.size) {
+                        logger.debug(LogComponent.LIFECYCLE) {
+                            "refresh: skipped pages changed during loading=" +
+                                    (results.map { it.page } - committed.map { it.page }.toSet())
+                        }
                     }
                     // Re-anchor the context window if it collapsed onto non-filled pages.
                     // Happens when the backend deleted the currently viewed range while the
@@ -1101,7 +1187,7 @@ open class Paginator<T>(
                         && (!core.isFilledSuccessState(cache.getStateOf(cache.startContextPage))
                                 || !core.isFilledSuccessState(cache.getStateOf(cache.endContextPage)))
                     ) {
-                        core.findNearContextPage(
+                        core.reanchorAfterRewrite(
                             startPoint = cache.startContextPage,
                             endPoint = cache.endContextPage
                         )
@@ -1111,19 +1197,19 @@ open class Paginator<T>(
                         syncBookmarkIndex(cache.startContextPage)
                     }
                 } finally {
-                    navigationMutex.unlock()
+                    unlockNavigation()
                 }
 
                 // Phase 4: persist successful results to L2
                 core.persistentCache?.let { pc ->
-                    val successStates = results.filterIsInstance<OffsetPageState.Success<T>>()
+                    val successStates = committed.filterIsInstance<OffsetPageState.Success<T>>()
                     if (successStates.isNotEmpty()) {
                         pc.saveAll(successStates)
                     }
                 }
-            }
 
-            core.clearDirty(pages)
+                restoreUncommittedDirtyFlags()
+            }
 
             if (enableCacheFlow) {
                 core.repeatCacheFlow()
@@ -1133,12 +1219,14 @@ open class Paginator<T>(
             }
             logger.debug(LogComponent.LIFECYCLE) { "refresh: pages=$pages completed" }
         } catch (e: CancellationException) {
+            restoreUncommittedDirtyFlags()
             if (savedStates.isNotEmpty()) {
                 withContext(NonCancellable) {
-                    // TODO Maybe lock here is unnecessary
+                    // Under lock: ownsPage must not interleave with a concurrent writer
                     navigationMutex.lock()
                     try {
                         savedStates.forEach { (page, state) ->
+                            if (!ownsPage(page)) return@forEach
                             if (state != null) {
                                 cache.setState(state, silently = true)
                             } else {
@@ -1147,7 +1235,7 @@ open class Paginator<T>(
                         }
                         core.snapshot()
                     } finally {
-                        navigationMutex.unlock()
+                        unlockNavigation()
                     }
                 }
             }
@@ -1304,7 +1392,7 @@ open class Paginator<T>(
                 lockRefresh = lockRefresh,
             )
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -1348,7 +1436,7 @@ open class Paginator<T>(
             lockRestart = snapshot.lockRestart
             lockRefresh = snapshot.lockRefresh
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -1444,6 +1532,7 @@ open class Paginator<T>(
         lockGoPreviousPage = savepoint.lockGoPreviousPage
         lockRestart = savepoint.lockRestart
         lockRefresh = savepoint.lockRefresh
+        core.markCacheReplaced()
 
         core.snapshot()
         if (core.enableCacheFlow) {

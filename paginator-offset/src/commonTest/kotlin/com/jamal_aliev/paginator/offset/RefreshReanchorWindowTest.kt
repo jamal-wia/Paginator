@@ -1,5 +1,8 @@
 package com.jamal_aliev.paginator.offset
 
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.launch
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.core.extension.toUiState
 import com.jamal_aliev.paginator.core.page.PaginatorUiState
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
@@ -97,5 +100,29 @@ class RefreshReanchorWindowTest {
 
         assertEquals(1, paginator.cache.startContextPage)
         assertEquals(3, paginator.cache.endContextPage)
+    }
+
+    @Test
+    fun `refreshAll after the backend deleted everything publishes the empty state`() = runTest {
+        var deleted = false
+        val paginator = MutablePaginator<String> { page: Int ->
+            if (deleted) LoadResult(emptyList()) else LoadResult(MutableList(5) { "p${page}_item$it" })
+        }.apply { core.resize(capacity = 5, resize = false, silently = true) }
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        var visible: List<OffsetPageState<String>> = emptyList()
+        backgroundScope.launch { paginator.core.snapshot.collect { visible = it } }
+        paginator.core.snapshot()
+        runCurrent()
+
+        deleted = true
+        paginator.refreshAll()
+        runCurrent()
+
+        // Nothing to re-anchor on: the window stays on the (now empty) first page instead of
+        // collapsing to 0,0, which would leave the deleted rows on screen.
+        assertTrue(paginator.core.isStarted)
+        assertTrue(visible.flatMap { it.data }.isEmpty(), "still showing $visible")
+        assertTrue(visible.toUiState(isStarted = paginator.core.isStarted) is PaginatorUiState.Empty)
     }
 }

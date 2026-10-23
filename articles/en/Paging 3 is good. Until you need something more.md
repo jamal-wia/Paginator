@@ -201,7 +201,7 @@ KMP artifact:
 ```kotlin
 commonMain.dependencies {
   // Pin all Paginator artifacts together via the BOM
-  implementation(platform("io.github.jamal-wia:paginator-bom:10.2.5"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:10.3.0"))
   // Pick the strategy you need; both build on paginator-core (pulled transitively)
   implementation("io.github.jamal-wia:paginator-offset")
   // implementation("io.github.jamal-wia:paginator-cursor")
@@ -254,7 +254,10 @@ paginator.uiState.collect { state ->
 The library then has two levels of depth. You can stay at this setup and get full-featured
 pagination with all states. Or, when needed, plug in extras:
 
-- Two-level cache (L1 in memory + your L2, usually Room).
+- Two-level cache (L1 in memory + your L2, usually Room). *L2 is deprecated since 10.3.0 — use
+  Room as the single source of truth through a reactive source instead.*
+- Live database pages — `observePages(viewModelScope) { page -> dao.observeUsers(limit, offset) }` keeps one Room
+  query per cached page, subscribed on load and dropped on eviction.
 - L1 eviction strategies — LRU, FIFO, TTL, sliding window, composable via the `+` operator.
 - Transactions with rollback via `transaction { }`.
 - Dirty pages — silent background page refresh on next navigation.
@@ -288,11 +291,11 @@ simple cases.
 
 If pagination is a regular part of your work, give it a try. The repository is active,
 on [Maven Central](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator-core),
-mature (current version 10.2.5), and covered with documentation. Feedback and stars help.
+mature (current version 10.3.0), and covered with documentation. Feedback and stars help.
 
 - **GitHub:** [github.com/jamal-wia/Paginator](https://github.com/jamal-wia/Paginator)
-- **Maven Central:** `io.github.jamal-wia:paginator-offset:10.2.5` /
-  `paginator-cursor:10.2.5` (or via the `paginator-bom`)
+- **Maven Central:** `io.github.jamal-wia:paginator-offset:10.3.0` /
+  `paginator-cursor:10.3.0` (or via the `paginator-bom`)
 - **Telegram community:** [t.me/+0eeAM-EJpqgwNGZi](https://t.me/+0eeAM-EJpqgwNGZi)
 - **Documentation:** by section in [docs/](https://github.com/jamal-wia/Paginator/tree/master/docs)
 

@@ -122,7 +122,7 @@ use — the BOM keeps the suite aligned on your classpath:
 ```kotlin
 dependencies {
   // Pin all Paginator artifacts together. Latest version: see the Maven Central badge above.
-  implementation(platform("io.github.jamal-wia:paginator-bom:10.2.5"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:10.3.0"))
 
   // Pick exactly one paginator strategy (or both, if your app needs both)
   implementation("io.github.jamal-wia:paginator-offset")   // page-number paginator
@@ -152,7 +152,7 @@ metadata. The `paginator-compose-*` modules go in the shared Compose source set;
 > ```kotlin
 > // top-level dependencies {} block — NOT inside kotlin { sourceSets { } }
 > dependencies {
->     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:10.2.5"))
+>     commonMainImplementation(platform("io.github.jamal-wia:paginator-bom:10.3.0"))
 > }
 >
 > // inside kotlin { sourceSets { commonMain.dependencies { } } } — no version needed
@@ -214,58 +214,45 @@ in `com.jamal_aliev.paginator.core`.
 
 ### What each UI artifact does
 
-`paginator-compose-offset` / `paginator-compose-cursor` provide scroll-driven prefetch for
-`LazyColumn` / `LazyRow` / `LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal
-counterparts) — no manual `LaunchedEffect` / `snapshotFlow` plumbing. The recommended entry point
-is the turnkey `PaginatedLazyColumn` — it renders `paginator.uiState`, wires prefetch, and places
-the "loading previous / next page" indicators **outside** the list so a page load never jumps the
-scroll:
+There are **two paths**; pick the first one that fits
+([docs/7. prefetch.md → Choosing an integration](docs/7.%20prefetch.md#choosing-an-integration)).
+
+**1 — Turnkey (default).** In Compose, `PaginatedLazyColumn` (and `PaginatedLazyRow`, the grids and
+staggered grids) renders `paginator.uiState`, wires scroll-driven prefetch, and draws the
+"loading / failed previous or next page" indicators **outside** the list, so a page load never jumps
+the scroll. Indicators and full-screen states go through one `slots = PaginatedSlots(...)` parameter:
 
 ```kotlin
-PaginatedLazyColumn(paginator, Modifier.fillMaxSize(), key = { it.id }) { item ->
+PaginatedLazyColumn(
+    paginator,
+    Modifier.fillMaxSize(),
+    key = { it.id },
+    slots = PaginatedSlots(appendErrorIndicator = { e -> RetryRow(e.exception) { retry() } }),
+) { item, _, _, _, _ ->
     Row(item)
 }
 ```
 
-The same turnkey covers every lazy layout and axis — `PaginatedLazyRow`, `PaginatedLazyVerticalGrid`
-/ `PaginatedLazyHorizontalGrid`, and the staggered-grid variants.
-
-Need a custom body (sticky headers, mixed content)? Drop to the `rememberPaginated` +
-`paginated { }` DSL — zero manual numbers (`dataItemCount` is read from `paginator.uiState`, header
-/ footer counts are tallied by the DSL) — and add `PaginatorScrollEdgeIndicators` to keep the
-anchor-safe indicators. A one-call `PrefetchOnScroll(state, dataItemCount, …)` and a low-level
-`rememberPrefetchController` + `BindToLazyList` are also available if you want to keep
-counts explicit or hold a reference to the controller. See
-[docs/7. prefetch.md](docs/7.%20prefetch.md) for the full
-guide — including `PrefetchOptions`, reactive error handling via `PrefetchErrorChannel`,
-and advanced knobs (`restartKey`, `scrollSampleMillis`).
-
-`paginator-view-offset` / `paginator-view-cursor` remove the `OnScrollListener` plumbing entirely
-and offer three layers of integration: `bindPaginated` (auto-tracks `dataItemCount` from
-`paginator.uiState`), `bindPrefetchToRecyclerView` (one-call factory + bind), and the
-low-level `controller.bindToRecyclerView` for `ViewModel`-scoped controllers. All three
-support `LinearLayoutManager`, `GridLayoutManager`, and `StaggeredGridLayoutManager`,
-install both `OnScrollListener` and `OnLayoutChangeListener` (so partial first pages
-don't stall pagination), and clean up on `ON_DESTROY`.
+On Android View the default is `bindPaginated` — it tracks `dataItemCount` from the paginator,
+installs scroll and layout listeners (so partial first pages don't stall), works with Linear / Grid /
+StaggeredGrid layout managers and any `ConcatAdapter`, and cleans up on `ON_DESTROY`:
 
 ```kotlin
-binding.recyclerView.adapter = ConcatAdapter(headerAdapter, dataAdapter, appendIndicatorAdapter)
-binding.recyclerView.layoutManager = LinearLayoutManager(context)
-
 val paged = paginator.bindPaginated(
     recyclerView = binding.recyclerView,
     lifecycleOwner = viewLifecycleOwner,
     headerCount = { headerAdapter.itemCount },
     footerCount = { appendIndicatorAdapter.itemCount },
 )
-// `paged.controller` for hot-update mutation; `paged.recalibrate()` after refresh().
 ```
 
-Reactive prefetch errors via `PrefetchErrorChannel` (StateFlow), runtime knobs through
-`PrefetchOptions` (shared with the Compose binding), and stable `PageLoadGuard` /
-`CursorLoadGuard` are also available.
+**2 — Your own list body (Compose).** Sticky headers or mixed content: `rememberPaginated` +
+`LazyColumn { paginated(holder) { … } }` counts data items, headers and footers for you; wrap it in
+`PaginatorScrollEdgeIndicators` to keep the anchor-safe indicators.
 
-See [docs/7. prefetch.md](docs/7.%20prefetch.md) for details.
+For a controller that outlives the screen (`ViewModel`-scoped), the building blocks
+`rememberPrefetchController` + `BindToLazyList` / `prefetchController` + `bindToRecyclerView` stay
+available. `PrefetchOnScroll` and `bindPrefetchToRecyclerView` are deprecated since 10.3.0.
 
 ---
 
@@ -437,6 +424,9 @@ differs only in **how pages are addressed**. Read the full guide at
   and `ContextWindowPagingCache` (evicts outside context). Eviction listener callback for reacting
   to
   page removal
+- **Live database pages** -- `observePages(viewModelScope) { page -> dao.observeUsers(limit, offset) }` subscribes
+  to one query per cached page (Room/SQLDelight re-emit on table changes) and unsubscribes when the
+  page leaves the cache, so a huge table never has to be observed as a whole
 - **Reactive state** -- observe page changes via `snapshot` Flow (visible pages) or `asFlow()` (
   entire cache)
 - **High-level UI state** -- `paginator.uiState: Flow<PaginatorUiState<T>>` collapses the raw
@@ -495,20 +485,15 @@ differs only in **how pages are addressed**. Read the full guide at
   paginator-* artifacts without versions; the BOM keeps the suite aligned on your classpath
   and only constrains Paginator artifacts (no impact on Compose / Kotlin / AndroidX versions)
 - **Compose Multiplatform bindings (`paginator-compose-offset` / `paginator-compose-cursor`)** --
-  the turnkey, scroll-anchor-safe `PaginatedLazy{Column,Row,*Grid}` family (and
-  `PaginatorScrollEdgeIndicators` for a custom body); plus the lower-level `PaginatedLazyList`, `PaginatedLazyGrid`,
-  `PaginatedLazyStaggeredGrid` and `rememberPaginated`
-  + the `paginated { }` DSL for zero-boilerplate prefetch on `LazyColumn` / `LazyRow` /
-  `LazyVerticalGrid` / `LazyVerticalStaggeredGrid` (and horizontal counterparts); a
-  one-call `PrefetchOnScroll(state, dataItemCount, …)` and a low-level
-  `rememberPrefetchController` + `BindToLazyList` / `BindToLazyGrid` /
-  `BindToLazyStaggeredGrid` are also available for explicit-count or controller-scoped
-  setups
+  the turnkey, scroll-anchor-safe `PaginatedLazy{Column,Row,*Grid,*StaggeredGrid}` family with
+  `PaginatedSlots` for indicators and full-screen states; `rememberPaginated` + the `paginated { }`
+  DSL with `PaginatorScrollEdgeIndicators` for a custom list body; and the
+  `rememberPrefetchController` + `BindToLazyList` / `BindToLazyGrid` / `BindToLazyStaggeredGrid`
+  building blocks for controller-scoped setups
 - **Android RecyclerView bindings (`paginator-view-offset` / `paginator-view-cursor`)** --
-  three layers of integration: `bindPaginated` (auto-tracks `dataItemCount` from
-  `paginator.uiState`), `bindPrefetchToRecyclerView` (one-call factory + bind), and a low-level
-  `controller.bindToRecyclerView` for `ViewModel`-scoped controllers; works with
-  `LinearLayoutManager`, `GridLayoutManager`, `StaggeredGridLayoutManager`, installs both
+  `bindPaginated` (auto-tracks `dataItemCount` from `paginator.uiState`) and the
+  `prefetchController` + `bindToRecyclerView` building blocks for `ViewModel`-scoped controllers;
+  works with `LinearLayoutManager`, `GridLayoutManager`, `StaggeredGridLayoutManager`, installs both
   `OnScrollListener` and `OnLayoutChangeListener` (so partial first pages don't stall),
   and cleans up on `ON_DESTROY`
 
@@ -563,7 +548,7 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 6. [**Caching**](docs/6.%20caching.md) — eviction strategies (MostRecent, Queued, TimeLimited,
    ContextWindow),
    composing
-   strategies, persistent L2 cache
+   strategies, persistent L2 cache (deprecated since 10.3.0)
 7. [**Prefetch**](docs/7.%20prefetch.md) — auto-pagination on scroll with
    `PaginatorPrefetchController`
 8. [**Logger**](docs/8.%20logger.md) — pluggable logging via `PaginatorLogger`
@@ -579,7 +564,9 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 14. [**Paginator vs CursorPaginator**](docs/14.%20paginator-vs-cursor.md) — full catalog of
     behavioural differences, removed APIs, signature-only changes, and a migration cheat sheet
 15. [**Reactive Sources**](docs/15.%20reactive-sources.md) — bridge Room/SQLDelight/Realm to a
-    paginator via `observe(...)` and `PaginatorReactiveCache` — point CRUD instead of `refreshAll`,
+    paginator: `observePages(viewModelScope) { page -> dao.observePage(...) }` backs every cached page with its own
+    live query (subscribed on load, unsubscribed on eviction), or `observe(...)` and
+    `PaginatorReactiveCache` apply change events as point CRUD instead of `refreshAll`,
     with a built-in `DiffUtil`-style `snapshotReactiveCache(...)` that diffs a `Flow<List<T>>` for
     you
 16. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)

@@ -71,7 +71,7 @@ class CursorQueuedPagingCache<K : Any, T>(
 
             val victim = insertionOrder.firstOrNull { self ->
                 self != justAdded &&
-                        cache.getStateOf(self) != null &&
+                        cache.peekStateOf(self) != null &&
                         (protectedSet == null || self !in protectedSet)
             } ?: break
 

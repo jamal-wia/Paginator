@@ -1,5 +1,10 @@
+// Exercises the deprecated L2 persistent cache, which stays tested until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset
 
+import com.jamal_aliev.paginator.core.extension.isErrorState
+import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
@@ -9,6 +14,15 @@ import com.jamal_aliev.paginator.offset.dsl.paginator
 import com.jamal_aliev.paginator.offset.extension.plus
 import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +30,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 class PaginatorBuilderTest {
 
@@ -246,5 +261,119 @@ class PaginatorBuilderTest {
             component: com.jamal_aliev.paginator.core.logger.LogComponent,
             message: String,
         ) = Unit
+    }
+
+    // =========================================================================
+    // livePages { } — the DSL form of observePages
+    // =========================================================================
+
+    private class LiveTable {
+        val rows = MutableStateFlow(List(20) { "r$it" })
+        fun observe(limit: Int, offset: Int): Flow<List<String>> = rows.map { it.drop(offset).take(limit) }
+    }
+
+    @Test
+    fun `livePages makes load optional and serves the pages from the live source`() = runTest {
+        val table = LiveTable()
+        val paginator = mutablePaginator<String>(capacity = 3) {
+            livePages(backgroundScope) { page -> table.observe(core.capacity, (page - 1) * core.capacity) }
+        }
+
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+        assertEquals(listOf("r3", "r4", "r5"), paginator.cache.getStateOf(2)!!.data)
+
+        table.rows.value = table.rows.value.toMutableList().also { it[4] = "edited" }
+        runCurrent()
+        assertEquals(listOf("r3", "edited", "r5"), paginator.cache.getStateOf(2)!!.data)
+    }
+
+    @Test
+    fun `livePageResults carries metadata into the pages`() = runTest {
+        class Total(val count: Int) : Metadata()
+
+        val table = LiveTable()
+        val paginator = mutablePaginator<String>(capacity = 3) {
+            livePageResults(backgroundScope) { page ->
+                table.observe(core.capacity, (page - 1) * core.capacity).map { LoadResult(it, Total(20)) }
+            }
+        }
+
+        paginator.jump(BookmarkInt(1))
+
+        assertEquals(20, (paginator.cache.getStateOf(1)!!.metadata as Total).count)
+    }
+
+    @Test
+    fun `livePages forwards onError`() = runTest {
+        val errors = mutableListOf<Int>()
+        val paginator = mutablePaginator<String>(capacity = 3) {
+            livePages(backgroundScope, onError = { page, _ -> errors += page }) { _ ->
+                flow {
+                    emit(listOf("a", "b", "c"))
+                    throw IllegalStateException("db closed")
+                }
+            }
+        }
+
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        runCurrent()
+
+        assertTrue(errors.isNotEmpty() && errors.all { it == 1 })
+    }
+
+    @Test
+    fun `a configured load takes over once the livePages scope is cancelled`() = runTest {
+        val table = LiveTable()
+        val scope = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
+        val paginator = mutablePaginator<String>(capacity = 3) {
+            load { page -> LoadResult(MutableList(3) { "load_p${page}_$it" }) }
+            livePages(scope) { page -> table.observe(core.capacity, (page - 1) * core.capacity) }
+        }
+        paginator.jump(BookmarkInt(1))
+        assertEquals("r0", paginator.cache.getStateOf(1)!!.data.first())
+
+        scope.cancel()
+        runCurrent()
+        paginator.goNextPage()
+
+        assertEquals("load_p2_0", paginator.cache.getStateOf(2)!!.data.first())
+    }
+
+    @Test
+    fun `without load a page loaded after the livePages scope ended is an explained error`() = runTest {
+        val table = LiveTable()
+        val scope = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
+        val paginator = mutablePaginator<String>(capacity = 3) {
+            livePages(scope) { page -> table.observe(core.capacity, (page - 1) * core.capacity) }
+        }
+        scope.cancel()
+        runCurrent()
+
+        paginator.jump(BookmarkInt(1))
+
+        val state = paginator.cache.getStateOf(1)
+        assertTrue(state.isErrorState())
+        assertTrue("no load { } block" in (state as OffsetPageState.Error).exception.message.orEmpty())
+    }
+
+    @Test
+    fun `livePages forwards settle`() = runTest {
+        val sources = mutableMapOf<Int, MutableStateFlow<List<String>>>()
+        fun src(page: Int) = sources.getOrPut(page) { MutableStateFlow(List(3) { "p${page}_$it" }) }
+        val paginator = mutablePaginator<String>(capacity = 3) {
+            livePages(backgroundScope, settle = 100.milliseconds) { page -> src(page) }
+        }
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+        runCurrent()
+
+        src(1).value = listOf("x", "y", "z")
+        advanceTimeBy(50)
+        runCurrent()
+        assertEquals("p1_0", paginator.cache.getStateOf(1)!!.data.first(), "held for the round")
+        advanceTimeBy(60)
+        runCurrent()
+        assertEquals("x", paginator.cache.getStateOf(1)!!.data.first())
     }
 }

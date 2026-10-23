@@ -446,7 +446,7 @@ class CursorPaginatorCrudExtTest {
     // =========================================================================
 
     @Test
-    fun `addElement while first page is still loading does not crash`() = runTest {
+    fun `addElement while first page is still loading returns false and keeps the loaded page intact`() = runTest {
         val gate = CompletableDeferred<Unit>()
         val paginator = MutableCursorPaginator<String, String>(
             core = CursorPagingCore(initialCapacity = 10),
@@ -459,17 +459,18 @@ class CursorPaginatorCrudExtTest {
         }
 
         val restartJob = launch { paginator.restart(silentlyLoading = true, silentlyResult = true) }
-        runCurrent() // let restart() run up to gate.await(), leaving the page in Progress
+        runCurrent() // let restart() run up to gate.await(): the anchorless first page is loading
 
-        val tail = paginator.core.tailCursor()!!
-        assertTrue(paginator.cache.getStateOf(tail.self)!!.isProgressState())
+        // No page exists yet — the loading state has no cursor key and is not cached.
+        assertTrue(paginator.core.isBootstrapping)
+        assertNull(paginator.core.tailCursor())
 
-        // Used to throw IllegalArgumentException: "data of target page state is not mutable".
-        val inserted = paginator.addElement("optimistic", silently = true)
-        assertTrue(inserted)
-        assertTrue(paginator.cache.getStateOf(tail.self)!!.data.contains("optimistic"))
+        // Used to throw "data of target page state is not mutable", and later to "succeed" while
+        // silently losing the element when the real first page replaced the placeholder.
+        assertFalse(paginator.addElement("optimistic", silently = true))
 
         gate.complete(Unit)
         restartJob.join()
+        assertEquals(listOf("p0_item0"), paginator.cache.getStateOf("p0")!!.data)
     }
 }

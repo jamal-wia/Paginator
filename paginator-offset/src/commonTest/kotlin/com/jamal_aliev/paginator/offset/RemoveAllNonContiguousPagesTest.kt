@@ -98,7 +98,7 @@ class RemoveAllNonContiguousPagesTest {
     }
 
     @Test
-    fun `single page island is re-labelled, not deleted`() = runTest {
+    fun `single page island is re-labelled - not deleted`() = runTest {
         val paginator = createTwoIslandPaginator(islandStart = 5, islandLen = 1)
 
         paginator.removeAll(silently = true) { it.startsWith("p2_") }

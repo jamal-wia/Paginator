@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset.extension
 
 import com.jamal_aliev.paginator.offset.Paginator
@@ -47,6 +50,12 @@ import com.jamal_aliev.paginator.offset.page.OffsetPageState
  *   visible without a jump. When `null` no snapshot is emitted.
  * @return The number of pages actually inserted into L1 (skipped duplicates are not counted).
  */
+@Deprecated(
+    message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+        "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+        "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+        "and bridge it with observePages() or observe() instead.",
+)
 suspend fun <T> Paginator<T>.warmUpFromPersistent(pageRange: IntRange? = null): Int {
     val pc: PersistentPagingCache<T> = core.persistentCache ?: return 0
 

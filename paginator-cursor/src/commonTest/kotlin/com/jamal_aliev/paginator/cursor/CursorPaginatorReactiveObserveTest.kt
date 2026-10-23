@@ -654,7 +654,7 @@ class CursorPaginatorReactiveObserveTest {
     }
 
     @Test
-    fun `Inserted Tail overflow is dropped by default (no bookmarkFactory)`() = runTest {
+    fun `Inserted Tail overflow is dropped by default - no bookmarkFactory`() = runTest {
         val paginator = populatedPaginator(IntBackend(pageCount = 2))
         val source = FakeReactiveCache()
         val job = paginator.observe(

@@ -46,7 +46,7 @@ class CursorAddElementOverflowTest {
     }
 
     @Test
-    fun `addElement with a bookmarkFactory creates a same-class tail page (default initPageState)`() = runTest {
+    fun `addElement with a bookmarkFactory creates a same-class tail page - default initPageState`() = runTest {
         val paginator = populated(pageCount = 1, capacity = 3) // p0 = [p0_item0..2], full, genuine tail
         val sourceId = paginator.cache.getStateOf("p0")!!.id
 
@@ -65,7 +65,7 @@ class CursorAddElementOverflowTest {
     }
 
     @Test
-    fun `addElement without a bookmarkFactory drops the tail overflow (cursor cannot mint self)`() = runTest {
+    fun `addElement without a bookmarkFactory drops the tail overflow - cursor cannot mint self`() = runTest {
         val paginator = populated(pageCount = 1, capacity = 3)
 
         // No bookmarkFactory → the documented cursor exception: overflow is dropped, no page minted.
@@ -127,7 +127,7 @@ class CursorAddElementOverflowTest {
     }
 
     @Test
-    fun `created tail page uses the configured success initializer (custom subclass preserved)`() = runTest {
+    fun `created tail page uses the configured success initializer - custom subclass preserved`() = runTest {
         val paginator = populated(pageCount = 1, capacity = 3)
         paginator.core.initializerSuccessPage = { bookmark, data, _ -> MySuccess(bookmark, data) }
 

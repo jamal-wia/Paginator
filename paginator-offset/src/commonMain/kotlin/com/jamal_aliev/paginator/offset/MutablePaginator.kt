@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.core.extension.isProgressState
@@ -96,6 +99,12 @@ open class MutablePaginator<T>(
      * Note: the snapshot reflects the state at the moment of the read. Concurrent CRUD
      * or [flush] calls may change the underlying set immediately after.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observePages() or observe() instead.",
+    )
     val affectedPages: Set<Int>
         get() = _affectedPages.value
 
@@ -106,6 +115,12 @@ open class MutablePaginator<T>(
      * Always `false` when [PagingCore.persistentCache] is `null`, since unpersisted
      * changes are meaningless without an L2 backend.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observePages() or observe() instead.",
+    )
     val hasPendingFlush: Boolean
         get() = core.persistentCache != null && _affectedPages.value.isNotEmpty()
 
@@ -207,9 +222,17 @@ open class MutablePaginator<T>(
                 indexOfRemoved + 1 < pages.size &&
                         pages[indexOfRemoved + 1] == pageToRemove + 1 -> Unit
 
-                pageToRemove == 1 -> core.findNearContextPage()
+                // A re-anchored window sits somewhere new: realign the bookmark cursor so
+                // jumpForward / jumpBack resume from there, as after a jump or a refresh.
+                pageToRemove == 1 -> {
+                    core.findNearContextPage()
+                    if (cache.isStarted) syncBookmarkIndex(cache.startContextPage)
+                }
 
-                else -> core.findNearContextPage(pageToRemove - 1, pageToRemove + 1)
+                else -> {
+                    core.findNearContextPage(pageToRemove - 1, pageToRemove + 1)
+                    if (cache.isStarted) syncBookmarkIndex(cache.startContextPage)
+                }
             }
         }
 
@@ -217,6 +240,12 @@ open class MutablePaginator<T>(
         // changed: the removed page is gone, the rest carry new labels. `subList` is a view
         // over the snapshot, not a copy.
         markAffectedAll(pages.subList(indexOfRemoved, pages.size))
+
+        // Pages above the removed one now carry their old neighbour's data under a new number —
+        // data a per-page live query (observePages) for that number never emitted. Signal it as a
+        // wholesale replacement so such queries re-run; otherwise a plain change.
+        if (cache.isStarted && indexOfRemoved + 1 < pages.size) core.markCacheReplaced()
+        else core.markCacheChanged()
 
         if (!silently) core.snapshot()
         return removedPageState
@@ -259,6 +288,7 @@ open class MutablePaginator<T>(
         markAffected(page)
 
         if (isDirty) core.markDirty(page)
+        core.markCacheChanged()
 
         if (!silently) snapshotIfPageVisible(page)
     }
@@ -337,6 +367,7 @@ open class MutablePaginator<T>(
         }
 
         if (isDirty) core.markDirty(page)
+        core.markCacheChanged()
 
         if (!silently) {
             if (cache.startContextPage != startBefore || cache.endContextPage != endBefore) {
@@ -514,6 +545,7 @@ open class MutablePaginator<T>(
         }
 
         if (isDirty) core.markDirty(targetPage)
+        core.markCacheChanged()
 
         if (!silently) snapshotAfterMutation(targetPage)
     }
@@ -597,10 +629,14 @@ open class MutablePaginator<T>(
             && (!core.isFilledSuccessState(cache.getStateOf(cache.startContextPage))
                     || !core.isFilledSuccessState(cache.getStateOf(cache.endContextPage)))
         ) {
+            val startBefore: Int = cache.startContextPage
             core.findNearContextPage(
                 startPoint = cache.startContextPage,
                 endPoint = cache.endContextPage
             )
+            if (cache.isStarted && cache.startContextPage != startBefore) {
+                syncBookmarkIndex(cache.startContextPage)
+            }
             core.snapshot()
         } else {
             snapshotIfPageVisible(affectedPage)
@@ -626,6 +662,12 @@ open class MutablePaginator<T>(
      * No-op when [PagingCore.persistentCache] is `null` or when no CRUD
      * operations have been performed since the last flush.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observePages() or observe() instead.",
+    )
     suspend fun flush() {
         val pagingCache: PersistentPagingCache<T> = core.persistentCache ?: return
         val pagesToFlush: Set<Int> = drainAffectedPages()

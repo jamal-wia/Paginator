@@ -21,6 +21,14 @@ public class PrefetchBinding<C> internal constructor(
 
 
 /** Cursor-paginator counterpart of [Paginator.bindPrefetchToRecyclerView]. */
+@Deprecated(
+    message = "bindPrefetchToRecyclerView is deprecated since 10.3.0: use bindPaginated, which takes the same " +
+        "arguments and tracks dataItemCount from the paginator itself, or prefetchController + " +
+        "bindToRecyclerView when the controller lives elsewhere (e.g. in a ViewModel).",
+    replaceWith = ReplaceWith(
+        "bindPaginated(recyclerView = recyclerView, lifecycleOwner = lifecycleOwner, headerCount = headerCount, footerCount = footerCount, options = options, enableCacheFlow = enableCacheFlow, loadGuard = loadGuard, onPrefetchError = onPrefetchError, preserveScroll = preserveScroll, scrollKey = scrollKey)",
+    ),
+)
 public fun <K : Any, T> CursorPaginator<K, T>.bindPrefetchToRecyclerView(
     recyclerView: RecyclerView,
     lifecycleOwner: LifecycleOwner,
@@ -55,6 +63,15 @@ public fun <K : Any, T> CursorPaginator<K, T>.bindPrefetchToRecyclerView(
 }
 
 /** Cursor-paginator [Int]-overload of [bindPrefetchToRecyclerView]. */
+@Deprecated(
+    message = "bindPrefetchToRecyclerView is deprecated since 10.3.0: use bindPaginated, which takes the same " +
+        "arguments and tracks dataItemCount from the paginator itself, or prefetchController + " +
+        "bindToRecyclerView when the controller lives elsewhere (e.g. in a ViewModel).",
+    replaceWith = ReplaceWith(
+        "bindPaginated(recyclerView = recyclerView, lifecycleOwner = lifecycleOwner, headerCount = headerCount, footerCount = footerCount, options = options, enableCacheFlow = enableCacheFlow, loadGuard = loadGuard, onPrefetchError = onPrefetchError, preserveScroll = preserveScroll, scrollKey = scrollKey)",
+    ),
+)
+@Suppress("DEPRECATION") // delegates to the deprecated lambda overload above
 public fun <K : Any, T> CursorPaginator<K, T>.bindPrefetchToRecyclerView(
     recyclerView: RecyclerView,
     lifecycleOwner: LifecycleOwner,

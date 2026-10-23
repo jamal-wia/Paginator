@@ -93,7 +93,7 @@ class QueuedPagingCache<T>(
 
             val victim = insertionOrder.firstOrNull { page ->
                 page != justAddedPage &&
-                        cache.getStateOf(page) != null &&
+                        cache.peekStateOf(page) != null &&
                         (protectedRange == null || page !in protectedRange)
             } ?: break
 

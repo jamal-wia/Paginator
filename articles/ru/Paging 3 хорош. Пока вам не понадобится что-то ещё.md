@@ -202,7 +202,7 @@ KMP-артефакт:
 ```kotlin
 commonMain.dependencies {
     // Привязываем все артефакты Paginator к одной версии через BOM
-  implementation(platform("io.github.jamal-wia:paginator-bom:10.2.5"))
+  implementation(platform("io.github.jamal-wia:paginator-bom:10.3.0"))
     // Подключаем нужную стратегию; обе тянут paginator-core транзитивно
     implementation("io.github.jamal-wia:paginator-offset")
     // implementation("io.github.jamal-wia:paginator-cursor")
@@ -255,7 +255,10 @@ paginator.uiState.collect { state ->
 Дальше у библиотеки два уровня глубины. Вы можете не спускаться ниже этого сетапа — и получить
 полноценную пагинацию со всеми состояниями. А можете, когда понадобится, подключить дополнительное:
 
-- Двухуровневый кэш (L1 в памяти + ваш L2, обычно Room).
+- Двухуровневый кэш (L1 в памяти + ваш L2, обычно Room). *С 10.3.0 L2 объявлен устаревшим —
+  вместо него используйте Room как единственный источник правды через реактивный источник.*
+- Живые страницы из БД — `observePages(viewModelScope) { page -> dao.observeUsers(limit, offset) }` держит по одному
+  Room-запросу на каждую страницу в кэше: подписка при загрузке, отписка при вытеснении.
 - Стратегии вытеснения L1 — LRU, FIFO, TTL, sliding window, композируемые через оператор `+`.
 - Транзакции с rollback через `transaction { }`.
 - Dirty pages — тихое фоновое обновление страницы при следующей навигации.
@@ -289,11 +292,11 @@ Paginator закрывает всё перечисленное из коробк
 
 Если пагинация — регулярная часть ваших задач, попробуйте. Репозиторий живой,
 на [Maven Central](https://central.sonatype.com/artifact/io.github.jamal-wia/paginator-core),
-зрелый (текущая версия 10.2.5), покрыт документацией. Обратная связь и звёзды — помогают.
+зрелый (текущая версия 10.3.0), покрыт документацией. Обратная связь и звёзды — помогают.
 
 - **GitHub:** [github.com/jamal-wia/Paginator](https://github.com/jamal-wia/Paginator)
-- **Maven Central:** `io.github.jamal-wia:paginator-offset:10.2.5` /
-  `paginator-cursor:10.2.5` (или через `paginator-bom`)
+- **Maven Central:** `io.github.jamal-wia:paginator-offset:10.3.0` /
+  `paginator-cursor:10.3.0` (или через `paginator-bom`)
 - **Telegram-сообщество:** [t.me/+0eeAM-EJpqgwNGZi](https://t.me/+0eeAM-EJpqgwNGZi)
 - **Документация:** по разделам в [docs/](https://github.com/jamal-wia/Paginator/tree/master/docs)
 

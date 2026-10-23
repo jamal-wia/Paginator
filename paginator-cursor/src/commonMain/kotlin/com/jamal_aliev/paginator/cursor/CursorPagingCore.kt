@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.cursor
 
 import com.jamal_aliev.paginator.core.extension.isErrorState
@@ -5,21 +8,28 @@ import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
+import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.CursorPagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
+import com.jamal_aliev.paginator.cursor.cache.UntrackedCursorPagingCache
 import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorBootstrapErrorPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorBootstrapProgressPage
 import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorErrorPage
 import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorProgressPage
 import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorSuccessPage
+import com.jamal_aliev.paginator.cursor.page.CursorBootstrapPageState
 import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.serialization.CursorPageEntry
 import com.jamal_aliev.paginator.cursor.serialization.CursorPagingCoreSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonElement
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
@@ -50,6 +60,12 @@ import kotlin.contracts.contract
  */
 open class CursorPagingCore<K : Any, T>(
     val cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>(),
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     val persistentCache: CursorPersistentPagingCache<K, T>? = null,
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {
@@ -66,7 +82,7 @@ open class CursorPagingCore<K : Any, T>(
 
     /** All cached page states in head-to-tail order. */
     val states: List<CursorPageState<K, T>>
-        get() = cache.cursors.mapNotNull { cache.getStateOf(it.self) }
+        get() = cache.cursors.mapNotNull { readState(it.self) }
 
     /** The number of pages currently in the cache. */
     val size: Int get() = cache.size
@@ -231,7 +247,7 @@ open class CursorPagingCore<K : Any, T>(
         }
         // Resolve every cached state once — it is read per cursor below and again in the fallback,
         // so materialise it a single time instead of re-looking-up per pass.
-        val orderedStates: List<CursorPageState<K, T>?> = ordered.map { cache.getStateOf(it.self) }
+        val orderedStates: List<CursorPageState<K, T>?> = ordered.map { readState(it.self) }
 
         // Indices (in head-to-tail order) of pages that are currently filled-success.
         val validIndices = ArrayList<Int>()
@@ -281,7 +297,35 @@ open class CursorPagingCore<K : Any, T>(
     }
 
     /** Retrieves the cached [PageState] by its `self` key. */
-    fun getStateOf(self: K): CursorPageState<K, T>? = cache.getStateOf(self)
+    fun getStateOf(self: K): CursorPageState<K, T>? = readState(self)
+
+    /**
+     * While `true`, the core's own reads ([getStateOf], [states], the context walks and everything
+     * built on them — [snapshot], [findNearContextCursor], context expansion) go through
+     * [CursorPagingCache.peekStateOf], so they do not count as a use of the pages. Set only around
+     * bookkeeping that is not user access (applying a reactive source's events), under the
+     * navigation lock — see [withUntrackedReads].
+     */
+    @PublishedApi
+    internal var untrackedReads: Boolean = false
+
+    @PublishedApi
+    internal fun readState(self: K): CursorPageState<K, T>? =
+        if (untrackedReads) cache.peekStateOf(self) else cache.getStateOf(self)
+
+    /** [cache] seen through [UntrackedCursorPagingCache], used by `CursorPaginator.cache` in untracked mode. */
+    internal val untrackedCache: CursorPagingCache<K, T> by lazy { UntrackedCursorPagingCache(cache) }
+
+    /** Runs [block] with [untrackedReads] on. Not reentrant-safe across coroutines: hold the navigation lock. */
+    internal inline fun <R> withUntrackedReads(block: () -> R): R {
+        val previous = untrackedReads
+        untrackedReads = true
+        try {
+            return block()
+        } finally {
+            untrackedReads = previous
+        }
+    }
 
     /** Retrieves the cached [CursorBookmark<K>] by its `self` key. */
     fun getCursorOf(self: K): CursorBookmark<K>? = cache.getCursorOf(self)
@@ -290,6 +334,12 @@ open class CursorPagingCore<K : Any, T>(
      * Attempts to load a page from the [persistentCache] (L2) and promote it
      * into the in-memory [cache] (L1).
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     suspend fun loadFromPersistentCache(self: K): Pair<CursorBookmark<K>, CursorPageState<K, T>>? {
         val pc = persistentCache ?: return null
         val persisted = pc.load(self) ?: return null
@@ -383,7 +433,7 @@ open class CursorPagingCore<K : Any, T>(
         while (true) {
             val nextCursor: CursorBookmark<K> =
                 next.invoke(currentState, currentCursor) ?: return currentState to currentCursor
-            val nextState: CursorPageState<K, T>? = cache.getStateOf(nextCursor.self)
+            val nextState: CursorPageState<K, T>? = readState(nextCursor.self)
             if (nextState != null && predicate.invoke(nextState)) {
                 currentState = nextState
                 currentCursor = nextCursor
@@ -407,16 +457,25 @@ open class CursorPagingCore<K : Any, T>(
 
     /** Forces a re-emission of the current cache into [asFlow] subscribers. */
     fun repeatCacheFlow() {
-        _cacheFlow.value = states
+        // Publishing the whole cache to asFlow() observers is not a use of every page: read it
+        // untracked, so an LRU order or a TTL timer is not reshaped on each navigation call.
+        _cacheFlow.value = withUntrackedReads { states }
     }
 
     // ── Snapshot ────────────────────────────────────────────────────────────
 
+    /**
+     * One published view of the paginator. [bootstrap] and [started] are captured together with
+     * [pages], so the cursor-keyed [snapshot], the [visibleSnapshot] and `uiState` all derive from
+     * the same moment.
+     */
     private data class SnapshotEmission<K : Any, T>(
         val version: Long,
         val pages: List<CursorPageState<K, T>>,
         val startCursor: CursorBookmark<K>?,
         val endCursor: CursorBookmark<K>?,
+        val bootstrap: PageState<T>? = null,
+        val started: Boolean = false,
     )
 
     private val _snapshot = MutableStateFlow(SnapshotEmission<K, T>(0L, emptyList(), null, null))
@@ -424,8 +483,64 @@ open class CursorPagingCore<K : Any, T>(
     /**
      * A [Flow] emitting the list of [PageState] objects within the current
      * context window. Mirrors [PagingCore.snapshot].
+     *
+     * Only cursor-keyed pages appear here. While the anchorless first page is loading (or after
+     * that load failed) the cache is empty and so is this list — use [visibleSnapshot] or
+     * `uiState` to render that phase.
      */
     val snapshot: Flow<List<CursorPageState<K, T>>> = _snapshot.map { it.pages }
+
+    /**
+     * What the UI should show: the [snapshot] pages, or — during the anchorless first load — the
+     * single [bootstrapState] page (a [PageState.ProgressState] while loading, a
+     * [PageState.ErrorState] after a failure). Emits exactly when [snapshot] does.
+     */
+    val visibleSnapshot: Flow<List<PageState<T>>> = _snapshot.map { it.visible() }
+
+    /** [visibleSnapshot] paired with whether the paginator counted as started at that emission. */
+    internal val visibleEmissions: Flow<Pair<List<PageState<T>>, Boolean>> =
+        _snapshot.map { it.visible() to it.started }
+
+    private fun SnapshotEmission<K, T>.visible(): List<PageState<T>> =
+        bootstrap?.let { listOf(it) } ?: pages
+
+    // ── Bootstrap (anchorless first load) ───────────────────────────────────
+
+    private val _bootstrapState = MutableStateFlow<PageState<T>?>(null)
+
+    /**
+     * State of the **anchorless first load** — `restart()` without `initialCursor`, or the implicit
+     * bootstrap of `goNextPage()`. There is no cursor key until the source answers, so this phase
+     * lives outside the key-addressed cache:
+     *
+     * - `null` — no anchorless first load is pending (not started yet, or the first page is cached);
+     * - a [PageState.ProgressState] — `load(null)` is in flight;
+     * - a [PageState.ErrorState] — it failed; the cache stays empty until a retry succeeds.
+     */
+    val bootstrapState: StateFlow<PageState<T>?> = _bootstrapState.asStateFlow()
+
+    /** `true` while the anchorless first page is being loaded. */
+    val isBootstrapping: Boolean
+        get() = _bootstrapState.value is PageState.ProgressState
+
+    /**
+     * Sets [bootstrapState]. With [emit], also publishes it (the cache is empty in this phase, so
+     * the keyed part of the emission is empty too); otherwise the next [snapshot] call carries it.
+     */
+    internal fun setBootstrapState(state: PageState<T>?, emit: Boolean) {
+        _bootstrapState.value = state
+        if (emit) {
+            val prev = _snapshot.value
+            _snapshot.value = SnapshotEmission(
+                version = prev.version + 1,
+                pages = emptyList(),
+                startCursor = null,
+                endCursor = null,
+                bootstrap = state,
+                started = state != null || isStarted,
+            )
+        }
+    }
 
     /**
      * Returns the `(startCursor, endCursor)` pair currently visible in the last
@@ -469,8 +584,8 @@ open class CursorPagingCore<K : Any, T>(
             if (!isStarted) return@run null
             val start = startContextCursor ?: return@run null
             val end = endContextCursor ?: return@run null
-            val pivotBackwardState = cache.getStateOf(start.self) ?: return@run null
-            val pivotForwardState = cache.getStateOf(end.self) ?: return@run null
+            val pivotBackwardState = readState(start.self) ?: return@run null
+            val pivotForwardState = readState(end.self) ?: return@run null
 
             val backwardExpand = walkWhile(
                 pivotBackwardState, start,
@@ -495,7 +610,15 @@ open class CursorPagingCore<K : Any, T>(
 
         range ?: return
         val prev = _snapshot.value
-        _snapshot.value = SnapshotEmission(prev.version + 1, scan(range), range.first, range.second)
+        val bootstrap: PageState<T>? = _bootstrapState.value
+        _snapshot.value = SnapshotEmission(
+            version = prev.version + 1,
+            pages = scan(range),
+            startCursor = range.first,
+            endCursor = range.second,
+            bootstrap = bootstrap,
+            started = isStarted || bootstrap != null,
+        )
     }
 
     /**
@@ -518,12 +641,26 @@ open class CursorPagingCore<K : Any, T>(
         val result = ArrayList<CursorPageState<K, T>>()
         var current: CursorBookmark<K>? = start
         while (current != null && visited.add(current.self)) {
-            val state = cache.getStateOf(current.self)
+            val state = readState(current.self)
             if (state != null) result.add(state)
             if (current.self == end.self) break
             current = cache.walkForward(current)
         }
         return result
+    }
+
+    // ── Wholesale replacement ───────────────────────────────────────────────
+
+    /**
+     * Bumped whenever the cache content is **replaced wholesale** rather than changed page by page
+     * — [restoreState] (also when silent), a transaction rollback and [release]. Consumers that keep
+     * state in sync with the cache (the reactive bridge of `observe`) treat it as "every page may
+     * now hold foreign data" and resynchronise.
+     */
+    internal val cacheReplacements = MutableStateFlow(0L)
+
+    internal fun markCacheReplaced() {
+        cacheReplacements.update { it + 1 }
     }
 
     // ── Dirty tracking ──────────────────────────────────────────────────────
@@ -613,6 +750,18 @@ open class CursorPagingCore<K : Any, T>(
         }
 
     /**
+     * Factory for the Progress state of the **anchorless first load** (see [bootstrapState]). The
+     * keyed [initializerProgressPage] cannot be used there because no bookmark exists yet. Override
+     * it to show a skeleton (e.g. a [CursorBootstrapPageState.Progress] subclass with placeholders).
+     */
+    var initializerBootstrapProgressPage: InitializerCursorBootstrapProgressPage<T> =
+        { CursorBootstrapPageState.Progress() }
+
+    /** Factory for the Error state of a failed **anchorless first load** (see [bootstrapState]). */
+    var initializerBootstrapErrorPage: InitializerCursorBootstrapErrorPage<T> =
+        { exception: Exception -> CursorBootstrapPageState.Error(exception) }
+
+    /**
      * Cursor-based pagination does not support in-place `resize` the way the
      * offset variant does: there is no numeric page index to redistribute items
      * into, and every page is keyed by a server-provided `self`. Change
@@ -628,12 +777,14 @@ open class CursorPagingCore<K : Any, T>(
         silently: Boolean = false,
     ) {
         cache.release(capacity, silently)
+        _bootstrapState.value = null
         if (!silently) {
             val prev = _snapshot.value
             _snapshot.value = SnapshotEmission(prev.version + 1, emptyList(), null, null)
         }
         this.capacity = capacity
         _dirtyCursors.clear()
+        markCacheReplaced()
     }
 
     // ── Serialization ───────────────────────────────────────────────────────
@@ -650,7 +801,7 @@ open class CursorPagingCore<K : Any, T>(
             if (inContext != null) allCursors.filter { it.self in inContext } else allCursors
 
         val entries = filtered.mapNotNull { cursor ->
-            val state = cache.getStateOf(cursor.self) ?: return@mapNotNull null
+            val state = readState(cursor.self) ?: return@mapNotNull null
             val wasDirty = isDirty(cursor.self)
                     || state.isErrorState()
                     || state.isProgressState()
@@ -685,6 +836,7 @@ open class CursorPagingCore<K : Any, T>(
 
         cache.clear()
         _dirtyCursors.clear()
+        _bootstrapState.value = null
 
         fromSnapshot.entries.forEach { entry ->
             val selfKey: K = selfDecoder.invoke(entry.selfKey)
@@ -706,6 +858,7 @@ open class CursorPagingCore<K : Any, T>(
             fromSnapshot.startContextSelf?.let(selfDecoder)?.let { cache.getCursorOf(it) }
         endContextCursor =
             fromSnapshot.endContextSelf?.let(selfDecoder)?.let { cache.getCursorOf(it) }
+        markCacheReplaced()
 
         if (!silently) snapshot()
     }

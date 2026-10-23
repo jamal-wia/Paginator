@@ -49,6 +49,29 @@ interface PagingCache<T> {
     /** Retrieves the cached state for [page], or `null` if not cached. */
     fun getStateOf(page: Int): OffsetPageState<T>?
 
+    /**
+     * Replaces the state of a page **already in the cache** without counting the write as a use of
+     * the page — for background updates that did not come from the user, such as a live database
+     * query of `observePages` re-emitting.
+     *
+     * Eviction strategies that track usage override it so the write leaves their bookkeeping
+     * untouched: [MostRecentPagingCache][com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache]
+     * keeps the page's place in its recency order and
+     * [TimeLimitedPagingCache][com.jamal_aliev.paginator.offset.cache.eviction.TimeLimitedPagingCache]
+     * keeps its TTL timer. Strategies delegating with `by` forward it to the next cache in the chain.
+     * The default is a plain [setState], which is correct for any cache that tracks no usage.
+     */
+    fun setStateUntracked(state: OffsetPageState<T>, silently: Boolean = false) {
+        setState(state, silently)
+    }
+
+    /**
+     * Reads the state of [page] like [getStateOf] but without counting the read as a use of the
+     * page (see [setStateUntracked]) — for internal checks that are not user access. The default is
+     * a plain [getStateOf].
+     */
+    fun peekStateOf(page: Int): OffsetPageState<T>? = getStateOf(page)
+
     /** Returns a single element at [index] within [page], or `null` if not found. */
     fun getElement(page: Int, index: Int): T?
 

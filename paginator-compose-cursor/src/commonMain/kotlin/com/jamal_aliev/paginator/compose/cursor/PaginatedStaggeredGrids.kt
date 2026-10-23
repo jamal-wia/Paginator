@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jamal_aliev.paginator.compose.core.PaginatedSlots
 import com.jamal_aliev.paginator.compose.core.PaginatorLoadingIndicator
 import com.jamal_aliev.paginator.compose.core.PaginatorScrollEdgeIndicators
 import com.jamal_aliev.paginator.core.page.PageState
@@ -44,14 +45,13 @@ fun <K : Any, T> PaginatedLazyVerticalStaggeredGrid(
     loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
     edgeGatedIndicators: Boolean = true,
     contentType: (item: T) -> Any? = { null },
-    prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
-    appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
-    loadingContent: (@Composable () -> Unit)? = null,
-    emptyContent: (@Composable () -> Unit)? = null,
-    errorContent: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    slots: PaginatedSlots<T> = PaginatedSlots(),
     key: (item: T) -> Any,
     itemContent: @Composable LazyStaggeredGridItemScope.(item: T) -> Unit,
 ) {
+    val loadingContent = slots.loadingContent
+    val emptyContent = slots.emptyContent
+    val errorContent = slots.errorContent
     val uiState by paginator.uiState.collectAsStateWithLifecycle(initialValue = PaginatorUiState.Idle)
 
     when (val current = uiState) {
@@ -86,11 +86,10 @@ fun <K : Any, T> PaginatedLazyVerticalStaggeredGrid(
     PaginatorScrollEdgeIndicators(
         uiState = uiState,
         scrollState = state,
+        slots = slots,
         modifier = modifier,
         orientation = Orientation.Vertical,
         edgeGated = edgeGatedIndicators,
-        prependIndicator = prependIndicator,
-        appendIndicator = appendIndicator,
     ) {
         LazyVerticalStaggeredGrid(
             columns = columns,
@@ -111,11 +110,145 @@ fun <K : Any, T> PaginatedLazyVerticalStaggeredGrid(
     }
 }
 
+/** Pre-10.3.0 signature with the slots as separate parameters. */
+@Deprecated(
+    message = "Pass the indicator and state slots through `slots = PaginatedSlots(...)`.",
+)
+@Composable
+fun <K : Any, T> PaginatedLazyVerticalStaggeredGrid(
+    paginator: CursorPaginator<K, T>,
+    columns: StaggeredGridCells,
+    modifier: Modifier = Modifier,
+    state: LazyStaggeredGridState = rememberLazyStaggeredGridState(),
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    verticalItemSpacing: Dp = 0.dp,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(0.dp),
+    prefetch: PrefetchOptions? = PrefetchOptions(),
+    onPrefetchError: ((Exception) -> Unit)? = null,
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
+    edgeGatedIndicators: Boolean = true,
+    contentType: (item: T) -> Any? = { null },
+    prependIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
+    appendIndicator: @Composable (PageState.ProgressState<T>) -> Unit = { PaginatorLoadingIndicator() },
+    loadingContent: (@Composable () -> Unit)? = null,
+    emptyContent: (@Composable () -> Unit)? = null,
+    errorContent: (@Composable (PageState.ErrorState<T>) -> Unit)? = null,
+    key: (item: T) -> Any,
+    itemContent: @Composable LazyStaggeredGridItemScope.(item: T) -> Unit,
+) {
+    PaginatedLazyVerticalStaggeredGrid(
+        paginator = paginator,
+        columns = columns,
+        modifier = modifier,
+        state = state,
+        contentPadding = contentPadding,
+        verticalItemSpacing = verticalItemSpacing,
+        horizontalArrangement = horizontalArrangement,
+        prefetch = prefetch,
+        onPrefetchError = onPrefetchError,
+        loadGuard = loadGuard,
+        edgeGatedIndicators = edgeGatedIndicators,
+        contentType = contentType,
+        slots = PaginatedSlots(
+            prependIndicator = prependIndicator,
+            appendIndicator = appendIndicator,
+            loadingContent = loadingContent,
+            emptyContent = emptyContent,
+            errorContent = errorContent,
+        ),
+        key = key,
+        itemContent = itemContent,
+    )
+}
+
 /**
  * Horizontal turnkey, scroll-anchor-safe paginated `LazyHorizontalStaggeredGrid` for a
  * [CursorPaginator]. The boundary indicators animate on the start / end edge. [key] is required for
  * scroll-anchor preservation.
  */
+@Composable
+fun <K : Any, T> PaginatedLazyHorizontalStaggeredGrid(
+    paginator: CursorPaginator<K, T>,
+    rows: StaggeredGridCells,
+    modifier: Modifier = Modifier,
+    state: LazyStaggeredGridState = rememberLazyStaggeredGridState(),
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    horizontalItemSpacing: Dp = 0.dp,
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(0.dp),
+    prefetch: PrefetchOptions? = PrefetchOptions(),
+    onPrefetchError: ((Exception) -> Unit)? = null,
+    loadGuard: CursorLoadGuard<K, T> = CursorLoadGuard.allowAll(),
+    edgeGatedIndicators: Boolean = true,
+    contentType: (item: T) -> Any? = { null },
+    slots: PaginatedSlots<T> = PaginatedSlots(),
+    key: (item: T) -> Any,
+    itemContent: @Composable LazyStaggeredGridItemScope.(item: T) -> Unit,
+) {
+    val loadingContent = slots.loadingContent
+    val emptyContent = slots.emptyContent
+    val errorContent = slots.errorContent
+    val uiState by paginator.uiState.collectAsStateWithLifecycle(initialValue = PaginatorUiState.Idle)
+
+    when (val current = uiState) {
+        is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }
+        is PaginatorUiState.Empty -> if (emptyContent != null) { emptyContent(); return }
+        is PaginatorUiState.Error -> if (errorContent != null) { errorContent(current.state); return }
+        else -> Unit
+    }
+
+    val items = (uiState as? PaginatorUiState.Content<T>)?.items.orEmpty()
+
+    if (prefetch != null) {
+        val controller = paginator.rememberPrefetchController(
+            prefetchDistance = prefetch.prefetchDistance,
+            enableBackwardPrefetch = prefetch.enableBackwardPrefetch,
+            silentlyLoading = prefetch.silentlyLoading,
+            silentlyResult = prefetch.silentlyResult,
+            enabled = prefetch.enabled,
+            cancelOnDispose = prefetch.cancelOnDispose,
+            loadGuard = { cursor, st -> loadGuard(cursor, st) },
+            onPrefetchError = onPrefetchError,
+        )
+        controller.BindToLazyStaggeredGrid(
+            gridState = state,
+            dataItemCount = items.size,
+            headerCount = 0,
+            footerCount = 0,
+            scrollSampleMillis = prefetch.scrollSampleMillis,
+        )
+    }
+
+    PaginatorScrollEdgeIndicators(
+        uiState = uiState,
+        scrollState = state,
+        slots = slots,
+        modifier = modifier,
+        orientation = Orientation.Horizontal,
+        edgeGated = edgeGatedIndicators,
+    ) {
+        LazyHorizontalStaggeredGrid(
+            rows = rows,
+            modifier = Modifier.fillMaxSize(),
+            state = state,
+            contentPadding = contentPadding,
+            horizontalItemSpacing = horizontalItemSpacing,
+            verticalArrangement = verticalArrangement,
+        ) {
+            items(
+                count = items.size,
+                key = { index -> key(items[index]) },
+                contentType = { index -> contentType(items[index]) },
+            ) { index ->
+                itemContent(items[index])
+            }
+        }
+    }
+}
+
+/** Pre-10.3.0 signature with the slots as separate parameters. */
+@Deprecated(
+    message = "Pass the indicator and state slots through `slots = PaginatedSlots(...)`.",
+)
 @Composable
 fun <K : Any, T> PaginatedLazyHorizontalStaggeredGrid(
     paginator: CursorPaginator<K, T>,
@@ -142,61 +275,27 @@ fun <K : Any, T> PaginatedLazyHorizontalStaggeredGrid(
     key: (item: T) -> Any,
     itemContent: @Composable LazyStaggeredGridItemScope.(item: T) -> Unit,
 ) {
-    val uiState by paginator.uiState.collectAsStateWithLifecycle(initialValue = PaginatorUiState.Idle)
-
-    when (val current = uiState) {
-        is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }
-        is PaginatorUiState.Empty -> if (emptyContent != null) { emptyContent(); return }
-        is PaginatorUiState.Error -> if (errorContent != null) { errorContent(current.state); return }
-        else -> Unit
-    }
-
-    val items = (uiState as? PaginatorUiState.Content<T>)?.items.orEmpty()
-
-    if (prefetch != null) {
-        val controller = paginator.rememberPrefetchController(
-            prefetchDistance = prefetch.prefetchDistance,
-            enableBackwardPrefetch = prefetch.enableBackwardPrefetch,
-            silentlyLoading = prefetch.silentlyLoading,
-            silentlyResult = prefetch.silentlyResult,
-            enabled = prefetch.enabled,
-            cancelOnDispose = prefetch.cancelOnDispose,
-            loadGuard = { cursor, st -> loadGuard(cursor, st) },
-            onPrefetchError = onPrefetchError,
-        )
-        controller.BindToLazyStaggeredGrid(
-            gridState = state,
-            dataItemCount = items.size,
-            headerCount = 0,
-            footerCount = 0,
-            scrollSampleMillis = prefetch.scrollSampleMillis,
-        )
-    }
-
-    PaginatorScrollEdgeIndicators(
-        uiState = uiState,
-        scrollState = state,
+    PaginatedLazyHorizontalStaggeredGrid(
+        paginator = paginator,
+        rows = rows,
         modifier = modifier,
-        orientation = Orientation.Horizontal,
-        edgeGated = edgeGatedIndicators,
-        prependIndicator = prependIndicator,
-        appendIndicator = appendIndicator,
-    ) {
-        LazyHorizontalStaggeredGrid(
-            rows = rows,
-            modifier = Modifier.fillMaxSize(),
-            state = state,
-            contentPadding = contentPadding,
-            horizontalItemSpacing = horizontalItemSpacing,
-            verticalArrangement = verticalArrangement,
-        ) {
-            items(
-                count = items.size,
-                key = { index -> key(items[index]) },
-                contentType = { index -> contentType(items[index]) },
-            ) { index ->
-                itemContent(items[index])
-            }
-        }
-    }
+        state = state,
+        contentPadding = contentPadding,
+        horizontalItemSpacing = horizontalItemSpacing,
+        verticalArrangement = verticalArrangement,
+        prefetch = prefetch,
+        onPrefetchError = onPrefetchError,
+        loadGuard = loadGuard,
+        edgeGatedIndicators = edgeGatedIndicators,
+        contentType = contentType,
+        slots = PaginatedSlots(
+            prependIndicator = prependIndicator,
+            appendIndicator = appendIndicator,
+            loadingContent = loadingContent,
+            emptyContent = emptyContent,
+            errorContent = errorContent,
+        ),
+        key = key,
+        itemContent = itemContent,
+    )
 }
