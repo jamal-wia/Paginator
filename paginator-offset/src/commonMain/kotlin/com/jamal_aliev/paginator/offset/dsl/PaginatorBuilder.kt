@@ -13,10 +13,14 @@ import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
+import com.jamal_aliev.paginator.offset.extension.observePageResults
 import com.jamal_aliev.paginator.offset.initializer.InitializerErrorPage
 import com.jamal_aliev.paginator.offset.initializer.InitializerProgressPage
 import com.jamal_aliev.paginator.offset.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /**
  * Marker that scopes lambdas inside the paginator-builder DSL so that nested
@@ -67,7 +71,6 @@ inline fun <T> paginator(
  *     load { page -> api.getUsers(page) }
  *
  *     cache = MostRecentPagingCache(maxSize = 50) + TimeLimitedPagingCache(ttl = 5.minutes)
- *     persistentCache = roomPagingCache
  *
  *     finalPage = 100
  *     bookmarks(1, 10, 50, 100)
@@ -83,9 +86,19 @@ inline fun <T> paginator(
  *
  * @param capacity Items expected per page; default [DEFAULT_CAPACITY].
  *   Pass [PagingCore.UNLIMITED_CAPACITY] (0) to disable capacity checks.
- * @param block DSL configuration block. The [MutablePaginatorBuilder.load] call is required.
+ * With [MutablePaginatorBuilder.livePages] the pages come from a live database query per page
+ * instead of `load { }`:
+ *
+ * ```kotlin
+ * val users = mutablePaginator<User>(capacity = 20) {
+ *     livePages(viewModelScope) { page -> dao.observeUsers(core.capacity, (page - 1) * core.capacity) }
+ * }
+ * ```
+ *
+ * @param block DSL configuration block. Either [MutablePaginatorBuilder.load] or
+ *   [MutablePaginatorBuilder.livePages] / [MutablePaginatorBuilder.livePageResults] is required.
  * @return A fully wired [MutablePaginator].
- * @throws IllegalStateException If [MutablePaginatorBuilder.load] was not called inside [block].
+ * @throws IllegalStateException If neither `load { }` nor `livePages { }` was configured.
  *
  * @see paginator
  */
@@ -263,11 +276,78 @@ class MutablePaginatorBuilder<T> @PublishedApi internal constructor(
     capacity: Int,
 ) : BasePaginatorBuilder<T>(capacity) {
 
+    private class LivePagesConfig<T>(
+        val scope: CoroutineScope,
+        val onError: ((page: Int, error: Throwable) -> Unit)?,
+        val source: Paginator<T>.(page: Int) -> Flow<LoadResult<T>>,
+    )
+
+    private var livePages: LivePagesConfig<T>? = null
+
+    /**
+     * Backs every cached page with its own live query — the DSL form of
+     * [observePages][com.jamal_aliev.paginator.offset.extension.observePages]:
+     *
+     * ```kotlin
+     * val users = mutablePaginator<User>(capacity = 20) {
+     *     livePages(viewModelScope) { page ->
+     *         dao.observeUsers(limit = core.capacity, offset = (page - 1) * core.capacity)
+     *     }
+     * }
+     * ```
+     *
+     * The subscriptions start when the paginator is built and live as long as [scope]. With
+     * `livePages` the [load] block becomes optional: the pages come from [source]. A configured
+     * `load { }` is only used again once [scope] is cancelled; without one, a load attempted after
+     * that fails with a descriptive error page. To stop the subscriptions without cancelling the
+     * scope, call `observePages` on a built paginator instead and keep its `Job`.
+     *
+     * Calling it again (or [livePageResults]) replaces the previous source.
+     *
+     * @param scope The scope that owns the page subscriptions, e.g. `viewModelScope`.
+     * @param onError Invoked when a page's flow fails after its first emission.
+     * @param source Opens the live query of one page; the receiver is the paginator.
+     */
+    fun livePages(
+        scope: CoroutineScope,
+        onError: ((page: Int, error: Throwable) -> Unit)? = null,
+        source: Paginator<T>.(page: Int) -> Flow<List<T>>,
+    ) {
+        livePageResults(scope = scope, onError = onError) { page: Int ->
+            source(page).map { data: List<T> -> LoadResult(data) }
+        }
+    }
+
+    /**
+     * [livePages] for a source whose emissions also carry page metadata — the DSL form of
+     * [observePageResults][com.jamal_aliev.paginator.offset.extension.observePageResults].
+     */
+    fun livePageResults(
+        scope: CoroutineScope,
+        onError: ((page: Int, error: Throwable) -> Unit)? = null,
+        source: Paginator<T>.(page: Int) -> Flow<LoadResult<T>>,
+    ) {
+        livePages = LivePagesConfig(scope = scope, onError = onError, source = source)
+    }
+
     @PublishedApi
     internal fun build(): MutablePaginator<T> {
-        val load = resolveLoad()
+        val live: LivePagesConfig<T>? = livePages
+        val load: suspend Paginator<T>.(Int) -> LoadResult<T> =
+            if (live == null || loadFn != null) resolveLoad()
+            else { page: Int ->
+                throw IllegalStateException(
+                    "Page $page cannot be loaded: the livePages { } subscriptions have ended " +
+                            "(their scope was cancelled) and no load { } block was configured."
+                )
+            }
         val core = buildCore()
-        return MutablePaginator(core = core, load = load).also { applyCommon(it, core) }
+        return MutablePaginator(core = core, load = load).also { paginator ->
+            applyCommon(paginator, core)
+            if (live != null) {
+                paginator.observePageResults(scope = live.scope, onError = live.onError, source = live.source)
+            }
+        }
     }
 }
 
