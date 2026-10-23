@@ -37,6 +37,14 @@ import com.jamal_aliev.paginator.offset.prefetch.PaginatorPrefetchController
  *
  * @return The created [PaginatorPrefetchController], in case the call site needs direct access.
  */
+@Deprecated(
+    message = "PrefetchOnScroll is deprecated since 10.3.0: it only bundles rememberPrefetchController + BindToLazyList. " +
+        "Use the turnkey PaginatedLazyColumn / PaginatedLazyRow / PaginatedLazy*Grid, or rememberPaginated + " +
+        "paginated { } for a custom body, or rememberPrefetchController + BindToLazyList directly.",
+    replaceWith = ReplaceWith(
+        "rememberPrefetchController(prefetchDistance = prefetchDistance, enableBackwardPrefetch = enableBackwardPrefetch, silentlyLoading = silentlyLoading, silentlyResult = silentlyResult, enabled = enabled, cancelOnDispose = cancelOnDispose, loadGuard = loadGuard, onPrefetchError = onPrefetchError).also { it.BindToLazyList(listState = state, dataItemCount = dataItemCount, headerCount = headerCount, footerCount = footerCount, restartKey = restartKey, scrollSampleMillis = scrollSampleMillis) }",
+    ),
+)
 @Composable
 fun <T> Paginator<T>.PrefetchOnScroll(
     state: LazyListState,
@@ -76,6 +84,14 @@ fun <T> Paginator<T>.PrefetchOnScroll(
 }
 
 /** [LazyGridState] overload — see the [LazyListState] variant for the full contract. */
+@Deprecated(
+    message = "PrefetchOnScroll is deprecated since 10.3.0: it only bundles rememberPrefetchController + BindToLazyGrid. " +
+        "Use the turnkey PaginatedLazyColumn / PaginatedLazyRow / PaginatedLazy*Grid, or rememberPaginated + " +
+        "paginated { } for a custom body, or rememberPrefetchController + BindToLazyGrid directly.",
+    replaceWith = ReplaceWith(
+        "rememberPrefetchController(prefetchDistance = prefetchDistance, enableBackwardPrefetch = enableBackwardPrefetch, silentlyLoading = silentlyLoading, silentlyResult = silentlyResult, enabled = enabled, cancelOnDispose = cancelOnDispose, loadGuard = loadGuard, onPrefetchError = onPrefetchError).also { it.BindToLazyGrid(gridState = state, dataItemCount = dataItemCount, headerCount = headerCount, footerCount = footerCount, restartKey = restartKey, scrollSampleMillis = scrollSampleMillis) }",
+    ),
+)
 @Composable
 fun <T> Paginator<T>.PrefetchOnScroll(
     state: LazyGridState,
@@ -115,6 +131,14 @@ fun <T> Paginator<T>.PrefetchOnScroll(
 }
 
 /** [LazyStaggeredGridState] overload — see the [LazyListState] variant for the full contract. */
+@Deprecated(
+    message = "PrefetchOnScroll is deprecated since 10.3.0: it only bundles rememberPrefetchController + BindToLazyStaggeredGrid. " +
+        "Use the turnkey PaginatedLazyColumn / PaginatedLazyRow / PaginatedLazy*Grid, or rememberPaginated + " +
+        "paginated { } for a custom body, or rememberPrefetchController + BindToLazyStaggeredGrid directly.",
+    replaceWith = ReplaceWith(
+        "rememberPrefetchController(prefetchDistance = prefetchDistance, enableBackwardPrefetch = enableBackwardPrefetch, silentlyLoading = silentlyLoading, silentlyResult = silentlyResult, enabled = enabled, cancelOnDispose = cancelOnDispose, loadGuard = loadGuard, onPrefetchError = onPrefetchError).also { it.BindToLazyStaggeredGrid(gridState = state, dataItemCount = dataItemCount, headerCount = headerCount, footerCount = footerCount, restartKey = restartKey, scrollSampleMillis = scrollSampleMillis) }",
+    ),
+)
 @Composable
 fun <T> Paginator<T>.PrefetchOnScroll(
     state: LazyStaggeredGridState,
