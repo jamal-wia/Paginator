@@ -9,6 +9,7 @@ import com.jamal_aliev.paginator.cursor.cache.reactive.CursorReactiveEvent
 import com.jamal_aliev.paginator.cursor.exception.EndOfCursorFeedException
 import com.jamal_aliev.paginator.cursor.extension.observe
 import com.jamal_aliev.paginator.cursor.load.CursorLoadResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -73,13 +74,16 @@ class CursorReactiveObserveThreadingTest {
                 try {
                     when (i % 4) {
                         0, 1 -> paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-                        2 -> paginator.cache.cursors.firstOrNull()?.let {
+                        // The bridge writes on another thread under the navigation lock: read under it too.
+                        2 -> paginator.withNavigationLock { paginator.cache.cursors.firstOrNull() }?.let {
                             paginator.refresh(listOf(it), loadingSilently = true, finalSilently = true)
                         }
                         else -> if (i % 40 == 3) paginator.jump(
                             CursorBookmark(prev = null, self = "p0", next = null), silentlyLoading = true, silentlyResult = true,
                         )
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
                     if (e !is LockedException && e !is EndOfCursorFeedException) errors += e
                 }
@@ -87,6 +91,6 @@ class CursorReactiveObserveThreadingTest {
         }
         producer.join()
         scope.cancel()
-        assertTrue(errors.isEmpty(), "races (${errors.size}): ${errors.distinctBy { it::class }.take(6).map { it.toString() }}")
+        assertTrue(errors.isEmpty(), "races (${errors.size}): ${errors.firstOrNull()?.stackTraceToString()}")
     }
 }

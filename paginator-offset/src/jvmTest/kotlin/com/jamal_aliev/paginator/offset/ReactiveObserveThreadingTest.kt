@@ -9,6 +9,7 @@ import com.jamal_aliev.paginator.core.exception.LockedException
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.extension.observe
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,10 +72,15 @@ class ReactiveObserveThreadingTest {
                         2 -> paginator.refresh(listOf(1), loadingSilently = true, finalSilently = true)
                         else -> if (i % 40 == 3) paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
                     }
-                    for (pg in paginator.cache.pages) {
-                        val st = paginator.cache.peekStateOf(pg)
-                        if (st != null && st.page != pg) errors += IllegalStateException("page $pg holds state of ${st.page}")
+                    // The bridge writes on another thread under the navigation lock: read under it too.
+                    paginator.withNavigationLock {
+                        for (pg in paginator.cache.pages) {
+                            val st = paginator.cache.peekStateOf(pg)
+                            if (st != null && st.page != pg) errors += IllegalStateException("page $pg holds state of ${st.page}")
+                        }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
                     if (e !is LockedException && e !is FinalPageExceededException) errors += e
                 }
@@ -82,6 +88,6 @@ class ReactiveObserveThreadingTest {
         }
         producer.join()
         scope.cancel()
-        assertTrue(errors.isEmpty(), "races (${errors.size}): ${errors.distinctBy { it::class }.take(6).map { it.toString() }}")
+        assertTrue(errors.isEmpty(), "races (${errors.size}): ${errors.firstOrNull()?.stackTraceToString()}")
     }
 }

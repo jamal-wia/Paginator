@@ -49,9 +49,12 @@ class ObservePagesThreadingTest {
                     paginator.setElement(element = "crud$i", page = 1 + i % 9, index = i % 3, silently = true)
                     paginator.removeState(9, silently = true)
                     paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-                    for (pg in paginator.cache.pages) {
-                        val st = paginator.cache.peekStateOf(pg)
-                        if (st != null && st.page != pg) errors += IllegalStateException("page $pg holds state of ${st.page}")
+                    // Live writes run on another thread under the navigation lock: read under it too.
+                    paginator.withNavigationLock {
+                        for (pg in paginator.cache.pages) {
+                            val st = paginator.cache.peekStateOf(pg)
+                            if (st != null && st.page != pg) errors += IllegalStateException("page $pg holds state of ${st.page}")
+                        }
                     }
                 } catch (e: Throwable) {
                     if (e !is com.jamal_aliev.paginator.core.exception.LockedException) errors += e
