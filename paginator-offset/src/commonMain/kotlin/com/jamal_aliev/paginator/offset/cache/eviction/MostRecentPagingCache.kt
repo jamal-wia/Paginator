@@ -65,7 +65,9 @@ class MostRecentPagingCache<T>(
     }
 
     /** Tracks page access order: head = least recent, tail = most recent. */
-    private val accessOrder = mutableListOf<Int>()
+    // Insertion-ordered set: remove + add move a page to the tail in O(1), and iteration runs from
+    // the least to the most recently used page.
+    private val accessOrder = LinkedHashSet<Int>()
 
     override fun setState(state: OffsetPageState<T>, silently: Boolean) {
         cache.setState(state, silently)
@@ -129,7 +131,7 @@ class MostRecentPagingCache<T>(
 
             val victim = accessOrder.firstOrNull { page ->
                 page != justAddedPage &&
-                        cache.getStateOf(page) != null &&
+                        cache.peekStateOf(page) != null &&
                         (protectedRange == null || page !in protectedRange)
             } ?: break // all pages are protected — cannot evict
 
