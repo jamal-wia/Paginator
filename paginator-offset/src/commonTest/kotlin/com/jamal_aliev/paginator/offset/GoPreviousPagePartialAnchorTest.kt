@@ -125,7 +125,7 @@ class GoPreviousPagePartialAnchorTest {
         }
 
     @Test
-    fun `jump onto a partial page absorbs the adjacent cached page, then goPreviousPage loads the next new page`() =
+    fun `jump onto a partial page absorbs the adjacent cached page - then goPreviousPage loads the next new page`() =
         runTest {
             val paginator = MutablePaginator<String> { page ->
                 when {
@@ -154,7 +154,7 @@ class GoPreviousPagePartialAnchorTest {
         }
 
     @Test
-    fun `jump onto a non-filled page keeps it at a boundary, never spanning the window across it`() =
+    fun `jump onto a non-filled page keeps it at a boundary - never spanning the window across it`() =
         runTest {
             val paginator = MutablePaginator<String> { page ->
                 if (page == 6) throw RuntimeException("boom on page 6")

@@ -509,7 +509,7 @@ class PaginatorReactiveObserveTest {
         OffsetPageState.Success<Item>(page, data)
 
     @Test
-    fun `Inserted Tail overflow creates a trailing page by default (item not dropped)`() = runTest {
+    fun `Inserted Tail overflow creates a trailing page by default - item not dropped`() = runTest {
         val paginator = populatedPaginator() // pages 1=[1,2,3], 2=[4,5,6], capacity 3 (both full)
         val source = FakeReactiveCache()
         val job = paginator.observe(
@@ -531,7 +531,7 @@ class PaginatorReactiveObserveTest {
     }
 
     @Test
-    fun `Inserted Tail overflow is dropped when initPageState is null (opt-out)`() = runTest {
+    fun `Inserted Tail overflow is dropped when initPageState is null - opt-out`() = runTest {
         val paginator = populatedPaginator()
         val source = FakeReactiveCache()
         val job = paginator.observe(
@@ -552,7 +552,7 @@ class PaginatorReactiveObserveTest {
     }
 
     @Test
-    fun `Inserted Tail overflow uses a custom initPageState factory (subclass preserved)`() = runTest {
+    fun `Inserted Tail overflow uses a custom initPageState factory - subclass preserved`() = runTest {
         val paginator = populatedPaginator()
         val source = FakeReactiveCache()
         val job = paginator.observe(
@@ -576,7 +576,7 @@ class PaginatorReactiveObserveTest {
     }
 
     @Test
-    fun `Inserted Head overflow honors the default factory (threaded to prependElement)`() = runTest {
+    fun `Inserted Head overflow honors the default factory - threaded to prependElement`() = runTest {
         val paginator = populatedPaginator()
         val source = FakeReactiveCache()
         val job = paginator.observe(
@@ -600,7 +600,7 @@ class PaginatorReactiveObserveTest {
     }
 
     @Test
-    fun `Inserted AfterIdentity overflow is dropped when initPageState is null (opt-out)`() = runTest {
+    fun `Inserted AfterIdentity overflow is dropped when initPageState is null - opt-out`() = runTest {
         val paginator = populatedPaginator()
         val source = FakeReactiveCache()
         val job = paginator.observe(
