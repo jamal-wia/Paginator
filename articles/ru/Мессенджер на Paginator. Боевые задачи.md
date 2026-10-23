@@ -520,7 +520,9 @@ dirty-tracking, process death, warm-up, refresh. Разложим по слоя�
 > `warmUpFromPersistent`) **объявлен устаревшим (deprecated)**. Он больше не поддерживается вместе с
 > остальным функционалом библиотеки и может вызывать неочевидные баги, поэтому в новом коде его не
 > используйте. Держите Room единственным источником правды и подключайте его к пагинатору через
-> реактивный источник — см.
+> реактивный источник — например,
+> `paginator.observePages { page -> dao.observeMessages(limit, offset) }`: по одному живому запросу на
+> каждую страницу в кэше; см.
 > [Reactive Sources](https://github.com/jamal-wia/Paginator/blob/master/docs/15.%20reactive-sources.md).
 > Раздел ниже описывает старый подход и оставлен для существующих проектов.
 

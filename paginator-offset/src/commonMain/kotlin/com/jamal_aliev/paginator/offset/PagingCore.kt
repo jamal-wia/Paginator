@@ -62,7 +62,7 @@ open class PagingCore<T>(
         message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
             "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
             "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
-            "and bridge it with observe() instead.",
+            "and bridge it with observePages() or observe() instead.",
     )
     val persistentCache: PersistentPagingCache<T>? = null,
     initialCapacity: Int = DEFAULT_CAPACITY,
@@ -389,7 +389,7 @@ open class PagingCore<T>(
         message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
             "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
             "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
-            "and bridge it with observe() instead.",
+            "and bridge it with observePages() or observe() instead.",
     )
     suspend fun loadFromPersistentCache(page: Int): OffsetPageState<T>? {
         val pc = persistentCache ?: return null

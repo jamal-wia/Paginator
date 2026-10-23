@@ -520,7 +520,9 @@ L2 cache, dirty tracking, process death, warm-up, refresh. Let's break it down b
 > **Update for 10.3.0:** the L2 persistent cache (`PersistentPagingCache`, `persistentCache`,
 > `flush()`, `warmUpFromPersistent`) is **deprecated**. It is no longer supported together with the
 > rest of the library and may cause non-obvious bugs, so do not use it in new code. Keep Room as the
-> single source of truth and bridge it to the paginator with a reactive source instead — see
+> single source of truth and bridge it to the paginator with a reactive source instead — for example
+> `paginator.observePages { page -> dao.observeMessages(limit, offset) }`, one live query per cached
+> page; see
 > [Reactive Sources](https://github.com/jamal-wia/Paginator/blob/master/docs/15.%20reactive-sources.md).
 > The section below describes the old approach and is kept for existing projects.
 

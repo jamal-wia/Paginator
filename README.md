@@ -437,6 +437,9 @@ differs only in **how pages are addressed**. Read the full guide at
   and `ContextWindowPagingCache` (evicts outside context). Eviction listener callback for reacting
   to
   page removal
+- **Live database pages** -- `observePages { page -> dao.observeUsers(limit, offset) }` subscribes
+  to one query per cached page (Room/SQLDelight re-emit on table changes) and unsubscribes when the
+  page leaves the cache, so a huge table never has to be observed as a whole
 - **Reactive state** -- observe page changes via `snapshot` Flow (visible pages) or `asFlow()` (
   entire cache)
 - **High-level UI state** -- `paginator.uiState: Flow<PaginatorUiState<T>>` collapses the raw
@@ -579,7 +582,9 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 14. [**Paginator vs CursorPaginator**](docs/14.%20paginator-vs-cursor.md) — full catalog of
     behavioural differences, removed APIs, signature-only changes, and a migration cheat sheet
 15. [**Reactive Sources**](docs/15.%20reactive-sources.md) — bridge Room/SQLDelight/Realm to a
-    paginator via `observe(...)` and `PaginatorReactiveCache` — point CRUD instead of `refreshAll`,
+    paginator: `observePages { page -> dao.observePage(...) }` backs every cached page with its own
+    live query (subscribed on load, unsubscribed on eviction), or `observe(...)` and
+    `PaginatorReactiveCache` apply change events as point CRUD instead of `refreshAll`,
     with a built-in `DiffUtil`-style `snapshotReactiveCache(...)` that diffs a `Flow<List<T>>` for
     you
 16. [Ask the author a question](https://t.me/+0eeAM-EJpqgwNGZi)

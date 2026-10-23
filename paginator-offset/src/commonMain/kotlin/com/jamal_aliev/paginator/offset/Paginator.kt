@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 
@@ -85,6 +86,13 @@ open class Paginator<T>(
 
     /** Mutex serialising all mutations to cache across concurrent coroutines. */
     protected val navigationMutex = Mutex()
+
+    /**
+     * Runs [block] under [navigationMutex], for extensions in this module that write into the
+     * cache from outside navigation (e.g. [com.jamal_aliev.paginator.offset.extension.observePages]).
+     */
+    internal suspend fun <R> withNavigationLock(block: suspend () -> R): R =
+        navigationMutex.withLock { block() }
 
     /**
      * Logger for observing paginator operations.

@@ -54,7 +54,7 @@ import com.jamal_aliev.paginator.offset.page.OffsetPageState
     message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
         "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
         "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
-        "and bridge it with observe() instead.",
+        "and bridge it with observePages() or observe() instead.",
 )
 suspend fun <T> Paginator<T>.warmUpFromPersistent(pageRange: IntRange? = null): Int {
     val pc: PersistentPagingCache<T> = core.persistentCache ?: return 0

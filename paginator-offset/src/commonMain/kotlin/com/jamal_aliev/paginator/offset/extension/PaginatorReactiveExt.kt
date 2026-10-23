@@ -64,7 +64,8 @@ import kotlinx.coroutines.launch
  * every event and the second one's `RefreshAll` initial sync would race the
  * first. Cancel the previous Job before subscribing again. A completed or
  * cancelled previous Job is not a problem; the slot clears itself on
- * completion.
+ * completion. The slot is shared with [observePages] — the two bridges are
+ * mutually exclusive on one paginator.
  *
  * ## Error handling
  *
@@ -150,36 +151,14 @@ fun <T, ID : Any> MutablePaginator<T>.observe(
             errorHandler(e)
         }
     }
-    // CAS the new Job into the per-paginator slot, refusing to install when a
-    // previous subscription is still active. The launched job is LAZY so we
-    // can cancel it without side effects if the slot is taken.
-    while (true) {
-        val current = activeReactiveSubscriptions.value
-        val existing = current[paginator]
-        if (existing != null && existing.isActive) {
-            job.cancel()
-            error(
-                "observe(): another reactive subscription is already active on this " +
-                        "MutablePaginator. Cancel the previous Job before subscribing again."
-            )
-        }
-        val next = current + (paginator to job)
-        if (activeReactiveSubscriptions.compareAndSet(current, next)) break
-    }
+    // The launched job is LAZY, so it can be cancelled without side effects if the slot is taken.
+    paginator.claimReactiveSlot(job = job, caller = "observe()")
     if (paginator.core.persistentCache != null) {
         paginator.logger.warn(LogComponent.LIFECYCLE) {
             "observe: this paginator has a PersistentPagingCache (L2) attached. " +
                     "When the reactive source is the same database L2 would cache, " +
                     "L2 is redundant here, deprecated since 10.3.0 and not supported together with " +
                     "reactive sources. Remove it."
-        }
-    }
-    job.invokeOnCompletion {
-        while (true) {
-            val current = activeReactiveSubscriptions.value
-            if (current[paginator] !== job) return@invokeOnCompletion
-            val next = current - paginator
-            if (activeReactiveSubscriptions.compareAndSet(current, next)) return@invokeOnCompletion
         }
     }
     job.start()
@@ -345,6 +324,40 @@ private suspend fun <T> MutablePaginator<T>.handleUnknown(policy: UnknownItemPol
 // are removed on Job completion via invokeOnCompletion, so cancelled
 // subscriptions release their map slot and the paginator becomes eligible
 // for GC once the caller drops it.
+//
+// observe() and observePages() share the slot: both drive the cached pages from
+// a reactive source, so running them together would apply every change twice.
 
 private val activeReactiveSubscriptions: AtomicRef<Map<MutablePaginator<*>, Job>> =
     atomic(emptyMap())
+
+/**
+ * Installs [job] as this paginator's single active reactive subscription, failing fast — after
+ * cancelling [job] — when another one ([observe] or [observePages]) is still active. The slot
+ * clears itself when [job] completes. [job] must not have done any work yet, so that cancelling it
+ * on a refused install has no side effects.
+ */
+internal fun MutablePaginator<*>.claimReactiveSlot(job: Job, caller: String) {
+    val paginator: MutablePaginator<*> = this
+    while (true) {
+        val current = activeReactiveSubscriptions.value
+        val existing = current[paginator]
+        if (existing != null && existing.isActive) {
+            job.cancel()
+            error(
+                "$caller: another reactive subscription (observe() or observePages()) is already " +
+                        "active on this MutablePaginator. Cancel the previous Job before subscribing again."
+            )
+        }
+        val next = current + (paginator to job)
+        if (activeReactiveSubscriptions.compareAndSet(current, next)) break
+    }
+    job.invokeOnCompletion {
+        while (true) {
+            val current = activeReactiveSubscriptions.value
+            if (current[paginator] !== job) return@invokeOnCompletion
+            val next = current - paginator
+            if (activeReactiveSubscriptions.compareAndSet(current, next)) return@invokeOnCompletion
+        }
+    }
+}
