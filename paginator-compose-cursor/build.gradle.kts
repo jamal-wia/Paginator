@@ -89,7 +89,15 @@ kotlin {
     }
 
     wasmJs {
-        nodejs()
+        // Compose's wasm graphics engine (skiko) ships a browser-only loader that cannot fetch its
+        // .wasm under Node, so the Compose modules run their wasm tests in a headless browser.
+        browser {
+            testTask {
+                useKarma {
+                    useChromeHeadless()
+                }
+            }
+        }
     }
 
     sourceSets {
