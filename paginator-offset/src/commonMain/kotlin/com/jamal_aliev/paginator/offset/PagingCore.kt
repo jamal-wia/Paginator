@@ -85,7 +85,7 @@ open class PagingCore<T>(
 
     /** All cached page states, sorted by page number. */
     val states: List<OffsetPageState<T>>
-        get() = cache.pages.mapNotNull { cache.getStateOf(it) }
+        get() = cache.pages.mapNotNull { readState(it) }
 
     /** The number of pages currently in the cache. */
     val size: Int get() = cache.size
@@ -373,7 +373,32 @@ open class PagingCore<T>(
      * @return The cached [OffsetPageState], or `null` if the page is not in the cache.
      */
     fun getStateOf(page: Int): OffsetPageState<T>? {
-        return cache.getStateOf(page)
+        return readState(page)
+    }
+
+    /**
+     * While `true`, the core's own reads ([getStateOf], [states], [walkWhile] and everything built
+     * on them — [snapshot], [scan], [findNearContextPage], context expansion) go through
+     * [PagingCache.peekStateOf], so they do not count as a use of the pages. Set only around
+     * bookkeeping that is not user access (the live-update applier of `observePages`), under the
+     * navigation lock — see [withUntrackedReads].
+     */
+    @PublishedApi
+    internal var untrackedReads: Boolean = false
+
+    @PublishedApi
+    internal fun readState(page: Int): OffsetPageState<T>? =
+        if (untrackedReads) cache.peekStateOf(page) else cache.getStateOf(page)
+
+    /** Runs [block] with [untrackedReads] on. Not reentrant-safe across coroutines: hold the navigation lock. */
+    internal inline fun <R> withUntrackedReads(block: () -> R): R {
+        val previous = untrackedReads
+        untrackedReads = true
+        try {
+            return block()
+        } finally {
+            untrackedReads = previous
+        }
     }
 
     /**
@@ -556,7 +581,7 @@ open class PagingCore<T>(
         var resultState: OffsetPageState<T> = pivotState
         while (true) {
             val nextPage: Int = next.invoke(resultState.page)
-            val nextState: OffsetPageState<T>? = cache.getStateOf(nextPage)
+            val nextState: OffsetPageState<T>? = readState(nextPage)
 
             if (nextState != null && predicate.invoke(nextState)) {
                 resultState = nextState

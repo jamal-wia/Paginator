@@ -485,6 +485,26 @@ class ObservePagesTest {
     }
 
     @Test
+    fun `re-anchoring the window after a live update does not reorder LRU`() = runTest {
+        val sources = mutableMapOf<Int, MutableStateFlow<List<String>>>()
+        fun src(page: Int) = sources.getOrPut(page) { MutableStateFlow(List(3) { "p${page}_$it" }) }
+        val paginator = livePaginator(core = PagingCore(cache = MostRecentPagingCache(maxSize = 3, protectContextWindow = false)))
+        paginator.observePages(backgroundScope) { page -> src(page) }
+        // Visited 9, then 5, then 1: page 9 is the least recently used one.
+        for (page in listOf(9, 5, 1)) {
+            paginator.jump(BookmarkInt(page))
+            runCurrent()
+        }
+
+        src(1).value = listOf("only one") // the visible page shrinks: the window is re-anchored
+        runCurrent()
+        paginator.jump(BookmarkInt(13))
+        runCurrent()
+
+        assertEquals(listOf(1, 5, 13), paginator.cache.pages)
+    }
+
+    @Test
     fun `a database change does not restart the TTL of a page`() = runTest {
         val time = TestTimeSource()
         val table = FakeTable(rowCount = 60)

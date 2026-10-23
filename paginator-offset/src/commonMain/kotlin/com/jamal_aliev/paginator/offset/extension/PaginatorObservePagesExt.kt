@@ -233,6 +233,15 @@ private class LivePages<T>(
 
     /** Pages whose query failed after its first emission; [applyPending] marks them dirty. */
     private val failed: MutableSet<Int> = HashSet()
+
+    /**
+     * The [PagingCore.cacheChanges] value and cache size the last reconcile saw. While both are
+     * unchanged no operation has changed which pages are cached, so reconciling again would only
+     * repeat the same O(pages) pass (a navigation call signals cacheChanges *and* publishes a
+     * snapshot; every applied batch publishes one too).
+     */
+    private var reconciledAt: Long = -1
+    private var reconciledSize: Int = -1
     private val wakeUp = Channel<Unit>(Channel.CONFLATED)
 
     fun start() {
@@ -312,7 +321,13 @@ private class LivePages<T>(
     }
 
     private suspend fun reconcile() {
-        paginator.withNavigationLock { registryLock.withLock { reconcileLocked() } }
+        paginator.withNavigationLock { registryLock.withLock { reconcileIfStaleLocked() } }
+    }
+
+    private fun reconcileIfStaleLocked() {
+        if (paginator.core.cacheChanges.value != reconciledAt || paginator.cache.size != reconciledSize) {
+            reconcileLocked()
+        }
     }
 
     private suspend fun resubscribe() {
@@ -326,6 +341,8 @@ private class LivePages<T>(
      */
     private fun reconcileLocked() {
         val cache = paginator.cache
+        reconciledAt = paginator.core.cacheChanges.value
+        reconciledSize = cache.size
         val capacity: Int = paginator.core.capacity
         val iterator = subscriptions.entries.iterator()
         while (iterator.hasNext()) {
@@ -428,7 +445,7 @@ private class LivePages<T>(
         paginator.withNavigationLock {
             var failedPages: List<Int> = emptyList()
             val batch: List<Pair<Int, LoadResult<T>>> = registryLock.withLock {
-                reconcileLocked()
+                reconcileIfStaleLocked()
                 failedPages = failed.toList()
                 failed.clear()
                 pending.map { (page, entry) -> page to entry.second }
@@ -469,12 +486,22 @@ private class LivePages<T>(
         }
         if (changedPages.isEmpty()) return
 
+        // The window fix and the snapshot below read pages through the core; none of it is a use
+        // of those pages, so it must not reshape an LRU order or restart TTL timers.
+        core.withUntrackedReads { fixWindowAndPublish(changedPages) }
+    }
+
+    private fun fixWindowAndPublish(changedPages: List<Int>) {
+        val core = paginator.core
+        val cache = paginator.cache
         val startBefore: Int = cache.startContextPage
         val endBefore: Int = cache.endContextPage
         if (cache.isStarted) {
-            val windowFilled: Boolean = (startBefore..endBefore).all { page ->
-                core.isFilledSuccessState(cache.peekStateOf(page))
-            }
+            // Only a page that changed can have become non-filled; the edges are checked too
+            // because the window may extend once an edge has grown into a full page.
+            val window = startBefore..endBefore
+            val windowFilled: Boolean = (changedPages.filter { it in window } + startBefore + endBefore)
+                .all { page -> core.isFilledSuccessState(cache.peekStateOf(page)) }
             if (!windowFilled) {
                 // A page of the window shrank or emptied — at an edge or inside. Re-anchor like a
                 // CRUD removal does, so a non-filled page never stays buried inside the window.
