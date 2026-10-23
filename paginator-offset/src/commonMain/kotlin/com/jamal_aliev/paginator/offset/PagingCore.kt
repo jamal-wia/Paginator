@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.core.extension.isErrorState
@@ -55,6 +58,12 @@ import kotlin.contracts.contract
  */
 open class PagingCore<T>(
     val cache: PagingCache<T> = InMemoryPagingCache<T>(),
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     val persistentCache: PersistentPagingCache<T>? = null,
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {
@@ -376,6 +385,12 @@ open class PagingCore<T>(
      * @param page The page number to load from persistent storage.
      * @return The restored [OffsetPageState], or `null` if not found.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     suspend fun loadFromPersistentCache(page: Int): OffsetPageState<T>? {
         val pc = persistentCache ?: return null
         val persisted = pc.load(page) ?: return null

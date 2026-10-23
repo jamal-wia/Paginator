@@ -517,6 +517,13 @@ L2 cache, dirty tracking, process death, warm-up, refresh. Let's break it down b
 
 ### 9.1. L2 cache on top of Room
 
+> **Update for 10.3.0:** the L2 persistent cache (`PersistentPagingCache`, `persistentCache`,
+> `flush()`, `warmUpFromPersistent`) is **deprecated**. It is no longer supported together with the
+> rest of the library and may cause non-obvious bugs, so do not use it in new code. Keep Room as the
+> single source of truth and bridge it to the paginator with a reactive source instead — see
+> [Reactive Sources](https://github.com/jamal-wia/Paginator/blob/master/docs/15.%20reactive-sources.md).
+> The section below describes the old approach and is kept for existing projects.
+
 The library doesn't write to the database itself — it provides the `PersistentPagingCache<T>`
 interface with five methods: `save`, `load`, `loadAll`, `remove`, `clear`. The implementation is on
 your side. A boilerplate Room backend looks like this:

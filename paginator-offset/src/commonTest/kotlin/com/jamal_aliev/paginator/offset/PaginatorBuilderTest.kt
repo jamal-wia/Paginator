@@ -1,3 +1,6 @@
+// Exercises the deprecated L2 persistent cache, which stays tested until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger

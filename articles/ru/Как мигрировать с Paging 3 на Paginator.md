@@ -404,6 +404,14 @@ class FeedViewModel(
 
 ## Шаг 6. `RemoteMediator` + Room → `persistentCache` (L2)
 
+> **Обновление для 10.3.0:** L2-кэш (`PersistentPagingCache`, `persistentCache`, `flush()`,
+> `warmUpFromPersistent`) **объявлен устаревшим (deprecated)**. Он больше не поддерживается вместе с
+> остальным функционалом библиотеки и может вызывать неочевидные баги, поэтому в новом коде его не
+> используйте. Держите Room единственным источником правды и подключайте его к пагинатору через
+> реактивный источник — см.
+> [Reactive Sources](https://github.com/jamal-wia/Paginator/blob/master/docs/15.%20reactive-sources.md).
+> Раздел ниже описывает старый подход и оставлен для существующих проектов.
+
 Если ваш экран делал классический Paging 3 + Room + `RemoteMediator` — то есть хранил данные в БД,
 а Paging 3 рисовал то, что лежит в БД, — переход в Paginator делается так:
 

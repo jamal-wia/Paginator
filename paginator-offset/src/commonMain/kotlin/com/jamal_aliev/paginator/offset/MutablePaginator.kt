@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.core.extension.isProgressState
@@ -96,6 +99,12 @@ open class MutablePaginator<T>(
      * Note: the snapshot reflects the state at the moment of the read. Concurrent CRUD
      * or [flush] calls may change the underlying set immediately after.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     val affectedPages: Set<Int>
         get() = _affectedPages.value
 
@@ -106,6 +115,12 @@ open class MutablePaginator<T>(
      * Always `false` when [PagingCore.persistentCache] is `null`, since unpersisted
      * changes are meaningless without an L2 backend.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     val hasPendingFlush: Boolean
         get() = core.persistentCache != null && _affectedPages.value.isNotEmpty()
 
@@ -626,6 +641,12 @@ open class MutablePaginator<T>(
      * No-op when [PagingCore.persistentCache] is `null` or when no CRUD
      * operations have been performed since the last flush.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     suspend fun flush() {
         val pagingCache: PersistentPagingCache<T> = core.persistentCache ?: return
         val pagesToFlush: Set<Int> = drainAffectedPages()

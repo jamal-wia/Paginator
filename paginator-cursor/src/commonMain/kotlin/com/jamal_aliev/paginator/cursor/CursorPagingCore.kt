@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.cursor
 
 import com.jamal_aliev.paginator.core.extension.isErrorState
@@ -50,6 +53,12 @@ import kotlin.contracts.contract
  */
 open class CursorPagingCore<K : Any, T>(
     val cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>(),
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     val persistentCache: CursorPersistentPagingCache<K, T>? = null,
     initialCapacity: Int = DEFAULT_CAPACITY,
 ) {
@@ -290,6 +299,12 @@ open class CursorPagingCore<K : Any, T>(
      * Attempts to load a page from the [persistentCache] (L2) and promote it
      * into the in-memory [cache] (L1).
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     suspend fun loadFromPersistentCache(self: K): Pair<CursorBookmark<K>, CursorPageState<K, T>>? {
         val pc = persistentCache ?: return null
         val persisted = pc.load(self) ?: return null

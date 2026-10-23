@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset.dsl
 
 import com.jamal_aliev.paginator.core.dsl.PaginatorDsl
@@ -124,6 +127,12 @@ sealed class BasePaginatorBuilder<T> protected constructor(
     /**
      * Optional persistent (L2) cache. Defaults to `null` (no persistence).
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     var persistentCache: PersistentPagingCache<T>? = null
 
     /**

@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.cursor
 
 import com.jamal_aliev.paginator.core.extension.isSuccessState
@@ -105,6 +108,12 @@ open class MutableCursorPaginator<K : Any, T>(
      *
      * Mirrors [MutablePaginator.affectedPages] but keyed by `self` instead of `page: Int`.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     val affectedSelves: Set<K>
         get() = _affectedSelves.value
 
@@ -114,6 +123,12 @@ open class MutableCursorPaginator<K : Any, T>(
      * Equivalent to `affectedSelves.isNotEmpty()` but avoids materialising the set.
      * Always `false` when [CursorPagingCore.persistentCache] is `null`.
      */
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     val hasPendingFlush: Boolean
         get() = core.persistentCache != null && _affectedSelves.value.isNotEmpty()
 
@@ -448,6 +463,12 @@ open class MutableCursorPaginator<K : Any, T>(
 
     // ── Persistent (L2) flush ───────────────────────────────────────────────
 
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     suspend fun flush() {
         val pc: CursorPersistentPagingCache<K, T> = core.persistentCache ?: return
         val selvesToFlush: Set<K> = drainAffectedSelves()

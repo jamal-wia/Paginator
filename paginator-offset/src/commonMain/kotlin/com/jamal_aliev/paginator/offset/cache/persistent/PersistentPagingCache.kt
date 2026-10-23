@@ -1,8 +1,16 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset.cache.persistent
 
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 /**
+ * **Deprecated since 10.3.0.** L2 is no longer recommended and is no longer supported together
+ * with the rest of the library: combined with `refresh`, eviction strategies, transactions or
+ * reactive sources it can cause non-obvious bugs. It will be removed in a future major release.
+ * Keep your database as the single source of truth and bridge it with a reactive source instead.
+ *
  * An optional second-level (L2) persistent cache for [com.jamal_aliev.paginator.offset.Paginator].
  *
  * While [com.jamal_aliev.paginator.offset.cache.PagingCache] keeps pages in memory (L1), a
@@ -25,6 +33,12 @@ import com.jamal_aliev.paginator.offset.page.OffsetPageState
  * @see com.jamal_aliev.paginator.offset.cache.PagingCache
  * @see com.jamal_aliev.paginator.offset.PagingCore
  */
+@Deprecated(
+    message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+        "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+        "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+        "and bridge it with observe() instead.",
+)
 interface PersistentPagingCache<T> {
 
     /**

@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.cursor.dsl
 
 import com.jamal_aliev.paginator.core.dsl.PaginatorDsl
@@ -61,6 +64,12 @@ sealed class BaseCursorPaginatorBuilder<K : Any, T> protected constructor(
 ) {
 
     var cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>()
+    @Deprecated(
+        message = "The L2 persistent cache is deprecated since 10.3.0 and will be removed in a future major release. " +
+            "It is no longer supported together with the rest of the library (refresh, eviction, transactions, " +
+            "reactive sources) and may cause non-obvious bugs. Keep your database as the single source of truth " +
+            "and bridge it with observe() instead.",
+    )
     var persistentCache: CursorPersistentPagingCache<K, T>? = null
     var logger: PaginatorLogger? = null
     var recyclingBookmark: Boolean = false

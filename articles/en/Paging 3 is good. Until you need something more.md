@@ -254,7 +254,8 @@ paginator.uiState.collect { state ->
 The library then has two levels of depth. You can stay at this setup and get full-featured
 pagination with all states. Or, when needed, plug in extras:
 
-- Two-level cache (L1 in memory + your L2, usually Room).
+- Two-level cache (L1 in memory + your L2, usually Room). *L2 is deprecated since 10.3.0 — use
+  Room as the single source of truth through a reactive source instead.*
 - L1 eviction strategies — LRU, FIFO, TTL, sliding window, composable via the `+` operator.
 - Transactions with rollback via `transaction { }`.
 - Dirty pages — silent background page refresh on next navigation.

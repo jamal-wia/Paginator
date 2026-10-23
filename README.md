@@ -563,7 +563,7 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 6. [**Caching**](docs/6.%20caching.md) — eviction strategies (MostRecent, Queued, TimeLimited,
    ContextWindow),
    composing
-   strategies, persistent L2 cache
+   strategies, persistent L2 cache (deprecated since 10.3.0)
 7. [**Prefetch**](docs/7.%20prefetch.md) — auto-pagination on scroll with
    `PaginatorPrefetchController`
 8. [**Logger**](docs/8.%20logger.md) — pluggable logging via `PaginatorLogger`

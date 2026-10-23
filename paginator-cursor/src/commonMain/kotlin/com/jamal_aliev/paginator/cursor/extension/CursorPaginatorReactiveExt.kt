@@ -1,3 +1,6 @@
+// The deprecated L2 persistent cache is still wired through here until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.cursor.extension
 
 import com.jamal_aliev.paginator.core.cache.reactive.InitialSyncPolicy
@@ -81,7 +84,8 @@ import kotlinx.coroutines.launch
  * If the paginator has a [com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache]
  * (L2) attached, this function logs a warning — the reactive source is
  * almost certainly the same database that L2 would cache, so L2 becomes
- * redundant overhead. Remove L2 in this configuration.
+ * redundant. L2 is also deprecated since 10.3.0 and not supported together
+ * with reactive sources — remove it in this configuration.
  *
  * @param scope The coroutine scope that owns the subscription's lifetime.
  * @param source The reactive cache adapter for the underlying data source.
@@ -178,7 +182,8 @@ fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.observe(
         paginator.logger.warn(LogComponent.LIFECYCLE) {
             "observe: this paginator has a CursorPersistentPagingCache (L2) attached. " +
                     "When the reactive source is the same database L2 would cache, " +
-                    "L2 becomes redundant overhead. Consider removing it."
+                    "L2 is redundant here, deprecated since 10.3.0 and not supported together with " +
+                    "reactive sources. Remove it."
         }
     }
     job.invokeOnCompletion {
