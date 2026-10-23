@@ -109,6 +109,8 @@ class ObservePagesReviewRegressionTest {
         assertEquals(listOf("r3", "edited", "r5"), paginator.dataOf(2))
     }
 
+    // goNextPage no longer reloads a live partial page at all; this guards that a cancelled
+    // goNextPage on it still leaves the page live.
     @Test
     fun a_cancelled_goNextPage_reload_leaves_the_partial_page_live() = runTest {
         val table = FakeTable(rowCount = 5) // page 2 = r3, r4 (partial)

@@ -55,7 +55,8 @@ import kotlin.time.Duration
  *    subscribes to `source(N)` and uses its **first** emission as the load result, so the page goes
  *    through the normal Progress → Success pipeline. A flow that fails before emitting turns the
  *    page into an Error page, exactly as a throwing `load` would. Reloading a page (`refresh`,
- *    dirty-page refresh, a retry after an error) re-subscribes.
+ *    dirty-page refresh, a retry after an error) re-subscribes. `goNextPage` does not reload a
+ *    live partial last page — it is current already and grows when rows arrive.
  * 2. **Emissions = updates.** Every later emission replaces the page's data in place — the page
  *    keeps its id, class and (unless the emission brings new metadata) its metadata, and the data is
  *    trimmed to [capacity][com.jamal_aliev.paginator.offset.PagingCore.capacity]. A live update
@@ -184,8 +185,11 @@ fun <T> MutablePaginator<T>.observePageResults(
         }
     }
     paginator.load = liveLoad
+    val livePageCheck: suspend (page: Int) -> Boolean = { page: Int -> job.isActive && livePages.isLive(page) }
+    paginator.isLivePage = livePageCheck
     job.invokeOnCompletion {
         if (paginator.load === liveLoad) paginator.load = originalLoad
+        if (paginator.isLivePage === livePageCheck) paginator.isLivePage = null
     }
 
     livePages.start()
@@ -324,6 +328,12 @@ private class LivePages<T>(
             wakeUp.trySend(Unit)
             throw e
         }
+    }
+
+    /** Whether [page] has a running query that has delivered, for the current capacity. */
+    suspend fun isLive(page: Int): Boolean = registryLock.withLock {
+        val subscription: Subscription = subscriptions[page] ?: return@withLock false
+        subscription.live && subscription.job.isActive && subscription.capacity == paginator.core.capacity
     }
 
     private suspend fun reconcile() {

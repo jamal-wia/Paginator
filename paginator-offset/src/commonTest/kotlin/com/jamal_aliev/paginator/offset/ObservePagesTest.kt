@@ -664,4 +664,38 @@ class ObservePagesTest {
         val forward = paginator.jumpForward(silentlyLoading = true, silentlyResult = true)
         assertEquals(5, forward?.first?.page)
     }
+
+    @Test
+    fun `goNextPage does not re-query a live partial last page`() = runTest {
+        val table = FakeTable(rowCount = 5) // page 2 = r3, r4: the partial end of the feed
+        val paginator = livePaginator()
+        observe(paginator, table)
+        paginator.loadPages(2)
+        runCurrent()
+        val before = table.subscriptions
+
+        // Scrolling to the end (prefetch) keeps calling goNextPage on the partial last page.
+        repeat(3) { paginator.goNextPage(silentlyLoading = true, silentlyResult = true) }
+        runCurrent()
+
+        assertEquals(before, table.subscriptions, "the live page was re-queried")
+        assertEquals(listOf("r3", "r4"), paginator.dataOf(2))
+        assertTrue(paginator.cache.peekStateOf(2).isSuccessState())
+    }
+
+    @Test
+    fun `a live partial last page that fills up lets goNextPage continue`() = runTest {
+        val table = FakeTable(rowCount = 5)
+        val paginator = livePaginator()
+        observe(paginator, table)
+        paginator.loadPages(2)
+        runCurrent()
+
+        table.rows.value = List(9) { "r$it" } // new rows arrive: page 2 fills, page 3 exists
+        runCurrent()
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        runCurrent()
+
+        assertEquals(listOf("r6", "r7", "r8"), paginator.dataOf(3))
+    }
 }
