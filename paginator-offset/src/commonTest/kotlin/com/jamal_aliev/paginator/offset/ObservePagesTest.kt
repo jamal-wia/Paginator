@@ -19,7 +19,9 @@ import com.jamal_aliev.paginator.offset.serialization.saveStateToJson
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
@@ -55,6 +57,19 @@ class ObservePagesTest {
         var subscriptions = 0
             private set
         val gates = mutableMapOf<Int, CompletableDeferred<Unit>>()
+        var loads = 0
+            private set
+
+        /** Gates a load of a page AFTER it has read the table. */
+        val loadGates = mutableMapOf<Int, CompletableDeferred<Unit>>()
+
+        /** A one-shot read, the `load` of a page. */
+        suspend fun loadPage(page: Int, limit: Int = capacity): LoadResult<String> {
+            loads++
+            val data = rows.value.drop((page - 1) * limit).take(limit)
+            loadGates.remove(page)?.await()
+            return LoadResult(data)
+        }
 
         fun observePage(page: Int, limit: Int = capacity): Flow<List<String>> {
             val offset = (page - 1) * limit
@@ -72,11 +87,21 @@ class ObservePagesTest {
         }
     }
 
+    /** A paginator whose load is configured by the observing helpers below. */
     private fun livePaginator(
         core: PagingCore<String> = PagingCore(),
     ): MutablePaginator<String> =
-        MutablePaginator(core = core) { error("the original load must not be called while observing") }
+        MutablePaginator(core = core) { error("no load configured") }
             .apply { this.core.resize(capacity = 3, resize = false, silently = true) }
+
+    /** observePages over [source], loading a page from the same source (its first emission). */
+    private fun MutablePaginator<String>.live(
+        scope: CoroutineScope,
+        onError: ((Int, Throwable) -> Unit)? = null,
+        settle: Duration = Duration.ZERO,
+        source: Paginator<String>.(page: Int) -> Flow<List<String>>,
+    ) = apply { load = { page -> LoadResult(source(page).first()) } }
+        .observePages(scope, onError, settle, source)
 
     private suspend fun MutablePaginator<String>.loadPages(count: Int) {
         jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
@@ -87,13 +112,14 @@ class ObservePagesTest {
         paginator: MutablePaginator<String>,
         table: FakeTable,
         onError: ((Int, Throwable) -> Unit)? = null,
-    ) = paginator.observePages(backgroundScope, onError) { page -> table.observePage(page, core.capacity) }
+    ) = paginator.apply { load = { page -> table.loadPage(page, core.capacity) } }
+        .observePages(backgroundScope, onError) { page -> table.observePage(page, core.capacity) }
 
     // peekStateOf: reading a page in an assertion must not count as a use for LRU / TTL caches.
     private fun MutablePaginator<String>.dataOf(page: Int): List<String> = cache.peekStateOf(page)!!.data
 
     @Test
-    fun `each loaded page takes its first emission and only cached pages are subscribed`() = runTest {
+    fun `each page is loaded by load and subscribed once it is cached`() = runTest {
         val table = FakeTable(rowCount = 20)
         val paginator = livePaginator()
         observe(paginator, table)
@@ -103,7 +129,40 @@ class ObservePagesTest {
 
         assertEquals(listOf("r0", "r1", "r2"), paginator.dataOf(1))
         assertEquals(listOf("r3", "r4", "r5"), paginator.dataOf(2))
+        assertEquals(2, table.loads)
         assertEquals(listOf(1, 2), table.activePages.sorted())
+    }
+
+    @Test
+    fun `a first emission equal to the loaded data publishes no snapshot`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val paginator = livePaginator()
+        paginator.load = { page -> table.loadPage(page, core.capacity) }
+        paginator.loadPages(1)
+        var snapshots = 0
+        backgroundScope.launch { paginator.core.snapshot.collect { snapshots++ } }
+        runCurrent()
+        val before = snapshots
+
+        paginator.observePages(backgroundScope) { page -> table.observePage(page, core.capacity) }
+        runCurrent()
+
+        assertEquals(listOf(1), table.activePages)
+        assertEquals(before, snapshots, "an equal first emission must not publish")
+    }
+
+    @Test
+    fun `a first emission that differs from the loaded data is applied`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val paginator = livePaginator()
+        // load returns what the network said; the database holds something else
+        paginator.load = { _ -> LoadResult(listOf("net0", "net1", "net2")) }
+        paginator.observePages(backgroundScope) { page -> table.observePage(page, core.capacity) }
+
+        paginator.loadPages(1)
+        runCurrent()
+
+        assertEquals(listOf("r0", "r1", "r2"), paginator.dataOf(1))
     }
 
     @Test
@@ -159,32 +218,35 @@ class ObservePagesTest {
     }
 
     @Test
-    fun `refresh re-subscribes the refreshed page`() = runTest {
+    fun `refresh reloads through load and the live query adopts the result`() = runTest {
         val table = FakeTable(rowCount = 20)
         val paginator = livePaginator()
         observe(paginator, table)
         paginator.loadPages(2)
         runCurrent()
-        val before = table.subscriptions
+        val subscriptionsBefore = table.subscriptions
+        val loadsBefore = table.loads
 
         paginator.refresh(pages = listOf(2))
         runCurrent()
 
-        assertEquals(before + 1, table.subscriptions)
+        assertEquals(loadsBefore + 1, table.loads)
+        assertEquals(subscriptionsBefore, table.subscriptions, "an agreeing reload is adopted, not re-queried")
         assertEquals(listOf(1, 2), table.activePages.sorted())
         assertTrue(paginator.cache.getStateOf(2).isSuccessState())
     }
 
     @Test
-    fun `an update that lands while refresh is loading is not overwritten by it`() = runTest {
+    fun `an update that lands while refresh is loading ends up in the page`() = runTest {
         val table = FakeTable(rowCount = 20)
         val paginator = livePaginator()
         observe(paginator, table)
         paginator.loadPages(3)
         runCurrent()
 
-        // Page 3's new subscription hangs, so the refresh stays in its loading phase.
-        val gate = CompletableDeferred<Unit>().also { table.gates[3] = it }
+        // Page 3's load hangs, so the refresh stays in its loading phase; page 2's load has read
+        // the table before the update, so the refresh commits the older rows.
+        val gate = CompletableDeferred<Unit>().also { table.loadGates[3] = it }
         val refresh = launch { paginator.refresh(pages = listOf(2, 3)) }
         runCurrent()
 
@@ -199,13 +261,60 @@ class ObservePagesTest {
     }
 
     @Test
-    fun `a source failing before its first emission produces an Error page`() = runTest {
+    fun `a source failing before its first emission reports the error and marks the page dirty`() = runTest {
+        val errors = mutableListOf<Int>()
         val paginator = livePaginator()
-        paginator.observePages(backgroundScope) { _ -> flow<List<String>> { throw IllegalStateException("db closed") } }
+        paginator.load = { page -> LoadResult(List(3) { "load_p${page}_$it" }) }
+        paginator.observePages(backgroundScope, onError = { page, _ -> errors += page }) { _ ->
+            flow<List<String>> { throw IllegalStateException("db closed") }
+        }
 
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        runCurrent()
 
-        assertTrue(paginator.cache.getStateOf(1).isErrorState())
+        assertEquals(listOf(1), errors)
+        assertTrue(paginator.cache.getStateOf(1).isSuccessState(), "the loaded page stays")
+        assertTrue(paginator.core.isDirty(1))
+    }
+
+    @Test
+    fun `an Error page shows the database rows and stays an Error page`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val paginator = livePaginator()
+        paginator.load = { _ -> throw IllegalStateException("offline") }
+        paginator.observePages(backgroundScope) { page -> table.observePage(page, core.capacity) }
+
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        runCurrent()
+
+        assertTrue(paginator.cache.peekStateOf(1).isErrorState())
+        assertEquals(listOf("r0", "r1", "r2"), paginator.dataOf(1))
+        table.update(index = 1, value = "edited")
+        runCurrent()
+        assertEquals(listOf("r0", "edited", "r2"), paginator.dataOf(1))
+        assertTrue(paginator.cache.peekStateOf(1).isErrorState())
+    }
+
+    @Test
+    fun `a refresh error is kept when the page emits while it loads`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val paginator = livePaginator()
+        observe(paginator, table)
+        paginator.loadPages(1)
+        runCurrent()
+
+        val gate = CompletableDeferred<Unit>()
+        paginator.load = { _ -> gate.await(); throw IllegalStateException("network down") }
+        val refresh = launch { paginator.refresh(pages = listOf(1)) }
+        runCurrent()
+        table.update(index = 1, value = "edited") // folded into the loading page
+        runCurrent()
+        gate.complete(Unit)
+        refresh.join()
+        runCurrent()
+
+        assertTrue(paginator.cache.peekStateOf(1).isErrorState(), "the refresh error is not swallowed")
+        assertEquals(listOf("r0", "edited", "r2"), paginator.dataOf(1))
     }
 
     @Test
@@ -213,7 +322,7 @@ class ObservePagesTest {
         runTest {
             val errors = mutableListOf<Pair<Int, Throwable>>()
             val paginator = livePaginator()
-            paginator.observePages(backgroundScope, onError = { page, e -> errors += page to e }) { page ->
+            paginator.live(backgroundScope, onError = { page, e -> errors += page to e }) { page ->
                 flow {
                     emit(List(3) { "p${page}_$it" })
                     throw IllegalStateException("db closed")
@@ -251,14 +360,14 @@ class ObservePagesTest {
     }
 
     @Test
-    fun `cancelling the job unsubscribes every page and restores the original load`() = runTest {
+    fun `cancelling the job unsubscribes every page and load keeps working`() = runTest {
         val table = FakeTable(rowCount = 20)
         var originalLoads = 0
         val paginator = MutablePaginator<String> { page ->
             originalLoads++
             LoadResult(MutableList(3) { "load_p${page}_$it" })
         }.apply { core.resize(capacity = 3, resize = false, silently = true) }
-        val job = observe(paginator, table)
+        val job = paginator.observePages(backgroundScope) { page -> table.observePage(page, core.capacity) }
         paginator.loadPages(2)
         runCurrent()
 
@@ -267,7 +376,7 @@ class ObservePagesTest {
         assertEquals(emptyList(), table.activePages)
 
         paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
-        assertEquals(1, originalLoads)
+        assertEquals(3, originalLoads)
         assertEquals("load_p3_0", paginator.dataOf(3).first())
     }
 
@@ -329,10 +438,13 @@ class ObservePagesTest {
 
         val table = FakeTable(rowCount = 20)
         val paginator = livePaginator()
-        paginator.observePageResults(backgroundScope) { page ->
+        val source: Paginator<String>.(Int) -> Flow<LoadResult<String>> = { page ->
             table.observePage(page).map { LoadResult(it, Total(table.rows.value.size)) }
         }
+        paginator.load = { page -> source(page).first() }
+        paginator.observePageResults(backgroundScope, source = source)
         paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        runCurrent()
         assertEquals(20, (paginator.cache.getStateOf(1)!!.metadata as Total).count)
 
         table.rows.value = table.rows.value.drop(1)
@@ -489,7 +601,7 @@ class ObservePagesTest {
         val sources = mutableMapOf<Int, MutableStateFlow<List<String>>>()
         fun src(page: Int) = sources.getOrPut(page) { MutableStateFlow(List(3) { "p${page}_$it" }) }
         val paginator = livePaginator(core = PagingCore(cache = MostRecentPagingCache(maxSize = 3, protectContextWindow = false)))
-        paginator.observePages(backgroundScope) { page -> src(page) }
+        paginator.live(backgroundScope) { page -> src(page) }
         // Visited 9, then 5, then 1: page 9 is the least recently used one.
         for (page in listOf(9, 5, 1)) {
             paginator.jump(BookmarkInt(page))
@@ -535,7 +647,7 @@ class ObservePagesTest {
         rows: MutableStateFlow<List<String>>,
         settle: Duration,
         lag: Long = 5,
-    ) = paginator.observePages(backgroundScope, settle = settle) { page ->
+    ) = paginator.live(backgroundScope, settle = settle) { page ->
         var first = true
         rows.map { all ->
             if (page == 2 && !first) delay(lag)
@@ -614,7 +726,7 @@ class ObservePagesTest {
         val sources = mutableMapOf<Int, MutableStateFlow<List<String>>>()
         fun src(page: Int) = sources.getOrPut(page) { MutableStateFlow(List(3) { "p${page}_$it" }) }
         val paginator = livePaginator()
-        paginator.observePages(backgroundScope, settle = 100.milliseconds) { page -> src(page) }
+        paginator.live(backgroundScope, settle = 100.milliseconds) { page -> src(page) }
         paginator.loadPages(2)
         runCurrent()
 
@@ -626,6 +738,62 @@ class ObservePagesTest {
         advanceTimeBy(2)
         runCurrent()
         assertEquals(listOf("x", "y", "z"), paginator.dataOf(1))
+    }
+
+    @Test
+    fun `a first emission does not wait for a settle round`() = runTest {
+        val sources = mutableMapOf<Int, MutableStateFlow<List<String>>>()
+        fun src(page: Int) = sources.getOrPut(page) { MutableStateFlow(List(3) { "db${page}_$it" }) }
+        val paginator = livePaginator()
+        paginator.load = { page -> LoadResult(List(3) { "load${page}_$it" }) } // differs from the database
+        paginator.observePages(backgroundScope, settle = 1.seconds) { page -> src(page) }
+        paginator.loadPages(2)
+        runCurrent()
+
+        // Both pages were subscribed after their loads; their first emissions are applied at once,
+        // not held for a round that no table change opened.
+        assertEquals(listOf("db1_0", "db1_1", "db1_2"), paginator.dataOf(1))
+        assertEquals(listOf("db2_0", "db2_1", "db2_2"), paginator.dataOf(2))
+    }
+
+    @Test
+    fun `the metadata of load survives live updates without metadata`() = runTest {
+        class Total(val count: Int) : Metadata()
+
+        val table = FakeTable(rowCount = 20)
+        val paginator = livePaginator()
+        paginator.load = { page -> LoadResult(table.loadPage(page, core.capacity).data, Total(20)) }
+        paginator.observePages(backgroundScope) { page -> table.observePage(page, core.capacity) }
+        paginator.loadPages(1)
+        runCurrent()
+
+        table.update(index = 1, value = "edited")
+        runCurrent()
+
+        assertEquals("edited", paginator.dataOf(1)[1])
+        assertEquals(20, (paginator.cache.peekStateOf(1)!!.metadata as Total).count)
+    }
+
+    @Test
+    fun `a cancelled refresh that a live update was folded into re-queries the page`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val paginator = livePaginator()
+        observe(paginator, table)
+        paginator.loadPages(2)
+        runCurrent()
+        val subscriptionsBefore = table.subscriptions
+
+        table.loadGates[2] = CompletableDeferred() // the refresh of page 2 hangs
+        val refresh = launch { paginator.refresh(pages = listOf(2)) }
+        runCurrent()
+        table.update(index = 4, value = "edited") // folded into the loading page
+        runCurrent()
+        refresh.cancel() // rolls page 2 back to the state it had before the refresh
+        runCurrent()
+
+        assertEquals(listOf("r3", "edited", "r5"), paginator.dataOf(2))
+        assertTrue(paginator.cache.peekStateOf(2).isSuccessState())
+        assertEquals(subscriptionsBefore + 1, table.subscriptions, "the rolled-back page is re-queried")
     }
 
     @Test
@@ -643,7 +811,7 @@ class ObservePagesTest {
             MutableStateFlow(if (hasData) List(3) { "p${page}_$it" } else emptyList())
         }
         val paginator = livePaginator()
-        paginator.observePages(backgroundScope) { page -> src(page) }
+        paginator.live(backgroundScope) { page -> src(page) }
         paginator.bookmarks.clear()
         paginator.bookmarks.addAll(listOf(BookmarkInt(2), BookmarkInt(5), BookmarkInt(12)))
         paginator.loadPages(3)
@@ -666,19 +834,22 @@ class ObservePagesTest {
     }
 
     @Test
-    fun `goNextPage does not re-query a live partial last page`() = runTest {
+    fun `goNextPage reloads a partial last page through load without re-querying it`() = runTest {
         val table = FakeTable(rowCount = 5) // page 2 = r3, r4: the partial end of the feed
         val paginator = livePaginator()
         observe(paginator, table)
         paginator.loadPages(2)
         runCurrent()
-        val before = table.subscriptions
+        val subscriptionsBefore = table.subscriptions
+        val loadsBefore = table.loads
 
-        // Scrolling to the end (prefetch) keeps calling goNextPage on the partial last page.
+        // Scrolling to the end (prefetch) keeps calling goNextPage on the partial last page; like
+        // without observePages it is reloaded (a network-backed load may bring new rows).
         repeat(3) { paginator.goNextPage(silentlyLoading = true, silentlyResult = true) }
         runCurrent()
 
-        assertEquals(before, table.subscriptions, "the live page was re-queried")
+        assertEquals(loadsBefore + 3, table.loads)
+        assertEquals(subscriptionsBefore, table.subscriptions, "an agreeing reload is adopted, not re-queried")
         assertEquals(listOf("r3", "r4"), paginator.dataOf(2))
         assertTrue(paginator.cache.peekStateOf(2).isSuccessState())
     }

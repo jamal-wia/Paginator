@@ -424,9 +424,10 @@ differs only in **how pages are addressed**. Read the full guide at
   and `ContextWindowPagingCache` (evicts outside context). Eviction listener callback for reacting
   to
   page removal
-- **Live database pages** -- `observePages(viewModelScope) { page -> dao.observeUsers(limit, offset) }` subscribes
-  to one query per cached page (Room/SQLDelight re-emit on table changes) and unsubscribes when the
-  page leaves the cache, so a huge table never has to be observed as a whole
+- **Live database pages** -- `observePages(viewModelScope) { page -> dao.observeUsers(limit, offset) }` keeps
+  every page your `load` brought into the cache live with its own query (Room/SQLDelight re-emit on
+  table changes) and unsubscribes when the page leaves the cache, so a huge table never has to be
+  observed as a whole
 - **Reactive state** -- observe page changes via `snapshot` Flow (visible pages) or `asFlow()` (
   entire cache)
 - **High-level UI state** -- `paginator.uiState: Flow<PaginatorUiState<T>>` collapses the raw

@@ -1,6 +1,5 @@
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.extension.observePages
 import com.jamal_aliev.paginator.offset.load.LoadResult
@@ -31,6 +30,15 @@ class ObservePagesReviewRegressionTest {
         var subscriptions = 0
         val gates = mutableMapOf<Int, CompletableDeferred<Unit>>()
 
+        /** Gates a load of a page AFTER it has read the table. */
+        val loadGates = mutableMapOf<Int, CompletableDeferred<Unit>>()
+
+        suspend fun loadPage(page: Int, limit: Int = capacity): LoadResult<String> {
+            val data = rows.value.drop((page - 1) * limit).take(limit)
+            loadGates.remove(page)?.await()
+            return LoadResult(data)
+        }
+
         fun observePage(page: Int, limit: Int = capacity): Flow<List<String>> {
             val offset = (page - 1) * limit
             return rows.map { it.drop(offset).take(limit) }
@@ -48,7 +56,7 @@ class ObservePagesReviewRegressionTest {
     }
 
     private fun livePaginator(load: suspend Paginator<String>.(Int) -> LoadResult<String> = {
-        error("the original load must not be called while observing")
+        error("no load configured")
     }): MutablePaginator<String> =
         MutablePaginator(core = PagingCore(), load = load)
             .apply { core.resize(capacity = 3, resize = false, silently = true) }
@@ -59,33 +67,10 @@ class ObservePagesReviewRegressionTest {
     }
 
     private fun TestScope.observe(paginator: MutablePaginator<String>, table: FakeTable) =
-        paginator.observePages(backgroundScope) { page -> table.observePage(page, core.capacity) }
+        paginator.apply { load = { page -> table.loadPage(page, core.capacity) } }
+            .observePages(backgroundScope) { page -> table.observePage(page, core.capacity) }
 
     private fun MutablePaginator<String>.dataOf(page: Int): List<String> = cache.peekStateOf(page)!!.data
-
-    @Test
-    fun cancelling_the_job_during_a_pending_load_does_not_produce_an_Error_page() = runTest {
-        val table = FakeTable(rowCount = 20)
-        var originalLoads = 0
-        val paginator = livePaginator { page ->
-            originalLoads++
-            LoadResult(MutableList(3) { "load_p${page}_$it" })
-        }
-        val job = observe(paginator, table)
-        table.gates[1] = CompletableDeferred() // the first emission of page 1 never comes
-
-        val jump = launch { paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true) }
-        runCurrent()
-        job.cancel()
-        runCurrent()
-        jump.join()
-
-        val state = paginator.cache.peekStateOf(1)
-        assertFalse(
-            state.isErrorState(),
-            "cancelling observePages turned an in-flight load into an Error page: $state",
-        )
-    }
 
     @Test
     fun a_cancelled_refresh_leaves_the_restored_page_live() = runTest {
@@ -95,7 +80,7 @@ class ObservePagesReviewRegressionTest {
         paginator.loadPages(2)
         runCurrent()
 
-        table.gates[2] = CompletableDeferred() // the refresh's new query of page 2 hangs
+        table.loadGates[2] = CompletableDeferred() // the refresh's load of page 2 hangs
         val refresh = launch { paginator.refresh(pages = listOf(2)) }
         runCurrent()
         refresh.cancel()
@@ -109,8 +94,6 @@ class ObservePagesReviewRegressionTest {
         assertEquals(listOf("r3", "edited", "r5"), paginator.dataOf(2))
     }
 
-    // goNextPage no longer reloads a live partial page at all; this guards that a cancelled
-    // goNextPage on it still leaves the page live.
     @Test
     fun a_cancelled_goNextPage_reload_leaves_the_partial_page_live() = runTest {
         val table = FakeTable(rowCount = 5) // page 2 = r3, r4 (partial)
@@ -119,7 +102,7 @@ class ObservePagesReviewRegressionTest {
         paginator.loadPages(2)
         runCurrent()
 
-        table.gates[2] = CompletableDeferred()
+        table.loadGates[2] = CompletableDeferred() // goNextPage reloads the partial page 2
         val next = launch { paginator.goNextPage(silentlyLoading = true, silentlyResult = true) }
         runCurrent()
         next.cancel()
@@ -135,7 +118,7 @@ class ObservePagesReviewRegressionTest {
     fun a_live_update_never_buries_a_non_filled_page_inside_the_window() = runTest {
         val sources = mutableMapOf<Int, MutableStateFlow<List<String>>>()
         fun src(page: Int) = sources.getOrPut(page) { MutableStateFlow(List(3) { "p${page}_$it" }) }
-        val paginator = livePaginator()
+        val paginator = livePaginator { page -> LoadResult(src(page).value) }
         paginator.observePages(backgroundScope) { page -> src(page) }
         paginator.loadPages(3)
         runCurrent()
@@ -207,7 +190,7 @@ class ObservePagesReviewRegressionTest {
     }
 
     @Test
-    fun a_live_update_winning_over_refresh_does_not_leave_the_page_dirty() = runTest {
+    fun an_update_during_refresh_lands_and_the_refreshed_page_is_not_dirty() = runTest {
         val table = FakeTable(rowCount = 20)
         val paginator = livePaginator()
         observe(paginator, table)
@@ -215,7 +198,7 @@ class ObservePagesReviewRegressionTest {
         runCurrent()
         paginator.core.markDirty(2)
 
-        val gate = CompletableDeferred<Unit>().also { table.gates[3] = it }
+        val gate = CompletableDeferred<Unit>().also { table.loadGates[3] = it }
         val refresh = launch { paginator.refresh(pages = listOf(2, 3)) }
         runCurrent()
         table.update(index = 4, value = "edited")
@@ -231,7 +214,7 @@ class ObservePagesReviewRegressionTest {
     @Test
     fun a_throwing_onError_does_not_kill_every_page_subscription() = runTest {
         val table = FakeTable(rowCount = 20)
-        val paginator = livePaginator()
+        val paginator = livePaginator { page -> table.loadPage(page) }
         val parent = kotlinx.coroutines.SupervisorJob()
         var escaped: Throwable? = null
         val scope = kotlinx.coroutines.CoroutineScope(

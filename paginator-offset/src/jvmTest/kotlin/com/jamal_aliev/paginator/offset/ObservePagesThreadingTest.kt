@@ -2,9 +2,11 @@ package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.extension.observePages
+import com.jamal_aliev.paginator.offset.load.LoadResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,28 +24,32 @@ import kotlin.test.assertTrue
 
 class ObservePagesThreadingTest {
 
+    private val callerThread = java.util.concurrent.Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+
     /**
      * Live writes run on the observePages scope's dispatcher under the (internal) navigation lock;
-     * element CRUD, release, resize and transaction rollback take no lock. A caller that keeps all
-     * its own calls on one thread still races the library's live writes.
+     * element CRUD, `removeState`, `resize`, `release` and transaction rollback take no lock. So a
+     * caller doing CRUD runs observePages on its own thread (`viewModelScope` on Main): live writes
+     * then only interleave at suspension points, never inside a CRUD call. The table itself changes
+     * on another thread.
      */
     @Test
-    fun crud_on_caller_thread_races_live_writes_on_Default() = runBlocking {
+    fun crud_on_the_observing_thread_does_not_race_live_writes() = runBlocking(callerThread) {
         val errors: MutableList<Throwable> = Collections.synchronizedList(mutableListOf())
         val rows = MutableStateFlow(List(60) { "r$it" })
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val paginator = MutablePaginator<String> { error("unused") }
+        val scope = CoroutineScope(SupervisorJob() + callerThread)
+        val paginator = MutablePaginator<String> { page -> LoadResult(rows.value.drop((page - 1) * 3).take(3)) }
             .apply { core.resize(capacity = 3, resize = false, silently = true) }
         paginator.observePages(scope, onError = { _, e -> errors += e }) { page ->
             rows.map { it.drop((page - 1) * 3).take(3) }
         }
         paginator.jump(BookmarkInt(1))
         repeat(8) { paginator.goNextPage() }
-        val writer = scope.launch {
+        val writer = CoroutineScope(Dispatchers.Default).launch {
             repeat(200_000) { i -> rows.update { it.toMutableList().also { l -> l[i % 27] = "v$i" } } }
         }
         withTimeout(30_000) {
-            // The caller's own thread (runBlocking): plain CRUD, as any UI would do.
+            // The caller's own thread, shared with observePages: plain CRUD, as any UI would do.
             repeat(200_000) { i ->
                 try {
                     paginator.setElement(element = "crud$i", page = 1 + i % 9, index = i % 3, silently = true)
@@ -53,6 +59,8 @@ class ObservePagesThreadingTest {
                         val st = paginator.cache.peekStateOf(pg)
                         if (st != null && st.page != pg) errors += IllegalStateException("page $pg holds state of ${st.page}")
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
                     if (e !is com.jamal_aliev.paginator.core.exception.LockedException) errors += e
                 }
@@ -70,7 +78,7 @@ class ObservePagesThreadingTest {
     fun unconfined_dispatcher_works() = runBlocking {
         val rows = MutableStateFlow(List(30) { "r$it" })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val paginator = MutablePaginator<String> { error("unused") }
+        val paginator = MutablePaginator<String> { page -> LoadResult(rows.value.drop((page - 1) * 3).take(3)) }
             .apply { core.resize(capacity = 3, resize = false, silently = true) }
         paginator.observePages(scope) { page -> rows.map { it.drop((page - 1) * 3).take(3) } }
         withTimeout(5_000) {
@@ -94,14 +102,14 @@ class ObservePagesThreadingTest {
             val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
             val subscribed = java.util.concurrent.atomic.AtomicInteger()
             val active2 = java.util.concurrent.atomic.AtomicInteger()
-            val paginator = MutablePaginator<String> { error("unused") }
-                .apply { core.resize(capacity = 3, resize = false, silently = true) }
+            val paginator = MutablePaginator<String> { page ->
+                // The second load of page 2 (the refresh) hangs until it is cancelled.
+                if (page == 2 && subscribed.incrementAndGet() == 2) gate.await()
+                LoadResult(rows.value.drop((page - 1) * 3).take(3))
+            }.apply { core.resize(capacity = 3, resize = false, silently = true) }
             paginator.observePages(scope) { page ->
                 rows.map { it.drop((page - 1) * 3).take(3) }
-                    .onStart {
-                        if (page == 2) active2.incrementAndGet()
-                        if (page == 2 && subscribed.incrementAndGet() == 2) gate.await()
-                    }
+                    .onStart { if (page == 2) active2.incrementAndGet() }
                     .onCompletion { if (page == 2) active2.decrementAndGet() }
             }
             paginator.jump(BookmarkInt(1))

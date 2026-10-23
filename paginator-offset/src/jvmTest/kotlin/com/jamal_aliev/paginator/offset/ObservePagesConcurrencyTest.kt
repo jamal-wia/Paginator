@@ -3,6 +3,7 @@ package com.jamal_aliev.paginator.offset
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
 import com.jamal_aliev.paginator.offset.extension.observePages
+import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -44,7 +45,8 @@ class ObservePagesConcurrencyTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + handler)
             val paginator = MutablePaginator<String>(
                 core = PagingCore(), // plain InMemoryPagingCache: rules out the pre-existing LRU races
-            ) { error("unused") }.apply { core.resize(capacity = 3, resize = false, silently = true) }
+            ) { page -> LoadResult(rows.value.drop((page - 1) * 3).take(3)) }
+                .apply { core.resize(capacity = 3, resize = false, silently = true) }
             val job = paginator.observePages(scope, onError = { _, e -> errors += e }) { page ->
                 rows.map { it.drop((page - 1) * 3).take(3) }
                     .onStart { active.getOrPut(page) { AtomicInteger() }.incrementAndGet() }

@@ -11,8 +11,6 @@ import com.jamal_aliev.paginator.core.exception.LockedException.JumpWasLockedExc
 import com.jamal_aliev.paginator.core.exception.LockedException.RefreshWasLockedException
 import com.jamal_aliev.paginator.core.exception.LockedException.RestartWasLockedException
 import com.jamal_aliev.paginator.core.extension.isProgressState
-import com.jamal_aliev.paginator.core.extension.isSuccessState
-import com.jamal_aliev.paginator.core.extension.isEmptyState
 import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
@@ -100,13 +98,6 @@ open class Paginator<T>(
      */
     internal suspend fun <R> withNavigationLock(block: suspend () -> R): R =
         navigationMutex.withLock { block() }
-
-    /**
-     * Set by `observePages` while it is active: whether [page] is backed by a running live query.
-     * Such a page is always up to date, so [goNextPage] does not reload it when it is the cached
-     * partial end of the feed — it fills itself when new rows arrive. Called under [navigationMutex].
-     */
-    internal var isLivePage: (suspend (page: Int) -> Boolean)? = null
 
     /**
      * Releases [navigationMutex] after a critical section that may have changed the cached pages,
@@ -703,15 +694,6 @@ open class Paginator<T>(
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyPagesInContext()
-                return@coroutineScope nextPageState
-            }
-
-            // A cached partial page — the end of the feed — backed by a live query is current by
-            // definition: reloading it would only re-run the query. It grows by itself when rows
-            // arrive, and the window then extends over it.
-            if ((nextPageState.isSuccessState() || nextPageState.isEmptyState())
-                && isLivePage?.invoke(nextPage) == true
-            ) {
                 return@coroutineScope nextPageState
             }
 
