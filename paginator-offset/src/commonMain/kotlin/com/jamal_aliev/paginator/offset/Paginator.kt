@@ -1492,6 +1492,7 @@ open class Paginator<T>(
         lockGoPreviousPage = savepoint.lockGoPreviousPage
         lockRestart = savepoint.lockRestart
         lockRefresh = savepoint.lockRefresh
+        core.markCacheReplaced()
 
         core.snapshot()
         if (core.enableCacheFlow) {

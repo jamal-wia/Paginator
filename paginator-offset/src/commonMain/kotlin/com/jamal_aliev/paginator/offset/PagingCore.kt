@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonElement
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
@@ -722,6 +723,18 @@ open class PagingCore<T>(
         return result
     }
 
+    /**
+     * Bumped whenever the cache content is **replaced wholesale** rather than changed page by page
+     * — [restoreState] (also when silent), a transaction rollback and [release]. Consumers that keep
+     * per-page state in sync with the cache (the live queries of `observePages`) treat it as "every
+     * page may now hold foreign data" and resynchronise.
+     */
+    internal val cacheReplacements = MutableStateFlow(0L)
+
+    internal fun markCacheReplaced() {
+        cacheReplacements.update { it + 1 }
+    }
+
     /** Internal set of page numbers marked as dirty (needing refresh). */
     private val _dirtyPages: MutableSet<Int> = mutableSetOf()
     val dirtyPages: Set<Int> get() = _dirtyPages.toSet()
@@ -933,6 +946,7 @@ open class PagingCore<T>(
         }
         this.capacity = capacity
         _dirtyPages.clear()
+        markCacheReplaced()
     }
 
     /**
@@ -1025,6 +1039,7 @@ open class PagingCore<T>(
         capacity = snapshot.capacity
         startContextPage = snapshot.startContextPage
         endContextPage = snapshot.endContextPage
+        markCacheReplaced()
 
         if (!silently) {
             snapshot()

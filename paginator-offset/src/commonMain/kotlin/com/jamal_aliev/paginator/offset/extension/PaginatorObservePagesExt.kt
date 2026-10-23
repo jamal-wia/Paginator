@@ -60,6 +60,10 @@ import kotlinx.coroutines.sync.withLock
  * 4. **Pages that entered the cache without a load** — restored by `restoreState`, promoted from
  *    the deprecated L2 cache, created by CRUD overflow, or loaded before this call — are subscribed
  *    on the fly, so every cached Success page is live.
+ * 5. **Wholesale replacement = resubscribe.** `restoreState` (also with `silently = true`) and a
+ *    transaction rollback replace the cached pages with data their queries never emitted; every
+ *    live page is then re-queried, so a recreated paginator restored from a saved state shows
+ *    the database's current content, not the saved one.
  *
  * If a page's flow fails **after** its first emission, [onError] is called and the page is marked
  * dirty: it keeps its last data and is reloaded — and re-subscribed — by the next navigation that
@@ -190,6 +194,18 @@ private class LivePages<T>(
         scope.launch {
             paginator.core.snapshot.collect { registryLock.withLock { reconcileLocked() } }
         }
+        // restoreState (silent or not), a transaction rollback or release replace the cached
+        // pages wholesale: a page may now hold restored data its query never emitted, and the
+        // query will not emit again until the table changes. Re-run every live query.
+        val replacementsAtStart: Long = paginator.core.cacheReplacements.value
+        scope.launch {
+            var seen: Long = replacementsAtStart
+            paginator.core.cacheReplacements.collect { replacements: Long ->
+                if (replacements == seen) return@collect
+                seen = replacements
+                registryLock.withLock { resubscribeLocked() }
+            }
+        }
     }
 
     /** The paginator's `load` while observing: (re)subscribes [page] and awaits its first emission. */
@@ -228,6 +244,25 @@ private class LivePages<T>(
                 subscribeLocked(page, first = null)
             }
         }
+    }
+
+    /**
+     * Restarts the query of every cached Success page, so its first emission brings the page back
+     * in line with the database. Pages still loading keep their subscription — the pending load
+     * already takes a fresh first emission.
+     */
+    private fun resubscribeLocked() {
+        val cache = paginator.cache
+        val iterator = subscriptions.entries.iterator()
+        while (iterator.hasNext()) {
+            val (page, subscription) = iterator.next()
+            if (cache.getStateOf(page) is OffsetPageState.Success) {
+                subscription.job.cancel()
+                pending.remove(page)
+                iterator.remove()
+            }
+        }
+        reconcileLocked()
     }
 
     /**

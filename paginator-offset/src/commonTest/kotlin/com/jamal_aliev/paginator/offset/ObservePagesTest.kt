@@ -11,6 +11,8 @@ import com.jamal_aliev.paginator.offset.extension.observe
 import com.jamal_aliev.paginator.offset.extension.observePageResults
 import com.jamal_aliev.paginator.offset.extension.observePages
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.serialization.restoreStateFromJson
+import com.jamal_aliev.paginator.offset.serialization.saveStateToJson
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.builtins.serializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -324,5 +327,106 @@ class ObservePagesTest {
         runCurrent()
         assertEquals(19, (paginator.cache.getStateOf(1)!!.metadata as Total).count)
         assertFalse(paginator.cache.getStateOf(1)!!.data.contains("r0"))
+    }
+
+    // ── Wholesale replacement: restoreState and transaction rollback ────────────────────────────
+
+    /** Saves three pages of [table] the way a screen would before process death. */
+    private suspend fun savedState(table: FakeTable): String {
+        val source = MutablePaginator<String> { page ->
+            LoadResult(table.rows.value.drop((page - 1) * 3).take(3).toMutableList())
+        }.apply { core.resize(capacity = 3, resize = false, silently = true) }
+        source.loadPages(3)
+        return source.saveStateToJson(String.serializer())
+    }
+
+    @Test
+    fun `a recreated paginator restored before observing subscribes every page at once`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val saved = savedState(table)
+        table.update(index = 4, value = "changed while the process was dead")
+
+        val paginator = livePaginator()
+        paginator.restoreStateFromJson(saved, String.serializer())
+        observe(paginator, table)
+        runCurrent()
+
+        assertEquals(listOf(1, 2, 3), table.activePages.sorted())
+        assertEquals(listOf("r3", "changed while the process was dead", "r5"), paginator.dataOf(2))
+    }
+
+    @Test
+    fun `restoring into an observed paginator subscribes every page at once`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val saved = savedState(table)
+        table.update(index = 4, value = "changed while the process was dead")
+
+        val paginator = livePaginator()
+        observe(paginator, table)
+        runCurrent()
+        paginator.restoreStateFromJson(saved, String.serializer())
+        runCurrent()
+
+        assertEquals(listOf(1, 2, 3), table.activePages.sorted())
+        assertEquals(listOf("r3", "changed while the process was dead", "r5"), paginator.dataOf(2))
+    }
+
+    @Test
+    fun `a silent restore still subscribes every page`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val saved = savedState(table)
+        table.update(index = 4, value = "changed while the process was dead")
+
+        val paginator = livePaginator()
+        observe(paginator, table)
+        runCurrent()
+        paginator.restoreStateFromJson(saved, String.serializer(), silently = true)
+        runCurrent()
+
+        assertEquals(listOf(1, 2, 3), table.activePages.sorted())
+        assertEquals(listOf("r3", "changed while the process was dead", "r5"), paginator.dataOf(2))
+    }
+
+    @Test
+    fun `restoring an older state over live pages re-queries them`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val saved = savedState(table)
+        val paginator = livePaginator()
+        observe(paginator, table)
+        paginator.loadPages(3)
+        runCurrent()
+        table.update(index = 4, value = "newer")
+        runCurrent()
+        val subscriptionsBefore = table.subscriptions
+
+        paginator.restoreStateFromJson(saved, String.serializer())
+        runCurrent()
+
+        assertEquals(listOf("r3", "newer", "r5"), paginator.dataOf(2), "the database wins over the snapshot")
+        assertEquals(subscriptionsBefore + 3, table.subscriptions)
+        assertEquals(listOf(1, 2, 3), table.activePages.sorted())
+    }
+
+    @Test
+    fun `a transaction rollback re-queries the live pages`() = runTest {
+        val table = FakeTable(rowCount = 20)
+        val paginator = livePaginator()
+        observe(paginator, table)
+        paginator.loadPages(2)
+        runCurrent()
+
+        // The database changes while the transaction runs; rolling back L1 must not resurrect the
+        // pre-transaction data the queries already moved past.
+        assertFailsWith<IllegalStateException> {
+            paginator.transaction {
+                table.update(index = 4, value = "written during the transaction")
+                runCurrent()
+                error("boom")
+            }
+        }
+        runCurrent()
+
+        assertEquals(listOf("r3", "written during the transaction", "r5"), paginator.dataOf(2))
+        assertEquals(listOf(1, 2), table.activePages.sorted())
     }
 }
