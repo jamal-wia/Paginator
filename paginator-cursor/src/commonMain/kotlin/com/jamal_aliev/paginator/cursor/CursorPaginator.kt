@@ -883,6 +883,16 @@ open class CursorPaginator<K : Any, T>(
             return cache.getStateOf(self)?.id == ownId
         }
 
+        // Dirty flags of the refreshed pages are taken over before loading, so a page marked dirty
+        // while the refresh is loading keeps its flag. Pages the refresh does not end up writing
+        // get their original flag back.
+        var dirtyAtStart: List<K> = emptyList()
+        var committedSelves: Set<K> = emptySet()
+
+        fun restoreUncommittedDirtyFlags() {
+            core.markDirty(dirtyAtStart.filter { it !in committedSelves && cache.getStateOf(it) != null })
+        }
+
         try {
             navigationMutex.lock()
             try {
@@ -910,6 +920,8 @@ open class CursorPaginator<K : Any, T>(
                     cache.setState(cachedCursor, progressState, silently = true)
                     progressIds[cachedCursor.self] = progressState.id
                 }
+                dirtyAtStart = cursors.map { it.self }.filter { core.isDirty(it) }
+                core.clearDirty(cursors.map { it.self })
             } finally {
                 navigationMutex.unlock()
             }
@@ -933,6 +945,8 @@ open class CursorPaginator<K : Any, T>(
             navigationMutex.lock()
             try {
                 committed = results.filterIndexed { index, _ -> ownsPage(cursors[index].self) }
+                committedSelves = cursors.filterIndexed { index, _ -> results[index] in committed }
+                    .mapTo(HashSet()) { it.self }
                 committed.forEach { (cursor, state) ->
                     cache.setState(cursor, state, silently = true)
                 }
@@ -970,12 +984,13 @@ open class CursorPaginator<K : Any, T>(
                 if (successes.isNotEmpty()) pc.saveAll(successes)
             }
 
-            core.clearDirty(cursors.filterIndexed { index, _ -> results[index] in committed }.map { it.self })
+            restoreUncommittedDirtyFlags()
 
             if (enableCacheFlow) core.repeatCacheFlow()
             if (!finalSilently) core.snapshot()
             logger.debug(LogComponent.LIFECYCLE) { "refresh: done" }
         } catch (e: CancellationException) {
+            restoreUncommittedDirtyFlags()
             if (savedStates.isNotEmpty()) {
                 withContext(NonCancellable) {
                     navigationMutex.lock()

@@ -1050,6 +1050,16 @@ open class Paginator<T>(
             return cache.getStateOf(page)?.id == ownId
         }
 
+        // Dirty flags of the refreshed pages are taken over in phase 1, so a page marked dirty
+        // while the refresh is loading keeps its flag. Pages the refresh does not end up writing
+        // get their original flag back.
+        var dirtyAtStart: List<Int> = emptyList()
+        var committedPages: Set<Int> = emptySet()
+
+        fun restoreUncommittedDirtyFlags() {
+            core.markDirty(dirtyAtStart.filter { it !in committedPages && cache.getStateOf(it) != null })
+        }
+
         try {
             // Phase 1: validate guards and set progress states under lock
             navigationMutex.lock()
@@ -1076,6 +1086,8 @@ open class Paginator<T>(
                     )
                     progressIds[page] = progressState.id
                 }
+                dirtyAtStart = pages.filter { core.isDirty(it) }
+                core.clearDirty(pages)
             } finally {
                 navigationMutex.unlock()
             }
@@ -1104,6 +1116,7 @@ open class Paginator<T>(
                     committed = results.filter { finalPageState: OffsetPageState<T> ->
                         ownsPage(finalPageState.page)
                     }
+                    committedPages = committed.mapTo(HashSet()) { it.page }
                     committed.forEach { finalPageState: OffsetPageState<T> ->
                         cache.setState(
                             state = finalPageState,
@@ -1147,7 +1160,7 @@ open class Paginator<T>(
                     }
                 }
 
-                core.clearDirty(committed.map { it.page })
+                restoreUncommittedDirtyFlags()
             }
 
             if (enableCacheFlow) {
@@ -1158,6 +1171,7 @@ open class Paginator<T>(
             }
             logger.debug(LogComponent.LIFECYCLE) { "refresh: pages=$pages completed" }
         } catch (e: CancellationException) {
+            restoreUncommittedDirtyFlags()
             if (savedStates.isNotEmpty()) {
                 withContext(NonCancellable) {
                     // Under lock: ownsPage must not interleave with a concurrent writer

@@ -224,4 +224,44 @@ class RefreshConcurrentMutationTest {
 
         assertEquals(page3Before, paginator.cache.getStateOf(3))
     }
+
+    @Test
+    fun `a page marked dirty while the refresh is loading keeps its dirty flag`() = runTest {
+        val source = GatedSource()
+        val paginator = populated(source)
+        paginator.core.markDirty(3)
+        val gate = source.gate(2)
+
+        val refresh = launch { paginator.refresh(pages = listOf(2, 3)) }
+        testScheduler.advanceUntilIdle()
+        // Taken over by the running refresh...
+        assertTrue(!paginator.core.isDirty(3))
+
+        // ...while a new mark set during loading must survive the commit.
+        paginator.core.markDirty(2)
+        gate.complete(Unit)
+        refresh.join()
+
+        assertTrue(paginator.core.isDirty(2))
+        assertTrue(!paginator.core.isDirty(3), "the refresh wrote page 3, so its old flag is gone")
+    }
+
+    @Test
+    fun `a dirty page the refresh does not write keeps its dirty flag`() = runTest {
+        val source = GatedSource()
+        val paginator = populated(source)
+        paginator.core.markDirty(2)
+        val gate = source.gate(2)
+
+        val refresh = launch { paginator.refresh(pages = listOf(2)) }
+        testScheduler.advanceUntilIdle()
+        paginator.core.setState(
+            OffsetPageState.Success(page = 2, data = mutableListOf("x0", "x1", "x2")),
+            silently = true,
+        )
+        gate.complete(Unit)
+        refresh.join()
+
+        assertTrue(paginator.core.isDirty(2))
+    }
 }

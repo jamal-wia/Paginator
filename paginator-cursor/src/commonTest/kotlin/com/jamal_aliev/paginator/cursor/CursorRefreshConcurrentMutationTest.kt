@@ -200,4 +200,25 @@ class CursorRefreshConcurrentMutationTest {
 
         assertEquals(p2Before, paginator.cache.getStateOf("p2"))
     }
+
+    @Test
+    fun `a page marked dirty while the refresh is loading keeps its dirty flag`() = runTest {
+        val source = GatedSource()
+        val paginator = populated(source)
+        paginator.core.markDirty("p2")
+        val gate = source.gate("p1")
+
+        val refresh = launch {
+            paginator.refresh(cursors = listOf(paginator.cursorOf("p1"), paginator.cursorOf("p2")))
+        }
+        testScheduler.advanceUntilIdle()
+        assertTrue(!paginator.core.isDirty("p2"))
+
+        paginator.core.markDirty("p1")
+        gate.complete(Unit)
+        refresh.join()
+
+        assertTrue(paginator.core.isDirty("p1"))
+        assertTrue(!paginator.core.isDirty("p2"), "the refresh wrote p2, so its old flag is gone")
+    }
 }
