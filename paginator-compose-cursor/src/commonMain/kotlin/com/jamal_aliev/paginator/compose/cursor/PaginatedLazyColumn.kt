@@ -70,8 +70,12 @@ fun <K : Any, T> PaginatedLazyColumn(
     key: (item: T) -> Any,
     itemContent: @Composable LazyItemScope.(item: T, globalIndex: Int, indexInPage: Int, items: List<T>, page: PageState<T>) -> Unit,
 ) {
-    val pages by paginator.core.snapshot.collectAsStateWithLifecycle(initialValue = emptyList())
-    val uiState = remember(pages) { pages.toUiState(isStarted = paginator.core.isStarted) }
+    // visibleSnapshot also carries the anchorless first load (loading / error), which has no
+    // cursor key and so never appears in the keyed core.snapshot.
+    val pages by paginator.core.visibleSnapshot.collectAsStateWithLifecycle(initialValue = emptyList())
+    val uiState = remember(pages) {
+        pages.toUiState(isStarted = paginator.core.isStarted || paginator.core.bootstrapState.value != null)
+    }
 
     when (uiState) {
         is PaginatorUiState.Loading -> if (loadingContent != null) { loadingContent(); return }

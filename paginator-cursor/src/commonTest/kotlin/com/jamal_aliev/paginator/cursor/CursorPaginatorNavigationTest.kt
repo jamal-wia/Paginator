@@ -5,6 +5,7 @@ import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.core.exception.LockedException
 import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
+import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.exception.CursorLoadGuardedException
 import com.jamal_aliev.paginator.cursor.exception.EndOfCursorFeedException
@@ -12,6 +13,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -56,19 +58,20 @@ class CursorPaginatorNavigationTest {
     }
 
     @Test
-    fun restart_propagates_load_failure_as_error_page_return_value() = runTest {
-        // Simulates a server error on the initial load. The error page should surface
-        // and the cache / context should remain consistent (not half-populated).
+    fun restart_without_anchor_failure_exposes_bootstrap_error_and_keeps_cache_empty() = runTest {
+        // A server error on the anchorless first load has no cursor key to be cached under:
+        // it is published as the bootstrap state (still visible to uiState, see issue #3)
+        // and the cache stays empty and not started instead of holding a fake-key page.
         val paginator = failingCursorPaginator(RuntimeException("initial failed"))
         paginator.restart(silentlyLoading = true, silentlyResult = true)
-        // The context must keep pointing at the (sentinel) cursor the error was cached
-        // under, so that core.snapshot() has a range to compute from. See issue #3:
-        // nulling these out here left snapshot() with nothing to publish.
-        assertNotNull(paginator.core.startContextCursor)
-        assertNotNull(paginator.core.endContextCursor)
-        assertTrue(
-            paginator.cache.getStateOf(paginator.core.startContextCursor!!.self)!!.isErrorState()
-        )
+
+        val bootstrap = paginator.core.bootstrapState.value
+        assertTrue(bootstrap.isErrorState())
+        assertEquals("initial failed", (bootstrap as PageState.ErrorState<*>).exception.message)
+        assertTrue(paginator.core.cursors.isEmpty())
+        assertNull(paginator.core.startContextCursor)
+        assertNull(paginator.core.endContextCursor)
+        assertFalse(paginator.core.isStarted)
     }
 
     // ── jump ────────────────────────────────────────────────────────────────

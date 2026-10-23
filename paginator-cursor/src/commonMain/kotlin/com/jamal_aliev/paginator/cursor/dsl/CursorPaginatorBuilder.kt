@@ -12,6 +12,8 @@ import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorBootstrapErrorPage
+import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorBootstrapProgressPage
 import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorErrorPage
 import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorProgressPage
 import com.jamal_aliev.paginator.cursor.initializer.InitializerCursorSuccessPage
@@ -177,6 +179,8 @@ class CursorInitializersBuilder<K : Any, T> @PublishedApi internal constructor()
     private var progress: InitializerCursorProgressPage<K, T>? = null
     private var success: InitializerCursorSuccessPage<K, T>? = null
     private var error: InitializerCursorErrorPage<K, T>? = null
+    private var bootstrapProgress: InitializerCursorBootstrapProgressPage<T>? = null
+    private var bootstrapError: InitializerCursorBootstrapErrorPage<T>? = null
 
     fun progress(factory: InitializerCursorProgressPage<K, T>) {
         progress = factory
@@ -190,9 +194,25 @@ class CursorInitializersBuilder<K : Any, T> @PublishedApi internal constructor()
         error = factory
     }
 
+    /**
+     * Progress state of the anchorless first load (`restart()` without `initialCursor`), which has
+     * no bookmark yet — e.g. a skeleton. See
+     * [CursorPagingCore.bootstrapState][com.jamal_aliev.paginator.cursor.CursorPagingCore.bootstrapState].
+     */
+    fun bootstrapProgress(factory: InitializerCursorBootstrapProgressPage<T>) {
+        bootstrapProgress = factory
+    }
+
+    /** Error state of a failed anchorless first load. */
+    fun bootstrapError(factory: InitializerCursorBootstrapErrorPage<T>) {
+        bootstrapError = factory
+    }
+
     internal fun applyTo(core: CursorPagingCore<K, T>) {
         progress?.let { core.initializerProgressPage = it }
         success?.let { core.initializerSuccessPage = it }
         error?.let { core.initializerErrorPage = it }
+        bootstrapProgress?.let { core.initializerBootstrapProgressPage = it }
+        bootstrapError?.let { core.initializerBootstrapErrorPage = it }
     }
 }
