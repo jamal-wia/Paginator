@@ -33,6 +33,15 @@ class ObservePagesInteractionTest {
         val activePages = mutableListOf<Int>()
         val gates = mutableMapOf<Int, CompletableDeferred<Unit>>()
 
+        /** Gates a load of a page AFTER it has read the table. */
+        val loadGates = mutableMapOf<Int, CompletableDeferred<Unit>>()
+
+        suspend fun loadPage(page: Int, limit: Int = capacity): LoadResult<String> {
+            val data = rows.value.drop((page - 1) * limit).take(limit)
+            loadGates.remove(page)?.await()
+            return LoadResult(data)
+        }
+
         fun observePage(page: Int, limit: Int = capacity): Flow<List<String>> {
             val offset = (page - 1) * limit
             return rows.map { it.drop(offset).take(limit) }
@@ -49,11 +58,12 @@ class ObservePagesInteractionTest {
     }
 
     private fun livePaginator(core: PagingCore<String> = PagingCore()): MutablePaginator<String> =
-        MutablePaginator(core = core) { error("original load") }
+        MutablePaginator(core = core) { error("no load configured") }
             .apply { this.core.resize(capacity = 3, resize = false, silently = true) }
 
     private fun TestScope.observe(paginator: MutablePaginator<String>, table: FakeTable) =
-        paginator.observePages(backgroundScope) { page -> table.observePage(page, core.capacity) }
+        paginator.apply { load = { page -> table.loadPage(page, core.capacity) } }
+            .observePages(backgroundScope) { page -> table.observePage(page, core.capacity) }
 
     private fun TestScope.observeWith(cache: PagingCache<String>, table: FakeTable) =
         livePaginator(PagingCore(cache = cache)).also { observe(it, table) }
@@ -177,6 +187,7 @@ class ObservePagesInteractionTest {
     fun source_ending_with_a_timeout_after_first_emission_is_reported() = runTest {
         val errors = mutableListOf<Int>()
         val paginator = livePaginator()
+        paginator.load = { page -> LoadResult(List(3) { "p${page}_$it" }) }
         paginator.observePages(backgroundScope, onError = { page, _ -> errors += page }) { page ->
             kotlinx.coroutines.flow.flow {
                 emit(List(3) { "p${page}_$it" })
@@ -202,7 +213,7 @@ class ObservePagesInteractionTest {
         paginator.goNextPage()
         runCurrent()
 
-        val gate = CompletableDeferred<Unit>().also { table.gates[2] = it } // page 2's new query is slow
+        val gate = CompletableDeferred<Unit>().also { table.loadGates[2] = it } // page 2's reload is slow
         val refresh = launch { paginator.refresh(pages = listOf(2)) }
         runCurrent()
         paginator.core.resize(capacity = 2, resize = false, silently = true)
@@ -213,7 +224,7 @@ class ObservePagesInteractionTest {
 
         val state = paginator.cache.peekStateOf(2)
         assertFalse(state.isErrorState(), "refresh committed $state")
-        // Once the waited-for query delivered, the page is re-queried with the new capacity.
+        // The live query was opened for the old capacity: it is re-queried with the new one.
         assertEquals(listOf("r2", "r3"), state!!.data)
     }
 

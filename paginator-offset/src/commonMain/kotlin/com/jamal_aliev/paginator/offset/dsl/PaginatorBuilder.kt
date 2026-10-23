@@ -20,6 +20,7 @@ import com.jamal_aliev.paginator.offset.initializer.InitializerSuccessPage
 import com.jamal_aliev.paginator.offset.load.LoadResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlin.time.Duration
 
@@ -298,16 +299,19 @@ class MutablePaginatorBuilder<T> @PublishedApi internal constructor(
      * }
      * ```
      *
-     * The subscriptions start when the paginator is built and live as long as [scope]. With
-     * `livePages` the [load] block becomes optional: the pages come from [source]. A configured
-     * `load { }` is only used again once [scope] is cancelled; without one, a load attempted after
-     * that fails with a descriptive error page. To stop the subscriptions without cancelling the
-     * scope, call `observePages` on a built paginator instead and keep its `Job`.
+     * Pages are loaded by [load] as usual and kept live by [source] once cached. With `livePages`
+     * the [load] block becomes optional: without one, a page is loaded from [source] itself (its
+     * first emission). Configure `load { }` when loading does more than reading the database —
+     * e.g. fetch the page from the network, write it into the database and return what it holds.
+     *
+     * The subscriptions start when the paginator is built and live as long as [scope]; after that
+     * the paginator keeps working with plain loads. To stop the subscriptions without cancelling
+     * the scope, call `observePages` on a built paginator instead and keep its `Job`.
      *
      * Calling it again (or [livePageResults]) replaces the previous source.
      *
      * @param scope The scope that owns the page subscriptions, e.g. `viewModelScope`.
-     * @param onError Invoked when a page's flow fails after its first emission.
+     * @param onError Invoked when a page's flow fails.
      * @param settle Hold each update until every live page has emitted (or this much time passed)
      *   and apply them together — see `observePages`. Off by default.
      * @param source Opens the live query of one page; the receiver is the paginator.
@@ -339,14 +343,10 @@ class MutablePaginatorBuilder<T> @PublishedApi internal constructor(
     @PublishedApi
     internal fun build(): MutablePaginator<T> {
         val live: LivePagesConfig<T>? = livePages
+        // Without a load { } block a live source loads a page itself: its first emission.
         val load: suspend Paginator<T>.(Int) -> LoadResult<T> =
             if (live == null || loadFn != null) resolveLoad()
-            else { page: Int ->
-                throw IllegalStateException(
-                    "Page $page cannot be loaded: the livePages { } subscriptions have ended " +
-                            "(their scope was cancelled) and no load { } block was configured."
-                )
-            }
+            else { page: Int -> live.source(this, page).first() }
         val core = buildCore()
         return MutablePaginator(core = core, load = load).also { paginator ->
             applyCommon(paginator, core)

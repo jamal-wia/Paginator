@@ -3,7 +3,6 @@
 
 package com.jamal_aliev.paginator.offset
 
-import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
@@ -273,7 +272,7 @@ class PaginatorBuilderTest {
     }
 
     @Test
-    fun `livePages makes load optional and serves the pages from the live source`() = runTest {
+    fun `livePages without load loads the pages from the live source and keeps them live`() = runTest {
         val table = LiveTable()
         val paginator = mutablePaginator<String>(capacity = 3) {
             livePages(backgroundScope) { page -> table.observe(core.capacity, (page - 1) * core.capacity) }
@@ -323,25 +322,30 @@ class PaginatorBuilderTest {
     }
 
     @Test
-    fun `a configured load takes over once the livePages scope is cancelled`() = runTest {
+    fun `a configured load is always used and the live source keeps its pages current`() = runTest {
         val table = LiveTable()
         val scope = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
+        var loads = 0
         val paginator = mutablePaginator<String>(capacity = 3) {
-            load { page -> LoadResult(MutableList(3) { "load_p${page}_$it" }) }
+            load { page -> loads++; LoadResult(MutableList(3) { "load_p${page}_$it" }) }
             livePages(scope) { page -> table.observe(core.capacity, (page - 1) * core.capacity) }
         }
         paginator.jump(BookmarkInt(1))
-        assertEquals("r0", paginator.cache.getStateOf(1)!!.data.first())
+        assertEquals(1, loads)
+        assertEquals("load_p1_0", paginator.cache.getStateOf(1)!!.data.first())
+        runCurrent()
+        assertEquals("r0", paginator.cache.getStateOf(1)!!.data.first(), "the live query corrects the page")
 
         scope.cancel()
         runCurrent()
         paginator.goNextPage()
 
+        assertEquals(2, loads)
         assertEquals("load_p2_0", paginator.cache.getStateOf(2)!!.data.first())
     }
 
     @Test
-    fun `without load a page loaded after the livePages scope ended is an explained error`() = runTest {
+    fun `without load the derived load keeps working after the livePages scope ended`() = runTest {
         val table = LiveTable()
         val scope = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
         val paginator = mutablePaginator<String>(capacity = 3) {
@@ -352,9 +356,7 @@ class PaginatorBuilderTest {
 
         paginator.jump(BookmarkInt(1))
 
-        val state = paginator.cache.getStateOf(1)
-        assertTrue(state.isErrorState())
-        assertTrue("no load { } block" in (state as OffsetPageState.Error).exception.message.orEmpty())
+        assertEquals(listOf("r0", "r1", "r2"), paginator.cache.getStateOf(1)!!.data)
     }
 
     @Test
