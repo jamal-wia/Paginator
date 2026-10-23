@@ -21,6 +21,7 @@ import com.jamal_aliev.paginator.offset.load.LoadResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlin.time.Duration
 
 /**
  * Marker that scopes lambdas inside the paginator-builder DSL so that nested
@@ -279,6 +280,7 @@ class MutablePaginatorBuilder<T> @PublishedApi internal constructor(
     private class LivePagesConfig<T>(
         val scope: CoroutineScope,
         val onError: ((page: Int, error: Throwable) -> Unit)?,
+        val settle: Duration,
         val source: Paginator<T>.(page: Int) -> Flow<LoadResult<T>>,
     )
 
@@ -306,14 +308,17 @@ class MutablePaginatorBuilder<T> @PublishedApi internal constructor(
      *
      * @param scope The scope that owns the page subscriptions, e.g. `viewModelScope`.
      * @param onError Invoked when a page's flow fails after its first emission.
+     * @param settle Hold each update until every live page has emitted (or this much time passed)
+     *   and apply them together — see `observePages`. Off by default.
      * @param source Opens the live query of one page; the receiver is the paginator.
      */
     fun livePages(
         scope: CoroutineScope,
         onError: ((page: Int, error: Throwable) -> Unit)? = null,
+        settle: Duration = Duration.ZERO,
         source: Paginator<T>.(page: Int) -> Flow<List<T>>,
     ) {
-        livePageResults(scope = scope, onError = onError) { page: Int ->
+        livePageResults(scope = scope, onError = onError, settle = settle) { page: Int ->
             source(page).map { data: List<T> -> LoadResult(data) }
         }
     }
@@ -325,9 +330,10 @@ class MutablePaginatorBuilder<T> @PublishedApi internal constructor(
     fun livePageResults(
         scope: CoroutineScope,
         onError: ((page: Int, error: Throwable) -> Unit)? = null,
+        settle: Duration = Duration.ZERO,
         source: Paginator<T>.(page: Int) -> Flow<LoadResult<T>>,
     ) {
-        livePages = LivePagesConfig(scope = scope, onError = onError, source = source)
+        livePages = LivePagesConfig(scope = scope, onError = onError, settle = settle, source = source)
     }
 
     @PublishedApi
@@ -345,7 +351,12 @@ class MutablePaginatorBuilder<T> @PublishedApi internal constructor(
         return MutablePaginator(core = core, load = load).also { paginator ->
             applyCommon(paginator, core)
             if (live != null) {
-                paginator.observePageResults(scope = live.scope, onError = live.onError, source = live.source)
+                paginator.observePageResults(
+                    scope = live.scope,
+                    onError = live.onError,
+                    settle = live.settle,
+                    source = live.source,
+                )
             }
         }
     }

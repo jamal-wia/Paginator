@@ -26,6 +26,10 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.serializer
@@ -34,6 +38,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 
@@ -499,5 +505,113 @@ class ObservePagesTest {
 
         assertEquals(listOf(9), paginator.cache.pages)
         assertEquals(listOf(9), table.activePages)
+    }
+
+    // ── settle: consistent rounds across pages ──────────────────────────────────────────────────
+
+    /** Room-like: every page query re-runs on a table change; page 2's answer lands [lag] later. */
+    private fun TestScope.observeWithLag(
+        paginator: MutablePaginator<String>,
+        rows: MutableStateFlow<List<String>>,
+        settle: Duration,
+        lag: Long = 5,
+    ) = paginator.observePages(backgroundScope, settle = settle) { page ->
+        var first = true
+        rows.map { all ->
+            if (page == 2 && !first) delay(lag)
+            first = false
+            all.drop((page - 1) * 3).take(3)
+        }
+    }
+
+    private fun TestScope.collectSnapshots(paginator: MutablePaginator<String>): List<List<String>> {
+        val snapshots = mutableListOf<List<String>>()
+        backgroundScope.launch { paginator.core.snapshot.collect { s -> snapshots += s.flatMap { it.data } } }
+        return snapshots
+    }
+
+    @Test
+    fun `without settle a row moving across pages can show up twice`() = runTest {
+        val rows = MutableStateFlow(List(20) { "r$it" })
+        val paginator = livePaginator()
+        observeWithLag(paginator, rows, settle = Duration.ZERO)
+        paginator.loadPages(2)
+        paginator.core.snapshot()
+        runCurrent()
+        val snapshots = collectSnapshots(paginator)
+        runCurrent()
+
+        rows.value = rows.value.drop(1) // r3 moves from page 2 to page 1
+        // The page queries run in backgroundScope, whose delays advanceUntilIdle() does not wait for.
+        advanceTimeBy(200)
+        runCurrent()
+
+        // Documents the default trade-off that settle removes.
+        assertTrue(snapshots.any { it.size != it.toSet().size })
+    }
+
+    @Test
+    fun `with settle a row moving across pages is never shown twice`() = runTest {
+        val rows = MutableStateFlow(List(20) { "r$it" })
+        val paginator = livePaginator()
+        observeWithLag(paginator, rows, settle = 100.milliseconds)
+        paginator.loadPages(2)
+        paginator.core.snapshot()
+        runCurrent()
+        val snapshots = collectSnapshots(paginator)
+        runCurrent()
+
+        rows.value = rows.value.drop(1)
+        advanceTimeBy(200)
+        runCurrent()
+
+        assertTrue(snapshots.none { it.size != it.toSet().size }, "duplicates: $snapshots")
+        assertEquals(listOf("r1", "r2", "r3"), paginator.dataOf(1))
+        assertEquals(listOf("r4", "r5", "r6"), paginator.dataOf(2))
+    }
+
+    @Test
+    fun `a round closes as soon as every live page has emitted`() = runTest {
+        val rows = MutableStateFlow(List(20) { "r$it" })
+        val paginator = livePaginator()
+        observeWithLag(paginator, rows, settle = 1.seconds, lag = 5)
+        paginator.loadPages(2)
+        runCurrent()
+        val start = currentTime
+
+        rows.value = rows.value.drop(1)
+        runCurrent()
+        advanceTimeBy(6)
+        runCurrent()
+
+        // Both pages answered after ~5 ms, far below the 1 s timeout.
+        assertEquals(listOf("r1", "r2", "r3"), paginator.dataOf(1))
+        assertTrue(currentTime - start < 1_000)
+    }
+
+    @Test
+    fun `a round whose other pages never emit is applied after settle`() = runTest {
+        val sources = mutableMapOf<Int, MutableStateFlow<List<String>>>()
+        fun src(page: Int) = sources.getOrPut(page) { MutableStateFlow(List(3) { "p${page}_$it" }) }
+        val paginator = livePaginator()
+        paginator.observePages(backgroundScope, settle = 100.milliseconds) { page -> src(page) }
+        paginator.loadPages(2)
+        runCurrent()
+
+        src(1).value = listOf("x", "y", "z") // page 2's source has nothing new to say
+        advanceTimeBy(99)
+        runCurrent()
+        assertEquals(listOf("p1_0", "p1_1", "p1_2"), paginator.dataOf(1), "held for the round")
+
+        advanceTimeBy(2)
+        runCurrent()
+        assertEquals(listOf("x", "y", "z"), paginator.dataOf(1))
+    }
+
+    @Test
+    fun `settle must not be negative`() = runTest {
+        assertFailsWith<IllegalArgumentException> {
+            livePaginator().observePages(backgroundScope, settle = (-1).milliseconds) { _ -> flowOf(emptyList()) }
+        }
     }
 }

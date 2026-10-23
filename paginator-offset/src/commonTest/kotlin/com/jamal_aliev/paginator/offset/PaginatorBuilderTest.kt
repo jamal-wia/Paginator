@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -29,6 +30,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 class PaginatorBuilderTest {
 
@@ -353,5 +355,25 @@ class PaginatorBuilderTest {
         val state = paginator.cache.getStateOf(1)
         assertTrue(state.isErrorState())
         assertTrue("no load { } block" in (state as OffsetPageState.Error).exception.message.orEmpty())
+    }
+
+    @Test
+    fun `livePages forwards settle`() = runTest {
+        val sources = mutableMapOf<Int, MutableStateFlow<List<String>>>()
+        fun src(page: Int) = sources.getOrPut(page) { MutableStateFlow(List(3) { "p${page}_$it" }) }
+        val paginator = mutablePaginator<String>(capacity = 3) {
+            livePages(backgroundScope, settle = 100.milliseconds) { page -> src(page) }
+        }
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+        runCurrent()
+
+        src(1).value = listOf("x", "y", "z")
+        advanceTimeBy(50)
+        runCurrent()
+        assertEquals("p1_0", paginator.cache.getStateOf(1)!!.data.first(), "held for the round")
+        advanceTimeBy(60)
+        runCurrent()
+        assertEquals("x", paginator.cache.getStateOf(1)!!.data.first())
     }
 }

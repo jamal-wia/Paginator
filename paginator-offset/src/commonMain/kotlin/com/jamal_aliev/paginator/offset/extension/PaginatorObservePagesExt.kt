@@ -23,6 +23,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration
 
 /**
  * Backs every cached page with its own live query: the paginator subscribes to [source]`(page)`
@@ -91,8 +93,7 @@ import kotlinx.coroutines.sync.withLock
  *   when one is attached.
  * - Each page is an independent query, so after a change that shifts rows across pages the
  *   neighbouring pages update when their own queries answer; until then the same row can appear
- *   on two adjacent pages. Batching merges only emissions already pending together — keep that in
- *   mind if a lazy list uses item keys.
+ *   on two adjacent pages. Pass `settle` to apply such updates in consistent rounds instead.
  *
  * ## Lifecycle
  *
@@ -104,6 +105,13 @@ import kotlinx.coroutines.sync.withLock
  * @param scope The scope that owns the page subscriptions.
  * @param onError Invoked when a page's flow fails after its first emission (or a live update cannot
  *   be applied). Defaults to a warning via the paginator's [logger][Paginator.logger].
+ * @param settle Consistent updates across pages, off by default ([Duration.ZERO]). When positive,
+ *   an emission opens a **round**: its update is held until every other live page has emitted too —
+ *   a table change re-runs all of its queries, so with Room / SQLDelight each page answers — or
+ *   until [settle] has passed, and the round is then applied as one batch. The screen never mixes a
+ *   page that already saw the change with a neighbour that has not, so a row moving across pages
+ *   is never shown twice or missed. The cost is latency: an update waits for the slowest query, at
+ *   most [settle]. Pick a value a bit above your page query time (e.g. 100 ms).
  * @param source Opens the live query of one page. The receiver is the paginator, like in `load`.
  *   Use [observePageResults] when the query also produces page metadata.
  * @return The Job that owns every page subscription. Cancel it to stop observing.
@@ -113,8 +121,9 @@ import kotlinx.coroutines.sync.withLock
 fun <T> MutablePaginator<T>.observePages(
     scope: CoroutineScope,
     onError: ((page: Int, error: Throwable) -> Unit)? = null,
+    settle: Duration = Duration.ZERO,
     source: Paginator<T>.(page: Int) -> Flow<List<T>>,
-): Job = observePageResults(scope = scope, onError = onError) { page: Int ->
+): Job = observePageResults(scope = scope, onError = onError, settle = settle) { page: Int ->
     source(page).map { data: List<T> -> LoadResult(data) }
 }
 
@@ -128,8 +137,10 @@ fun <T> MutablePaginator<T>.observePages(
 fun <T> MutablePaginator<T>.observePageResults(
     scope: CoroutineScope,
     onError: ((page: Int, error: Throwable) -> Unit)? = null,
+    settle: Duration = Duration.ZERO,
     source: Paginator<T>.(page: Int) -> Flow<LoadResult<T>>,
 ): Job {
+    require(!settle.isNegative()) { "settle must not be negative, was $settle" }
     val paginator: MutablePaginator<T> = this
     val job = Job(parent = scope.coroutineContext[Job])
     // Nothing has been launched on the job yet, so a refused install cancels it without effects.
@@ -146,6 +157,7 @@ fun <T> MutablePaginator<T>.observePageResults(
         paginator = paginator,
         scope = CoroutineScope(scope.coroutineContext + job),
         source = source,
+        settle = settle,
         onError = onError ?: { page: Int, error: Throwable ->
             paginator.logger.warn(LogComponent.LIFECYCLE) {
                 "observePages: page=$page source error: $error"
@@ -199,6 +211,7 @@ private class LivePages<T>(
     private val paginator: MutablePaginator<T>,
     private val scope: CoroutineScope,
     private val source: Paginator<T>.(page: Int) -> Flow<LoadResult<T>>,
+    private val settle: Duration,
     private val onError: (page: Int, error: Throwable) -> Unit,
 ) {
 
@@ -209,6 +222,9 @@ private class LivePages<T>(
      */
     private class Subscription(val capacity: Int) {
         lateinit var job: Job
+
+        /** Has delivered its first emission — it takes part in [settle] rounds. Guarded by registryLock. */
+        var live: Boolean = false
     }
 
     private val registryLock = Mutex()
@@ -221,7 +237,10 @@ private class LivePages<T>(
 
     fun start() {
         scope.launch {
-            for (signal in wakeUp) guarded { applyPending() }
+            for (signal in wakeUp) {
+                if (settle.isPositive()) guarded { awaitRound() }
+                guarded { applyPending() }
+            }
         }
         // Pages cached before observePages() was called become live right away.
         scope.launch { guarded { reconcile() } }
@@ -238,6 +257,24 @@ private class LivePages<T>(
         // emitted, and the query will not emit again until the table changes. Re-run every query.
         scope.launch {
             onEveryChange(paginator.core.cacheReplacements) { guarded { resubscribe() } }
+        }
+    }
+
+    /**
+     * Holds the pending updates until every live page has one — the round is complete — or until
+     * [settle] has passed since the round opened. Signals consumed here (further emissions, a
+     * failure) only re-check the round; the applier runs right after.
+     */
+    private suspend fun awaitRound() {
+        withTimeoutOrNull(settle) {
+            while (!registryLock.withLock { roundCompleteLocked() }) wakeUp.receive()
+        }
+    }
+
+    private fun roundCompleteLocked(): Boolean {
+        if (pending.isEmpty()) return true
+        return subscriptions.all { (page, subscription) ->
+            !subscription.live || !subscription.job.isActive || page in pending
         }
     }
 
@@ -356,6 +393,7 @@ private class LivePages<T>(
             source.invoke(paginator, page).collect { result: LoadResult<T> ->
                 if (!delivered) {
                     delivered = true
+                    registryLock.withLock { subscription.live = true }
                     if (first != null) {
                         first.complete(result)
                         return@collect
