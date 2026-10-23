@@ -175,7 +175,7 @@ open class Paginator<T>(
      * whose page is ≤ [page]. This keeps [jumpForward]/[jumpBack] consistent
      * after a direct [jump] to an arbitrary page.
      */
-    private fun syncBookmarkIndex(page: Int) {
+    internal fun syncBookmarkIndex(page: Int) {
         if (bookmarks.isEmpty()) return
         val index = bookmarks.indexOfFirst { it.page > page }
         bookmarkIndex = if (index == -1) bookmarks.size else index

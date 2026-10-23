@@ -523,6 +523,11 @@ private class LivePages<T>(
                 // refresh does, so a non-filled page never stays buried inside the window (and an
                 // emptied table shows the empty state instead of its deleted rows).
                 core.reanchorAfterRewrite(startPoint = startBefore, endPoint = endBefore)
+                // The window moved to a new position: realign the bookmark cursor so jumpForward /
+                // jumpBack resume from here, as after a refresh that re-anchors.
+                if (cache.isStarted && cache.startContextPage != startBefore) {
+                    paginator.syncBookmarkIndex(cache.startContextPage)
+                }
             } else {
                 // An edge may have grown into a full page: absorb the filled neighbours.
                 core.expandStartContextPage(cache.peekStateOf(startBefore))

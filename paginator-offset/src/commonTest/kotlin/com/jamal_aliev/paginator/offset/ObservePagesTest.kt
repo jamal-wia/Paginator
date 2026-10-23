@@ -634,4 +634,34 @@ class ObservePagesTest {
             livePaginator().observePages(backgroundScope, settle = (-1).milliseconds) { _ -> flowOf(emptyList()) }
         }
     }
+
+    @Test
+    fun `a live update that moves the window realigns the bookmark cursor`() = runTest {
+        val sources = mutableMapOf<Int, MutableStateFlow<List<String>>>()
+        fun src(page: Int) = sources.getOrPut(page) {
+            val hasData = page in 1..3 || page == 5 || page in 11..13
+            MutableStateFlow(if (hasData) List(3) { "p${page}_$it" } else emptyList())
+        }
+        val paginator = livePaginator()
+        paginator.observePages(backgroundScope) { page -> src(page) }
+        paginator.bookmarks.clear()
+        paginator.bookmarks.addAll(listOf(BookmarkInt(2), BookmarkInt(5), BookmarkInt(12)))
+        paginator.loadPages(3)
+        paginator.jump(BookmarkInt(11), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        runCurrent()
+        assertEquals(11, paginator.cache.startContextPage)
+
+        // The viewed range is deleted in the database: the live update re-anchors to 1..3.
+        for (page in 11..13) src(page).value = emptyList()
+        runCurrent()
+        assertEquals(1, paginator.cache.startContextPage)
+        assertEquals(3, paginator.cache.endContextPage)
+
+        // Like after refresh, jumpForward resumes from the new window: the next bookmark is 5,
+        // not the deleted bookmark 12 the stale cursor still points at.
+        val forward = paginator.jumpForward(silentlyLoading = true, silentlyResult = true)
+        assertEquals(5, forward?.first?.page)
+    }
 }
