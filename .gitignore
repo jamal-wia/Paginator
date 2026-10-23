@@ -28,3 +28,7 @@ misc.xml
 output.json
 render.experimental.xml
 /kotlin-js-store/yarn.lock
+
+# Claude Code local state (worktrees, settings) — only the project instructions are shared
+/.claude/*
+!/.claude/CLAUDE.md
