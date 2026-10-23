@@ -222,9 +222,17 @@ open class MutablePaginator<T>(
                 indexOfRemoved + 1 < pages.size &&
                         pages[indexOfRemoved + 1] == pageToRemove + 1 -> Unit
 
-                pageToRemove == 1 -> core.findNearContextPage()
+                // A re-anchored window sits somewhere new: realign the bookmark cursor so
+                // jumpForward / jumpBack resume from there, as after a jump or a refresh.
+                pageToRemove == 1 -> {
+                    core.findNearContextPage()
+                    if (cache.isStarted) syncBookmarkIndex(cache.startContextPage)
+                }
 
-                else -> core.findNearContextPage(pageToRemove - 1, pageToRemove + 1)
+                else -> {
+                    core.findNearContextPage(pageToRemove - 1, pageToRemove + 1)
+                    if (cache.isStarted) syncBookmarkIndex(cache.startContextPage)
+                }
             }
         }
 
@@ -621,10 +629,14 @@ open class MutablePaginator<T>(
             && (!core.isFilledSuccessState(cache.getStateOf(cache.startContextPage))
                     || !core.isFilledSuccessState(cache.getStateOf(cache.endContextPage)))
         ) {
+            val startBefore: Int = cache.startContextPage
             core.findNearContextPage(
                 startPoint = cache.startContextPage,
                 endPoint = cache.endContextPage
             )
+            if (cache.isStarted && cache.startContextPage != startBefore) {
+                syncBookmarkIndex(cache.startContextPage)
+            }
             core.snapshot()
         } else {
             snapshotIfPageVisible(affectedPage)

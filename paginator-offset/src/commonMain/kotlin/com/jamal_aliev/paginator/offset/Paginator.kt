@@ -84,7 +84,12 @@ open class Paginator<T>(
     var load: suspend Paginator<T>.(page: Int) -> LoadResult<T>
 ) : Comparable<Paginator<*>> {
 
-    val cache: PagingCache<T> get() = core.cache
+    /**
+     * The paginator's cache ([PagingCore.cache]). While the core runs in untracked mode
+     * ([PagingCore.withUntrackedReads] — internal bookkeeping such as applying reactive events) this
+     * is a view whose accesses do not count as a use of the pages for eviction strategies.
+     */
+    val cache: PagingCache<T> get() = if (core.untrackedReads) core.untrackedCache else core.cache
 
     /** Mutex serialising all mutations to cache across concurrent coroutines. */
     protected val navigationMutex = Mutex()

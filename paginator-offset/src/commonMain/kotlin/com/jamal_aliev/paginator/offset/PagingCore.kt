@@ -12,6 +12,7 @@ import com.jamal_aliev.paginator.offset.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.offset.PagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.offset.cache.PagingCache
+import com.jamal_aliev.paginator.offset.cache.UntrackedPagingCache
 import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.offset.extension.gap
 import com.jamal_aliev.paginator.offset.initializer.InitializerErrorPage
@@ -405,6 +406,9 @@ open class PagingCore<T>(
     @PublishedApi
     internal fun readState(page: Int): OffsetPageState<T>? =
         if (untrackedReads) cache.peekStateOf(page) else cache.getStateOf(page)
+
+    /** [cache] seen through [UntrackedPagingCache], used by `Paginator.cache` in untracked mode. */
+    internal val untrackedCache: PagingCache<T> by lazy { UntrackedPagingCache(cache) }
 
     /** Runs [block] with [untrackedReads] on. Not reentrant-safe across coroutines: hold the navigation lock. */
     internal inline fun <R> withUntrackedReads(block: () -> R): R {

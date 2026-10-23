@@ -8,6 +8,7 @@ import com.jamal_aliev.paginator.core.cache.reactive.InsertPosition
 import com.jamal_aliev.paginator.core.cache.reactive.PaginatorReactiveCache
 import com.jamal_aliev.paginator.core.cache.reactive.ReactiveEvent
 import com.jamal_aliev.paginator.core.cache.reactive.UnknownItemPolicy
+import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.warn
 import com.jamal_aliev.paginator.offset.MutablePaginator
@@ -17,7 +18,13 @@ import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -34,16 +41,26 @@ import kotlinx.coroutines.launch
  *
  * ## What this function does, step by step
  *
- * 1. Optionally issues `refreshAll()` to reconcile the L1 cache with any
+ * 1. Subscribes to [source].changes(), buffering its events.
+ * 2. Optionally issues `refreshAll()` to reconcile the L1 cache with any
  *    source mutations that landed between the most recent page load and the
  *    subscribe point (controlled by [initialSync]). When `cache.pages` is
  *    empty at subscribe time the reconciliation is skipped — there is
  *    nothing to refresh and the upcoming first `load()` will already see the
- *    latest source state.
- * 2. Collects [source].changes() until the returned [Job] is cancelled.
+ *    latest source state. Events arriving meanwhile are applied after it.
  * 3. Translates each [ReactiveEvent] to the equivalent CRUD call on this
- *    paginator. Emissions are applied serially in arrival order — neither
- *    the source nor the caller need to add their own synchronisation.
+ *    paginator. Emissions are applied serially in arrival order, each under
+ *    the paginator's navigation lock — neither the source nor the caller need
+ *    to add their own synchronisation, and [scope] may use any dispatcher.
+ *    A `Batch` is applied atomically: its rollback undoes only the batch.
+ *    Requested `refreshAll()`s (`Invalidate`, [UnknownItemPolicy.RefreshAll])
+ *    run once after the event or batch.
+ *
+ * The CRUD is bookkeeping, not user access: it does not reshape an LRU order
+ * or renew TTLs. An event that changes a page a `refresh` is still loading
+ * wins over the refresh's older result; the page is marked dirty instead.
+ * After the cache is replaced wholesale (`restoreState`, a transaction
+ * rollback) the subscription reconciles it with `refreshAll()`.
  *
  * ## Lifecycle
  *
@@ -69,10 +86,14 @@ import kotlinx.coroutines.launch
  *
  * ## Error handling
  *
- * Errors from [source].changes() and from individual CRUD applications are
- * routed to [onError]. The collector continues after non-cancellation
- * errors. Pass `onError = { throw it }` if you would rather have the Job
- * fail on the first source-side error.
+ * An error while applying an event is routed to [onError] and the next event
+ * is applied. A failing [source] — including a `CancellationException` of its
+ * own, such as `withTimeout` — is routed to [onError] once per failure and
+ * re-subscribed with exponential backoff (500 ms doubling up to 30 s),
+ * followed by `refreshAll()` to reconcile what was missed. Only a source flow
+ * that completes normally ends the Job. Pass `onError = { throw it }` if you
+ * would rather have the Job fail on the first error: [onError] is invoked once
+ * and its exception fails the Job.
  *
  * ## Persistent cache warning
  *
@@ -103,8 +124,8 @@ import kotlinx.coroutines.launch
  *   **opt out** — overflow past the last page is then dropped. This governs end-overflow only; an
  *   explicit [InsertPosition.At] pointing to an **uncached** page is always treated as out-of-window
  *   (deferred to [unknownItem]), never materialised.
- * @param onError Invoked for non-cancellation errors that escape during
- *   event application. The default logs at warn level via the paginator's
+ * @param onError Invoked for errors of the source and of event application
+ *   (see "Error handling"). The default logs at warn level via the paginator's
  *   [com.jamal_aliev.paginator.offset.Paginator.logger].
  * @return The Job that owns the subscription. Cancel it to stop observing.
  * @throws IllegalStateException if another observe() Job is still active on
@@ -125,31 +146,16 @@ fun <T, ID : Any> MutablePaginator<T>.observe(
             "observe: reactive source emitted an error: $throwable"
         }
     }
-    val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-        if (initialSync == InitialSyncPolicy.RefreshAll && paginator.cache.pages.isNotEmpty()) {
-            try {
-                paginator.refreshAll()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                errorHandler(e)
-            }
-        }
-        try {
-            source.changes().collect { event ->
-                try {
-                    paginator.applyEvent(source, event, unknownItem, deduplicateInserts, initPageState)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    errorHandler(e)
-                }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            errorHandler(e)
-        }
+    val job = scope.launch(start = CoroutineStart.LAZY) {
+        val bridge = ReactiveBridge(
+            paginator = paginator,
+            source = source,
+            unknownItem = unknownItem,
+            deduplicateInserts = deduplicateInserts,
+            initPageState = initPageState,
+            onError = errorHandler,
+        )
+        bridge.run(initialSync)
     }
     // The launched job is LAZY, so it can be cancelled without side effects if the slot is taken.
     paginator.claimReactiveSlot(job = job, caller = "observe()")
@@ -166,76 +172,254 @@ fun <T, ID : Any> MutablePaginator<T>.observe(
 }
 
 /**
- * Translates a single [ReactiveEvent] into the equivalent CRUD call(s) on
- * the paginator.
+ * The running subscription behind [observe].
  *
- * Centralised so that [ReactiveEvent.Batch] can recurse through here
- * (wrapped in a transaction) without duplicating the dispatch table.
+ * - **Subscribe first.** The source is collected into an unbounded buffer *before* the initial
+ *   `refreshAll`, so a change that lands between the last load and the subscription — or while
+ *   that refresh runs — is buffered and applied afterwards instead of being lost (events are
+ *   idempotent enough: inserts are deduplicated by identity).
+ * - **Under the navigation lock.** Every event's CRUD runs while holding the paginator's navigation
+ *   lock, so it never interleaves with navigation even when [observe]'s scope runs on a
+ *   multi-threaded dispatcher. A `Batch` / `Moved` is applied atomically in one critical section —
+ *   its rollback can only undo its own changes. `refreshAll` (an `Invalidate`, or
+ *   [UnknownItemPolicy.RefreshAll]) is requested during the critical section and run once after it.
+ * - **Untracked.** The CRUD runs with the core in untracked mode: searching the pages for an
+ *   identity and writing the result are not a use of the pages for LRU / TTL caches.
+ * - **Refresh in flight.** An event that changes a page a `refresh` is still loading gives that
+ *   page a fresh Success state, so the refresh's older result does not overwrite the event; the
+ *   page is marked dirty, so the refreshed data still arrives on the next navigation.
+ * - **Resilient source.** A failing source (including a `CancellationException` of its own, e.g.
+ *   `withTimeout`) is reported and re-subscribed with exponential backoff, followed by a
+ *   `refreshAll` to reconcile what was missed. Only a source that completes normally ends the Job.
+ * - **Wholesale replacement.** After `restoreState` or a transaction rollback the cache no longer
+ *   matches what the events were applied to, so it is reconciled with `refreshAll`.
  */
-private suspend fun <T, ID : Any> MutablePaginator<T>.applyEvent(
-    source: PaginatorReactiveCache<T, ID>,
-    event: ReactiveEvent<T, ID>,
-    unknownItem: UnknownItemPolicy,
-    deduplicateInserts: Boolean,
-    initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)?,
+private class ReactiveBridge<T, ID : Any>(
+    private val paginator: MutablePaginator<T>,
+    private val source: PaginatorReactiveCache<T, ID>,
+    private val unknownItem: UnknownItemPolicy,
+    private val deduplicateInserts: Boolean,
+    private val initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)?,
+    private val onError: (Throwable) -> Unit,
 ) {
-    when (event) {
-        is ReactiveEvent.Updated<T> -> {
-            val replaced = updateWhere(
-                predicate = { source.identity(it) == source.identity(event.item) },
-                transform = { event.item },
-            )
-            if (replaced == 0) handleUnknown(unknownItem)
-        }
 
-        is ReactiveEvent.Removed<ID> -> {
-            val removed = removeElement { source.identity(it) == event.identity }
-            if (removed == null) handleUnknown(unknownItem)
-        }
+    /** What the applier works through, in order. */
+    private sealed interface Command<out T, out ID : Any> {
+        class Event<T, ID : Any>(val event: ReactiveEvent<T, ID>) : Command<T, ID>
 
-        is ReactiveEvent.Inserted<T, ID> -> {
-            val landed = insertAt(source, event.item, event.position, deduplicateInserts, initPageState)
-            if (!landed) handleUnknown(unknownItem)
-        }
+        /** The source was re-subscribed after a failure: changes may have been missed. */
+        object Resubscribed : Command<Nothing, Nothing>
 
-        is ReactiveEvent.Moved<T, ID> -> {
-            val identityKey = source.identity(event.item)
-            val isCached = cache.pages.any { page ->
-                cache.getStateOf(page)?.data?.any { source.identity(it) == identityKey } == true
+        /** [PagingCore.cacheReplacements] moved: the cache may have been replaced wholesale. */
+        object Replaced : Command<Nothing, Nothing>
+    }
+
+    private val commands = Channel<Command<T, ID>>(Channel.UNLIMITED)
+
+    /** [PagingCore.cacheReplacements] as of the end of the last critical section of this bridge. */
+    private var replacementsSeen: Long = paginator.core.cacheReplacements.value
+
+    /** Set while applying one event (or batch) when a `refreshAll` must follow it. */
+    private var refreshRequested = false
+
+    suspend fun run(initialSync: InitialSyncPolicy): Unit = coroutineScope {
+        // Subscribe before the initial sync: the collector runs undispatched up to its first
+        // suspension, i.e. until the source is actually being collected.
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) { collectSource() }
+        val replacementWatcher = launch {
+            val replacements = paginator.core.cacheReplacements
+            var last: Long = replacements.value
+            replacements.collect { value: Long ->
+                if (value == last) return@collect
+                last = value
+                commands.send(Command.Replaced)
             }
-            if (!isCached) {
-                handleUnknown(unknownItem)
+        }
+        try {
+            if (initialSync == InitialSyncPolicy.RefreshAll) refreshAllReported()
+            for (command in commands) {
+                when (command) {
+                    is Command.Event -> applyReported(command.event)
+                    Command.Resubscribed -> refreshAllReported()
+                    Command.Replaced -> {
+                        // A replacement made by this bridge's own critical section (a rolled-back
+                        // batch, a relabelling removal) is already accounted for.
+                        val replacements: Long = paginator.core.cacheReplacements.value
+                        if (replacements != replacementsSeen) {
+                            replacementsSeen = replacements
+                            refreshAllReported()
+                        }
+                    }
+                }
+            }
+        } finally {
+            // The source completed normally (or the Job is cancelled): the subscription is over.
+            collector.cancel()
+            replacementWatcher.cancel()
+        }
+    }
+
+    private suspend fun collectSource() {
+        var backoffMillis: Long = INITIAL_BACKOFF_MILLIS
+        while (true) {
+            try {
+                source.changes().collect { event ->
+                    backoffMillis = INITIAL_BACKOFF_MILLIS
+                    commands.send(Command.Event(event))
+                }
+                commands.close() // completed normally
                 return
+            } catch (e: Throwable) {
+                // Our own cancellation ends the collector; any other failure — including a
+                // CancellationException the source throws itself (withTimeout) — is reported.
+                if (e is CancellationException && !currentCoroutineContext().isActive) throw e
+                onError(e)
             }
-            transaction {
-                @Suppress("UNCHECKED_CAST")
-                val self = this as MutablePaginator<T>
-                self.removeElement { source.identity(it) == identityKey }
-                // The item was just removed, so dedup would never trigger here;
-                // pass false to skip the redundant cache scan.
-                val landed = self.insertAt(source, event.item, event.position, deduplicate = false, initPageState)
-                check(landed) {
-                    "Moved: cannot resolve InsertPosition ${event.position} for identity $identityKey; " +
-                            "transaction will be rolled back."
+            delay(backoffMillis)
+            backoffMillis = (backoffMillis * 2).coerceAtMost(MAX_BACKOFF_MILLIS)
+            // Changes may have been missed while the source was down.
+            commands.send(Command.Resubscribed)
+        }
+    }
+
+    private suspend fun refreshAllReported() {
+        if (paginator.cache.pages.isEmpty()) return
+        try {
+            paginator.refreshAll()
+        } catch (e: CancellationException) {
+            if (!currentCoroutineContext().isActive) throw e
+            onError(e)
+        } catch (e: Exception) {
+            onError(e)
+        }
+    }
+
+    private suspend fun applyReported(event: ReactiveEvent<T, ID>) {
+        refreshRequested = false
+        try {
+            paginator.withNavigationLock {
+                paginator.core.withUntrackedReads {
+                    val inFlight: Map<Int, OffsetPageState<T>> = progressPages()
+                    try {
+                        paginator.applyEvent(event)
+                    } finally {
+                        keepOverInFlightRefresh(inFlight)
+                        replacementsSeen = paginator.core.cacheReplacements.value
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            if (!currentCoroutineContext().isActive) throw e
+            onError(e)
+        } catch (e: Exception) {
+            onError(e)
+        }
+        if (refreshRequested) refreshAllReported()
+    }
+
+    /** The cached Progress pages — pages a refresh (or a CRUD overflow) currently holds. */
+    private fun progressPages(): Map<Int, OffsetPageState<T>> {
+        val cache = paginator.cache
+        val result = HashMap<Int, OffsetPageState<T>>()
+        for (page in cache.pages) {
+            val state = cache.peekStateOf(page)
+            if (state.isProgressState()) result[page] = state
+        }
+        return result
+    }
+
+    /**
+     * An event that changed a page while a `refresh` was loading it kept the page's id, so the
+     * refresh would still commit its older result over the change. Give such a page a fresh
+     * Success state (the refresh then drops its result) and mark it dirty so the refreshed data
+     * still comes on the next navigation.
+     */
+    private fun keepOverInFlightRefresh(inFlight: Map<Int, OffsetPageState<T>>) {
+        if (inFlight.isEmpty()) return
+        val core = paginator.core
+        val cache = paginator.cache
+        for ((page, before) in inFlight) {
+            val current: OffsetPageState<T> = cache.peekStateOf(page) ?: continue
+            if (current === before || current.id != before.id || !current.isProgressState()) continue
+            cache.setState(core.initializerSuccessPage(page, current.data, current.metadata), silently = true)
+            core.markDirty(page)
+        }
+    }
+
+    /**
+     * Translates a single [ReactiveEvent] into the equivalent CRUD call(s). Runs under the
+     * navigation lock without suspending, except for the transaction around `Batch` / `Moved`.
+     */
+    private suspend fun MutablePaginator<T>.applyEvent(event: ReactiveEvent<T, ID>) {
+        when (event) {
+            is ReactiveEvent.Updated<T> -> {
+                val replaced = updateWhere(
+                    predicate = { source.identity(it) == source.identity(event.item) },
+                    transform = { event.item },
+                )
+                if (replaced == 0) unknown()
+            }
+
+            is ReactiveEvent.Removed<ID> -> {
+                val removed = removeElement { source.identity(it) == event.identity }
+                if (removed == null) unknown()
+            }
+
+            is ReactiveEvent.Inserted<T, ID> -> {
+                val landed = insertAt(source, event.item, event.position, deduplicateInserts, initPageState)
+                if (!landed) unknown()
+            }
+
+            is ReactiveEvent.Moved<T, ID> -> {
+                val identityKey = source.identity(event.item)
+                val isCached = cache.pages.any { page ->
+                    cache.getStateOf(page)?.data?.any { source.identity(it) == identityKey } == true
+                }
+                if (!isCached) {
+                    unknown()
+                    return
+                }
+                transaction {
+                    @Suppress("UNCHECKED_CAST")
+                    val self = this as MutablePaginator<T>
+                    self.removeElement { source.identity(it) == identityKey }
+                    // The item was just removed, so dedup would never trigger here;
+                    // pass false to skip the redundant cache scan.
+                    val landed = self.insertAt(source, event.item, event.position, deduplicate = false, initPageState)
+                    check(landed) {
+                        "Moved: cannot resolve InsertPosition ${event.position} for identity $identityKey; " +
+                                "transaction will be rolled back."
+                    }
+                }
+            }
+
+            // refreshAll takes the navigation lock: requested here, run after the critical section.
+            ReactiveEvent.Invalidate -> refreshRequested = true
+
+            is ReactiveEvent.Batch<T, ID> -> {
+                if (event.events.isEmpty()) return
+                // One atomic critical section: a failing child rolls back only this batch.
+                // Refresh requests of its children are merged into one refreshAll afterwards.
+                transaction {
+                    @Suppress("UNCHECKED_CAST")
+                    val self = this as MutablePaginator<T>
+                    event.events.forEach { child -> self.applyEvent(child) }
                 }
             }
         }
+    }
 
-        ReactiveEvent.Invalidate -> {
-            // refreshAll bails out cleanly on its own if no pages are cached.
-            refreshAll()
+    /** Applies [unknownItem] for an event whose target is not cached. */
+    private fun unknown() {
+        when (unknownItem) {
+            UnknownItemPolicy.Drop -> Unit
+            UnknownItemPolicy.RefreshAll -> refreshRequested = true
         }
+    }
 
-        is ReactiveEvent.Batch<T, ID> -> {
-            if (event.events.isEmpty()) return
-            transaction {
-                @Suppress("UNCHECKED_CAST")
-                val self = this as MutablePaginator<T>
-                event.events.forEach { child ->
-                    self.applyEvent(source, child, unknownItem, deduplicateInserts, initPageState)
-                }
-            }
-        }
+    private companion object {
+        const val INITIAL_BACKOFF_MILLIS: Long = 500
+        const val MAX_BACKOFF_MILLIS: Long = 30_000
     }
 }
 
@@ -300,17 +484,6 @@ private fun <T, ID : Any> MutablePaginator<T>.insertAt(
 
         is InsertPosition.BeforeIdentity<ID> ->
             insertBefore(item, initPageState = initPageState) { source.identity(it) == position.identity }
-    }
-}
-
-/**
- * Applies [UnknownItemPolicy] when an event references an item not present
- * in the cache.
- */
-private suspend fun <T> MutablePaginator<T>.handleUnknown(policy: UnknownItemPolicy) {
-    when (policy) {
-        UnknownItemPolicy.Drop -> Unit
-        UnknownItemPolicy.RefreshAll -> refreshAll()
     }
 }
 
