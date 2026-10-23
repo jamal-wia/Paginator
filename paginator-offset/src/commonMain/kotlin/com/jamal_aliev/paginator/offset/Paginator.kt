@@ -95,6 +95,16 @@ open class Paginator<T>(
         navigationMutex.withLock { block() }
 
     /**
+     * Releases [navigationMutex] after a critical section that may have changed the cached pages,
+     * signalling [PagingCore.cacheChanges] first. ([withNavigationLock] deliberately does not
+     * signal: `observePages` reconciles through it and would otherwise wake itself up forever.)
+     */
+    private fun unlockNavigation() {
+        core.markCacheChanged()
+        navigationMutex.unlock()
+    }
+
+    /**
      * Logger for observing paginator operations.
      *
      * Setting this also updates [core]'s logger so cache operations are logged too.
@@ -573,7 +583,7 @@ open class Paginator<T>(
             }
             throw e
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -749,7 +759,7 @@ open class Paginator<T>(
             }
             throw e
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -893,7 +903,7 @@ open class Paginator<T>(
             }
             throw e
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -1008,7 +1018,7 @@ open class Paginator<T>(
             }
             throw e
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -1064,8 +1074,15 @@ open class Paginator<T>(
         var dirtyAtStart: List<Int> = emptyList()
         var committedPages: Set<Int> = emptySet()
 
+        // A page the refresh did not write gets its flag back only while it still holds the
+        // refresh's own Progress state or its pre-refresh state; a page another writer replaced
+        // meanwhile (a reload, a live database update) already holds fresher data.
         fun restoreUncommittedDirtyFlags() {
-            core.markDirty(dirtyAtStart.filter { it !in committedPages && cache.getStateOf(it) != null })
+            core.markDirty(dirtyAtStart.filter { page ->
+                if (page in committedPages) return@filter false
+                val currentId: Long = cache.getStateOf(page)?.id ?: return@filter false
+                currentId == progressIds[page] || currentId == savedStates[page]?.id
+            })
         }
 
         try {
@@ -1097,7 +1114,7 @@ open class Paginator<T>(
                 dirtyAtStart = pages.filter { core.isDirty(it) }
                 core.clearDirty(pages)
             } finally {
-                navigationMutex.unlock()
+                unlockNavigation()
             }
             if (enableCacheFlow) {
                 core.repeatCacheFlow()
@@ -1157,7 +1174,7 @@ open class Paginator<T>(
                         syncBookmarkIndex(cache.startContextPage)
                     }
                 } finally {
-                    navigationMutex.unlock()
+                    unlockNavigation()
                 }
 
                 // Phase 4: persist successful results to L2
@@ -1195,7 +1212,7 @@ open class Paginator<T>(
                         }
                         core.snapshot()
                     } finally {
-                        navigationMutex.unlock()
+                        unlockNavigation()
                     }
                 }
             }
@@ -1352,7 +1369,7 @@ open class Paginator<T>(
                 lockRefresh = lockRefresh,
             )
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 
@@ -1396,7 +1413,7 @@ open class Paginator<T>(
             lockRestart = snapshot.lockRestart
             lockRefresh = snapshot.lockRefresh
         } finally {
-            navigationMutex.unlock()
+            unlockNavigation()
         }
     }
 

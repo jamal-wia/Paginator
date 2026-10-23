@@ -233,6 +233,12 @@ open class MutablePaginator<T>(
         // over the snapshot, not a copy.
         markAffectedAll(pages.subList(indexOfRemoved, pages.size))
 
+        // Pages above the removed one now carry their old neighbour's data under a new number —
+        // data a per-page live query (observePages) for that number never emitted. Signal it as a
+        // wholesale replacement so such queries re-run; otherwise a plain change.
+        if (cache.isStarted && indexOfRemoved + 1 < pages.size) core.markCacheReplaced()
+        else core.markCacheChanged()
+
         if (!silently) core.snapshot()
         return removedPageState
     }
@@ -274,6 +280,7 @@ open class MutablePaginator<T>(
         markAffected(page)
 
         if (isDirty) core.markDirty(page)
+        core.markCacheChanged()
 
         if (!silently) snapshotIfPageVisible(page)
     }
@@ -352,6 +359,7 @@ open class MutablePaginator<T>(
         }
 
         if (isDirty) core.markDirty(page)
+        core.markCacheChanged()
 
         if (!silently) {
             if (cache.startContextPage != startBefore || cache.endContextPage != endBefore) {
@@ -529,6 +537,7 @@ open class MutablePaginator<T>(
         }
 
         if (isDirty) core.markDirty(targetPage)
+        core.markCacheChanged()
 
         if (!silently) snapshotAfterMutation(targetPage)
     }

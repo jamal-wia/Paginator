@@ -247,7 +247,7 @@ class RefreshConcurrentMutationTest {
     }
 
     @Test
-    fun `a dirty page the refresh does not write keeps its dirty flag`() = runTest {
+    fun `a dirty page another writer replaced during refresh drops its old dirty flag`() = runTest {
         val source = GatedSource()
         val paginator = populated(source)
         paginator.core.markDirty(2)
@@ -255,12 +255,31 @@ class RefreshConcurrentMutationTest {
 
         val refresh = launch { paginator.refresh(pages = listOf(2)) }
         testScheduler.advanceUntilIdle()
+        // The other writer's data won over the refresh's result, so it is also newer than the
+        // "stale" mark the page had before the refresh started.
         paginator.core.setState(
             OffsetPageState.Success(page = 2, data = mutableListOf("x0", "x1", "x2")),
             silently = true,
         )
         gate.complete(Unit)
         refresh.join()
+
+        assertTrue(!paginator.core.isDirty(2))
+    }
+
+    @Test
+    fun `a cancelled refresh gives its pages their dirty flag back`() = runTest {
+        val source = GatedSource()
+        val paginator = populated(source)
+        paginator.core.markDirty(2)
+        source.gate(2)
+
+        val refresh = launch { paginator.refresh(pages = listOf(2)) }
+        testScheduler.advanceUntilIdle()
+        assertTrue(!paginator.core.isDirty(2))
+
+        refresh.cancel()
+        testScheduler.advanceUntilIdle()
 
         assertTrue(paginator.core.isDirty(2))
     }

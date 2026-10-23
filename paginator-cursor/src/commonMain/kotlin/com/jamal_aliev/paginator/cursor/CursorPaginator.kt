@@ -924,8 +924,15 @@ open class CursorPaginator<K : Any, T>(
         var dirtyAtStart: List<K> = emptyList()
         var committedSelves: Set<K> = emptySet()
 
+        // A page the refresh did not write gets its flag back only while it still holds the
+        // refresh's own Progress state or its pre-refresh state; a page another writer replaced
+        // meanwhile (a reload, a reactive update) already holds fresher data.
         fun restoreUncommittedDirtyFlags() {
-            core.markDirty(dirtyAtStart.filter { it !in committedSelves && cache.getStateOf(it) != null })
+            core.markDirty(dirtyAtStart.filter { self ->
+                if (self in committedSelves) return@filter false
+                val currentId: Long = cache.getStateOf(self)?.id ?: return@filter false
+                currentId == progressIds[self] || currentId == savedStates[self]?.second?.id
+            })
         }
 
         try {

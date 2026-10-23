@@ -217,9 +217,9 @@ class ObservePagesTest {
             paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
             runCurrent()
 
-            // The flow fails before jump commits, so jump's own dirty-page pass already retries
-            // (re-subscribes) once — a retry per navigation, never a loop.
-            assertEquals(listOf(1, 1), errors.map { it.first })
+            // One report; the page is marked dirty once jump has committed it, so it is reloaded
+            // (and re-subscribed) by the next navigation that reaches it, not retried right away.
+            assertEquals(listOf(1), errors.map { it.first })
             assertTrue(paginator.core.isDirty(1))
             assertEquals(listOf("p1_0", "p1_1", "p1_2"), paginator.dataOf(1))
         }

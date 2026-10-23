@@ -414,6 +414,7 @@ open class PagingCore<T>(
         silently: Boolean = false
     ) {
         cache.setState(state, silently = true)
+        markCacheChanged()
         if (!silently) {
             snapshot()
         }
@@ -426,7 +427,7 @@ open class PagingCore<T>(
      * @return The removed [OffsetPageState], or `null` if the page was not in the cache.
      */
     fun removeFromCache(page: Int): OffsetPageState<T>? {
-        return cache.removeFromCache(page)
+        return cache.removeFromCache(page).also { markCacheChanged() }
     }
 
     /**
@@ -434,6 +435,7 @@ open class PagingCore<T>(
      */
     fun clear() {
         cache.clear()
+        markCacheChanged()
     }
 
     /**
@@ -735,6 +737,19 @@ open class PagingCore<T>(
         cacheReplacements.update { it + 1 }
     }
 
+    /**
+     * Bumped when an operation that may have changed **which** pages are cached has finished — a
+     * navigation call, element-level CRUD, a direct [setState] / [removeFromCache] / [clear] or a
+     * [resize] — including silent ones and including evictions a strategy performed inside them.
+     * Lets `observePages` keep its per-page queries in step with the cache even when no snapshot
+     * is emitted.
+     */
+    internal val cacheChanges = MutableStateFlow(0L)
+
+    internal fun markCacheChanged() {
+        cacheChanges.update { it + 1 }
+    }
+
     /** Internal set of page numbers marked as dirty (needing refresh). */
     private val _dirtyPages: MutableSet<Int> = mutableSetOf()
     val dirtyPages: Set<Int> get() = _dirtyPages.toSet()
@@ -921,6 +936,7 @@ open class PagingCore<T>(
             }
         }
 
+        markCacheChanged()
         if (!silently && capacity > 0) {
             snapshot()
         }
