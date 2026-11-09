@@ -25,8 +25,8 @@ activityCompose = "1.13.0"
 recyclerview = "1.4.0"
 
 # Compose (Android-side via BOM in :app)
-composeBom = "2026.06.01"
-composeRuntime = "1.11.4"
+composeBom = "2026.09.00"
+composeRuntime = "1.12.1"
 
 # Third-party
 coil = "2.7.0"
