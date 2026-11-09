@@ -19,7 +19,7 @@ coroutines = "1.11.0"
 serializationJson = "1.12.0"
 
 # AndroidX (core / lifecycle / activity)
-coreKtx = "1.19.0"
+coreKtx = "1.19.1"
 lifecycle = "2.11.0"
 activityCompose = "1.13.0"
 recyclerview = "1.4.0"
