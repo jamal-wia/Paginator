@@ -89,6 +89,9 @@ kotlin {
     }
 
     wasmJs {
+        // Compose UI tests need the Skiko runtime bundled with webpack, which only happens when the
+        // target declares an executable binary (required by Compose Multiplatform 1.12, CMP-4906).
+        binaries.executable()
         // Compose's wasm graphics engine (skiko) ships a browser-only loader that cannot fetch its
         // .wasm under Node, so the Compose modules run their wasm tests in a headless browser.
         browser {

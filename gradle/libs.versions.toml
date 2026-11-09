@@ -2,7 +2,7 @@
 # Build tooling
 agp = "9.2.1"
 kotlin = "2.4.21"
-composeMultiplatform = "1.11.1"
+composeMultiplatform = "1.12.2"
 # JetBrains' multiplatform build of androidx.lifecycle — the one Compose
 # Multiplatform's LocalLifecycleOwner comes from. Do not swap for
 # androidx.lifecycle here: the Compose modules target iOS/JS/Wasm too.
