@@ -8,6 +8,8 @@
 !.idea/fileTemplates/
 !.idea/inspectionProfiles/
 !.idea/codeStyles/
+# The project icon Android Studio shows in its toolbar and recent-projects list; shared so everyone sees it.
+!.idea/icon.png
 .tander/
 build/
 captures/
