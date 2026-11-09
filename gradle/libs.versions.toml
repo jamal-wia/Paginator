@@ -1,8 +1,8 @@
 [versions]
 # Build tooling
-agp = "9.2.1"
-kotlin = "2.4.0"
-composeMultiplatform = "1.11.1"
+agp = "9.5.1"
+kotlin = "2.4.21"
+composeMultiplatform = "1.12.2"
 # JetBrains' multiplatform build of androidx.lifecycle — the one Compose
 # Multiplatform's LocalLifecycleOwner comes from. Do not swap for
 # androidx.lifecycle here: the Compose modules target iOS/JS/Wasm too.
@@ -16,17 +16,17 @@ minSdk = "24"
 # Kotlin libraries
 atomicfu = "0.33.0"
 coroutines = "1.11.0"
-serializationJson = "1.11.0"
+serializationJson = "1.12.0"
 
 # AndroidX (core / lifecycle / activity)
-coreKtx = "1.19.0"
+coreKtx = "1.19.1"
 lifecycle = "2.11.0"
 activityCompose = "1.13.0"
 recyclerview = "1.4.0"
 
 # Compose (Android-side via BOM in :app)
-composeBom = "2026.06.01"
-composeRuntime = "1.11.4"
+composeBom = "2026.09.00"
+composeRuntime = "1.12.1"
 
 # Third-party
 coil = "2.7.0"

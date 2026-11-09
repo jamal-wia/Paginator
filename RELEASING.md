@@ -5,6 +5,7 @@ Step-by-step guide for publishing a new release of the library to Maven Central.
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
+- [Before You Start — Run the Tests Locally](#before-you-start--run-the-tests-locally)
 - [Step 1 — Update the Version](#step-1--update-the-version)
 - [Step 2 — Update README Installation Examples](#step-2--update-readme-installation-examples)
 - [Step 3 — Commit and Push](#step-3--commit-and-push)
@@ -28,6 +29,21 @@ Make sure the following **GitHub Secrets** are configured in the repository
 | `GPG_KEY_ID`             | Last 8 characters of your GPG key ID                                           |
 | `GPG_KEY_PASSWORD`       | Passphrase for the GPG key                                                     |
 | `GPG_KEY`                | Base64-encoded GPG private key (`gpg --export-secret-keys <KEY_ID> \| base64`) |
+
+The workflow runs on a pinned `macos-26` runner and uses what that image already ships — Xcode 26.4.1
+(selected explicitly, since Kotlin/Native 2.4 supports it), the preinstalled Temurin 21 and, when its
+version equals the wrapper's, the preinstalled Gradle. Nothing is downloaded from GitHub Releases, so
+an outage there cannot fail a publish.
+
+## Before You Start — Run the Tests Locally
+
+The `Publish to Maven Central` workflow **does not run the tests**: this step is the only test gate,
+so do not skip it. On a macOS machine with Xcode (the iOS and wasmJs test targets need it and Chrome),
+on the commit you intend to release:
+
+```bash
+./gradlew allTests :app:assembleDebug
+```
 
 ## Step 1 — Update the Version
 

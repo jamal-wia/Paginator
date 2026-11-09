@@ -87,6 +87,9 @@ kotlin {
     }
 
     wasmJs {
+        // Compose UI tests need the Skiko runtime bundled with webpack, which only happens when the
+        // target declares an executable binary (required by Compose Multiplatform 1.12, CMP-4906).
+        binaries.executable()
         // Compose's wasm graphics engine (skiko) ships a browser-only loader that cannot fetch its
         // .wasm under Node, so the Compose modules run their wasm tests in a headless browser.
         browser {
@@ -133,5 +136,21 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+    testOptions {
+        unitTests {
+            // AGP 9.5 registers a Compose Preview task for every variant of a module that applies
+            // the Compose compiler plugin (it cannot be switched off), and that task needs the
+            // Android resources compiled into the unit-test classpath.
+            isIncludeAndroidResources = true
+        }
+    }
+}
+
+androidComponents {
+    // The same Compose Preview task also requires unit tests to exist for the variant, and the
+    // Kotlin Multiplatform plugin disables them for release.
+    beforeVariants { variantBuilder ->
+        variantBuilder.hostTests[com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE]?.enable = true
     }
 }
