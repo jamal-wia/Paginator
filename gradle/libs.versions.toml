@@ -1,6 +1,6 @@
 [versions]
 # Build tooling
-agp = "9.2.1"
+agp = "9.5.1"
 kotlin = "2.4.21"
 composeMultiplatform = "1.12.2"
 # JetBrains' multiplatform build of androidx.lifecycle — the one Compose

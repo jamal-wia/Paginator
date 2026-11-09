@@ -140,4 +140,20 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    testOptions {
+        unitTests {
+            // AGP 9.5 registers a Compose Preview task for every variant of a module that applies
+            // the Compose compiler plugin (it cannot be switched off), and that task needs the
+            // Android resources compiled into the unit-test classpath.
+            isIncludeAndroidResources = true
+        }
+    }
+}
+
+androidComponents {
+    // The same Compose Preview task also requires unit tests to exist for the variant, and the
+    // Kotlin Multiplatform plugin disables them for release.
+    beforeVariants { variantBuilder ->
+        variantBuilder.hostTests[com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE]?.enable = true
+    }
 }
