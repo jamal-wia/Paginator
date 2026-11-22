@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +24,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.util.Collections
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -89,5 +91,51 @@ class ReactiveObserveThreadingTest {
         producer.join()
         scope.cancel()
         assertTrue(errors.isEmpty(), "races (${errors.size}): ${errors.firstOrNull()?.stackTraceToString()}")
+    }
+
+    private data class Counter(val id: Int, val n: Int)
+
+    /** Concurrent Patched events compose under the navigation lock: no increment is lost. */
+    @Test
+    fun concurrent_patches_on_Default_lose_no_update() = runBlocking {
+        val producers = 8
+        val perProducer = 10_000
+        val errors: MutableList<Throwable> = Collections.synchronizedList(mutableListOf())
+        val channel = Channel<ReactiveEvent<Counter, Int>>(Channel.UNLIMITED)
+        val source = object : PaginatorReactiveCache<Counter, Int> {
+            override fun identity(item: Counter) = item.id
+            override fun changes(): Flow<ReactiveEvent<Counter, Int>> = channel.receiveAsFlow()
+        }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> errors += e })
+        val paginator = MutablePaginator<Counter> { LoadResult(MutableList(3) { i -> Counter(i + 1, 0) }) }.apply {
+            core.resize(capacity = 3, resize = false, silently = true)
+        }
+        paginator.jump(BookmarkInt(1))
+        paginator.observe(scope, source, initialSync = InitialSyncPolicy.None, onError = { errors += it })
+        val jobs = List(producers) {
+            scope.launch {
+                repeat(perProducer) { channel.send(ReactiveEvent.Patched(1) { c: Counter -> c.copy(n = c.n + 1) }) }
+            }
+        }
+        suspend fun counter(): Int = paginator.withNavigationLock {
+            paginator.cache.peekStateOf(1)!!.data.first { it.id == 1 }.n
+        }
+        withTimeout(60_000) {
+            // Navigate to the cached page while the bridge writes on another thread.
+            while (counter() < producers * perProducer) {
+                try {
+                    paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: LockedException) {
+                    // navigation raced the bridge's critical section; try again
+                }
+                delay(1)
+            }
+        }
+        jobs.forEach { it.join() }
+        scope.cancel()
+        assertEquals(producers * perProducer, counter())
+        assertTrue(errors.isEmpty(), "errors (${errors.size}): ${errors.firstOrNull()?.stackTraceToString()}")
     }
 }

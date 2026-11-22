@@ -37,6 +37,41 @@ sealed interface ReactiveEvent<out T, out ID : Any> {
     data class Updated<T>(val item: T) : ReactiveEvent<T, Nothing>
 
     /**
+     * Some fields of the item with the given [identity] have changed in the source, and the
+     * adapter knows the change but not the whole new item (a like counter, a read flag, a
+     * presence dot).
+     *
+     * The paginator finds every cached item with `cache.identity(cached) == identity` and
+     * replaces it in place with `transform(cached)`. The page index does not move. Unlike
+     * [Updated], the new value is built from the item as it is cached at the moment of
+     * application. Events are applied one at a time under the paginator's navigation lock, so
+     * concurrent patches compose and no update is lost — the reactive counterpart of
+     * `MutableStateFlow.update`.
+     *
+     * **[transform] must be pure, fast and non-suspending.** It runs inside the paginator's
+     * critical section. It may run more than once if several cached items share the identity,
+     * and its result is thrown away if a surrounding [Batch] rolls back. It must not change the
+     * item's identity: a transform that does is reported to `onError` and the item is left
+     * unchanged. A throwing transform is reported to `onError` too; inside a [Batch] it rolls
+     * back the whole batch.
+     *
+     * If no cached item matches, the active `UnknownItemPolicy` decides whether the event is
+     * dropped or escalated. Works inside [Batch] like any other event.
+     *
+     * **Variance:** unlike the parent interface, `Patched` is invariant in [T] because
+     * [transform] reads an item. Emit it typed with exactly the paginator's item type: a
+     * `Patched<Dog, ID>` upcast into a `ReactiveEvent<Animal, ID>` flow would call [transform]
+     * on items that are not `Dog`s, which fails at runtime (the error goes to `onError`).
+     *
+     * Being a data class, two `Patched` events are equal only if they hold the same lambda
+     * instance.
+     */
+    data class Patched<T, ID : Any>(
+        val identity: ID,
+        val transform: (T) -> T,
+    ) : ReactiveEvent<T, ID>
+
+    /**
      * An item with the given [identity] has been removed from the source.
      *
      * The paginator removes the cached item with the matching identity. The

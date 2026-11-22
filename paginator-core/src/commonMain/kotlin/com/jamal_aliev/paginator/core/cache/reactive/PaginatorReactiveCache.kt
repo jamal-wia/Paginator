@@ -18,8 +18,8 @@ import kotlinx.coroutines.flow.Flow
  * 1. **Stable identity.** [identity] must return a value that uniquely
  *    identifies an item across mutations — typically a primary key. Returning
  *    `equals`-based identity for items whose fields change (and therefore
- *    whose `equals` result changes) makes [ReactiveEvent.Updated] and
- *    [ReactiveEvent.Removed] silently fail to locate the cached item.
+ *    whose `equals` result changes) makes [ReactiveEvent.Updated],
+ *    [ReactiveEvent.Patched] and [ReactiveEvent.Removed] silently fail to locate the cached item.
  *
  * 2. **Hot subscription.** [changes] is collected by the paginator from the
  *    moment [com.jamal_aliev.paginator.extension.observe] is called until the
@@ -69,7 +69,8 @@ interface PaginatorReactiveCache<T, ID : Any> {
      * Returns a stable domain identity for [item].
      *
      * Used by the paginator to locate cached items when applying
-     * [ReactiveEvent.Updated], [ReactiveEvent.Removed], [ReactiveEvent.Moved],
+     * [ReactiveEvent.Updated], [ReactiveEvent.Patched], [ReactiveEvent.Removed],
+     * [ReactiveEvent.Moved],
      * and the `*Identity` variants of [InsertPosition]. The returned value
      * must:
      * - have a meaningful `equals`/`hashCode` implementation (typically a

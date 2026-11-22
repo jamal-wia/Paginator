@@ -36,8 +36,8 @@ enum class InitialSyncPolicy {
 }
 
 /**
- * How the paginator reacts to a [ReactiveEvent.Updated], [ReactiveEvent.Removed],
- * or [ReactiveEvent.Moved] (or an `*Identity` insert anchor) whose identity
+ * How the paginator reacts to a [ReactiveEvent.Updated], [ReactiveEvent.Patched],
+ * [ReactiveEvent.Removed], or [ReactiveEvent.Moved] (or an `*Identity` insert anchor) whose identity
  * is not present in any cached page.
  *
  * The common cause is that the affected item lives outside the paginator's

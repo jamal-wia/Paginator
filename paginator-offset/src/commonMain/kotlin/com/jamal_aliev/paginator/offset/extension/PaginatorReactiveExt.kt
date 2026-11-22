@@ -360,6 +360,26 @@ private class ReactiveBridge<T, ID : Any>(
                 if (replaced == 0) unknown()
             }
 
+            is ReactiveEvent.Patched<*, *> -> {
+                // Patched is invariant in T while the interface is covariant, so the compiler
+                // cannot check the item type here; a mismatched emitter fails in `transform`
+                // and the error goes to `onError` (see the Patched KDoc).
+                @Suppress("UNCHECKED_CAST")
+                val patch = event as ReactiveEvent.Patched<T, ID>
+                val patched = updateWhere(
+                    predicate = { source.identity(it) == patch.identity },
+                    transform = { current ->
+                        val next = patch.transform(current)
+                        check(source.identity(next) == patch.identity) {
+                            "Patched: transform changed the identity " +
+                                    "${patch.identity} -> ${source.identity(next)}"
+                        }
+                        next
+                    },
+                )
+                if (patched == 0) unknown()
+            }
+
             is ReactiveEvent.Removed<ID> -> {
                 val removed = removeElement { source.identity(it) == event.identity }
                 if (removed == null) unknown()
