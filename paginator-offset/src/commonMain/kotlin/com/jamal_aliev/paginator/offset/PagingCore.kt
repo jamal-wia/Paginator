@@ -1155,6 +1155,12 @@ open class PagingCore<T>(
      * (including those that were OffsetPageState.Error/OffsetPageState.Progress before saving) are
      * added to the dirty set for automatic re-fetch on next navigation.
      *
+     * The capacity and the context window are restored **before** the pages are written, so an
+     * eviction strategy judges the restored pages by the restored window, not by the window the
+     * paginator had before the call. The strategy's own bookkeeping is not restored: the LRU/FIFO
+     * order is the order of the snapshot's entries (every restored page counts as just inserted),
+     * and the timers of a TTL strategy start anew.
+     *
      * Uses [initializerSuccessPage] for every entry, so custom PageState subclasses are
      * honored on restore.
      *
@@ -1172,6 +1178,10 @@ open class PagingCore<T>(
         cache.clear()
         _dirtyPages.clear()
 
+        capacity = snapshot.capacity
+        startContextPage = snapshot.startContextPage
+        endContextPage = snapshot.endContextPage
+
         snapshot.entries.forEach { entry: PageEntry<T> ->
             val metadata = metadataDecoder?.invoke(entry.metadata)
             val pageState: OffsetPageState<T> = initializerSuccessPage(
@@ -1185,9 +1195,6 @@ open class PagingCore<T>(
             }
         }
 
-        capacity = snapshot.capacity
-        startContextPage = snapshot.startContextPage
-        endContextPage = snapshot.endContextPage
         markCacheReplaced()
 
         if (!silently) {

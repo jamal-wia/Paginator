@@ -1521,6 +1521,11 @@ open class Paginator<T>(
      * serialization and convert [OffsetPageState.Error]/[OffsetPageState.Progress] to success entries),
      * this method preserves exact [OffsetPageState] types through an in-memory deep copy.
      *
+     * **Rollback order:** the context window is restored **before** the pages are written back, so
+     * an eviction strategy judges the restored pages by the restored window, not by the window the
+     * block left behind. The strategy's own bookkeeping is not restored: the LRU/FIFO order is the
+     * order of the save point and the timers of a TTL strategy start anew.
+     *
      * **Concurrency:** the [navigationMutex] is **not** held during [block] execution,
      * so navigation operations inside the block work without deadlock. This matches the
      * concurrency model of CRUD operations.
@@ -1547,16 +1552,23 @@ open class Paginator<T>(
         }
     }
 
+    /**
+     * Puts the paginator back to [savepoint]. The capacity and the context window are restored
+     * **before** the pages are written, so eviction strategies judge the restored pages by the
+     * restored window, not by the window the failed block left behind. LRU/FIFO order and TTL
+     * timers are not part of the save point: restored pages count as just inserted, in save point
+     * order.
+     */
     private fun rollback(savepoint: TransactionSavepoint<T>) {
         cache.clear()
         core.clearAllDirty()
 
-        savepoint.states.forEach { cache.setState(it, silently = true) }
-        savepoint.dirtyPages.forEach { core.markDirty(it) }
-
         core.capacity = savepoint.capacity
         core.startContextPage = savepoint.startContextPage
         core.endContextPage = savepoint.endContextPage
+
+        savepoint.states.forEach { cache.setState(it, silently = true) }
+        savepoint.dirtyPages.forEach { core.markDirty(it) }
 
         finalPage = savepoint.finalPage
         bookmarks.clear()
