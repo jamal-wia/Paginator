@@ -4,11 +4,16 @@ import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.PagingCache
+import com.jamal_aliev.paginator.offset.cache.eviction.ContextWindowPagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
+import com.jamal_aliev.paginator.offset.cache.eviction.NearestPagingCache
+import com.jamal_aliev.paginator.offset.cache.eviction.QueuedPagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.TimeLimitedPagingCache
 import com.jamal_aliev.paginator.offset.extension.observePages
+import com.jamal_aliev.paginator.offset.extension.plus
 import com.jamal_aliev.paginator.offset.load.LoadResult
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -20,17 +25,21 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 
 /** Regression tests from the second review of observePages: asFlow() with LRU / TTL caches, an emptied table, resize during refresh, a source failing with a CancellationException, transactions. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class ObservePagesInteractionTest {
 
     private class FakeTable(rowCount: Int, private val capacity: Int = 3) {
         val rows = MutableStateFlow(List(rowCount) { "r$it" })
         val activePages = mutableListOf<Int>()
+        var subscriptions = 0
+            private set
         val gates = mutableMapOf<Int, CompletableDeferred<Unit>>()
 
         /** Gates a load of a page AFTER it has read the table. */
@@ -46,6 +55,7 @@ class ObservePagesInteractionTest {
             val offset = (page - 1) * limit
             return rows.map { it.drop(offset).take(limit) }
                 .onStart {
+                    subscriptions++
                     activePages += page
                     gates.remove(page)?.await()
                 }
@@ -244,5 +254,150 @@ class ObservePagesInteractionTest {
         runCurrent()
         assertEquals("edited", paginator.cache.peekStateOf(1)!!.data.first())
         assertTrue(paginator.cache.peekStateOf(1).isSuccessState())
+    }
+
+    // ── live subscriptions follow the cache through eviction strategies, silent navigation, rollback ──
+
+    /**
+     * After the pending work has run, the live queries are exactly the cached pages and no page
+     * has more than one query (a duplicate would show up as a repeated page in the sorted list).
+     */
+    private fun TestScope.assertSubscriptionsMatchCache(paginator: MutablePaginator<String>, table: FakeTable) {
+        runCurrent()
+        assertEquals(paginator.cache.pages.sorted(), table.activePages.sorted(), "live queries differ from the cache")
+    }
+
+    @Test
+    fun `ContextWindowPagingCache silent jump back unsubscribes the old location and a silent goNextPage subscribes the next page`() = runTest {
+        val table = FakeTable(rowCount = 60)
+        val paginator = observeWith(ContextWindowPagingCache(margin = 0), table)
+
+        paginator.jump(BookmarkInt(5), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(5, 6), table.activePages.sorted())
+
+        // The window moves to page 1: the write of the jump target evicts pages 5 and 6 at once.
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(1), table.activePages, "pages 5 and 6 must not keep a live query")
+
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(1, 2), paginator.cache.pages)
+        assertEquals(listOf(1, 2), table.activePages.sorted())
+    }
+
+    @Test
+    fun `ContextWindowPagingCache silent jump far away cancels every earlier query`() = runTest {
+        val table = FakeTable(rowCount = 60)
+        val paginator = observeWith(ContextWindowPagingCache(margin = 0), table)
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        paginator.goNextPage(silentlyLoading = true, silentlyResult = true)
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(1, 2, 3), table.activePages.sorted())
+
+        paginator.jump(BookmarkInt(10), silentlyLoading = true, silentlyResult = true)
+
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(10), paginator.cache.pages)
+        assertEquals(listOf(10), table.activePages, "pages 1..3 must not keep a live query")
+    }
+
+    @Test
+    fun `NearestPagingCache keeps live queries equal to a three page window in both directions`() = runTest {
+        val table = FakeTable(rowCount = 60)
+        val paginator = observeWith(NearestPagingCache(maxSize = 3), table)
+
+        // visible navigation forward
+        paginator.jump(BookmarkInt(1))
+        repeat(3) { paginator.goNextPage() }
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(2, 3, 4), table.activePages.sorted())
+
+        // visible navigation backward
+        paginator.goPreviousPage()
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(1, 2, 3), table.activePages.sorted())
+
+        // silent navigation forward and backward again
+        repeat(2) { paginator.goNextPage(silentlyLoading = true, silentlyResult = true) }
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(3, 4, 5), table.activePages.sorted())
+        paginator.goPreviousPage(silentlyLoading = true, silentlyResult = true)
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(2, 3, 4), table.activePages.sorted())
+    }
+
+    @Test
+    fun `a protected context window wider than maxSize keeps every page of the window live`() = runTest {
+        val table = FakeTable(rowCount = 60)
+        val paginator = observeWith(QueuedPagingCache(maxSize = 2, protectContextWindow = true), table)
+
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        repeat(2) { paginator.goNextPage(silentlyLoading = true, silentlyResult = true) }
+
+        // documented: with protectContextWindow = true maxSize may be exceeded by the window
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(1, 2, 3), paginator.cache.pages)
+        assertEquals(listOf(1, 2, 3), table.activePages.sorted())
+    }
+
+    @Test
+    fun `FIFO composed with ContextWindowPagingCache keeps live queries equal to the cache after re-insertion`() = runTest {
+        val table = FakeTable(rowCount = 60)
+        // QueuedPagingCache is the outer strategy: ContextWindowPagingCache evicts first and the
+        // queue keeps entries of pages it did not evict itself.
+        val paginator = observeWith(
+            QueuedPagingCache<String>(maxSize = 3, protectContextWindow = false) + ContextWindowPagingCache(margin = 0),
+            table,
+        )
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        repeat(2) { paginator.goNextPage(silentlyLoading = true, silentlyResult = true) }
+        paginator.jump(BookmarkInt(10), silentlyLoading = true, silentlyResult = true) // window evicts 1..3
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(10), table.activePages)
+
+        // pages 1..3 come back after the window evicted them, then the queue evicts the oldest
+        paginator.jump(BookmarkInt(1), silentlyLoading = true, silentlyResult = true)
+        repeat(3) { paginator.goNextPage(silentlyLoading = true, silentlyResult = true) }
+
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(2, 3, 4), paginator.cache.pages)
+        assertEquals(listOf(2, 3, 4), table.activePages.sorted())
+    }
+
+    @Test
+    fun `a rolled back jump over a bounded cache re-subscribes exactly the restored pages`() = runTest {
+        val table = FakeTable(rowCount = 60)
+        val paginator = observeWith(NearestPagingCache(maxSize = 3), table)
+        paginator.jump(BookmarkInt(1))
+        repeat(2) { paginator.goNextPage() }
+        assertSubscriptionsMatchCache(paginator, table)
+        val subscriptionsBefore = table.subscriptions
+
+        assertFailsWith<IllegalStateException> {
+            paginator.transaction {
+                paginator.jump(BookmarkInt(10)) // the bounded cache evicts page 1 (farthest from 10) and subscribes page 10
+                runCurrent()
+                assertEquals(listOf(2, 3, 10), paginator.cache.pages)
+                assertEquals(listOf(2, 3, 10), table.activePages.sorted())
+                table.update(index = 4, value = "written during the transaction") // row of page 2
+                runCurrent()
+                error("boom")
+            }
+        }
+
+        assertSubscriptionsMatchCache(paginator, table)
+        assertEquals(listOf(1, 2, 3), paginator.cache.pages)
+        assertEquals(listOf(1, 2, 3), table.activePages.sorted())
+        assertEquals(
+            listOf("r3", "written during the transaction", "r5"), paginator.cache.peekStateOf(2)!!.data,
+            "the restored page must be re-queried, the database wins over the rolled back copy",
+        )
+        // page 10 once, then every restored page re-queried once
+        assertEquals(subscriptionsBefore + 1 + 3, table.subscriptions)
     }
 }

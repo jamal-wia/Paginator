@@ -35,7 +35,9 @@ import com.jamal_aliev.paginator.cursor.page.CursorPageState
  * Only the **completion of a page load** evicts: a Success (with or without data) written over a
  * page whose current state is Progress, and only while the cache holds more than [maxSize] pages.
  * Navigation always writes Progress for a page before it loads it, under the same `self` key as the
- * result. Every other write leaves the cache alone. In particular an in-place edit never evicts:
+ * result. If the source answers with a different `self`, the result is not a write over that
+ * Progress, so the load evicts nothing until the next one. Every other write leaves the cache
+ * alone. In particular an in-place edit never evicts:
  * when a message is inserted into the first page of a full window and the overflow creates a new
  * page at the end, that new page was not loaded, and evicting the farthest page would throw away
  * the page that was just edited.
@@ -76,9 +78,19 @@ import com.jamal_aliev.paginator.cursor.page.CursorPageState
  * ## Composition
  *
  * The strategy is a [CursorChainablePagingCache] and works with the `+` operator. Inner strategies
- * evict **before** it (an outer decorator calls the inner `setState` first), so other size-limiting
- * strategies in the same chain must have a `maxSize` **greater than or equal to** this strategy's
- * [maxSize]. [CursorTimeLimitedPagingCache] combines freely.
+ * evict **before** it (an outer decorator calls the inner `setState` first). This strategy
+ * tolerates more than [maxSize] pages until a load completes, but `CursorQueuedPagingCache` and
+ * `CursorMostRecentPagingCache` evict on **every** write, a Progress page included, wherever they
+ * sit in the chain. Another size limit in the chain must therefore leave room for the temporary
+ * excess: give it a `maxSize` of at least this strategy's [maxSize] **plus 2** (the window, plus an
+ * unfinished page on each edge: a failed or incomplete page on one side and the page being loaded
+ * on the other). Navigation alone does not need more as long as the source answers with the `self`
+ * that was asked for. Pages created by CRUD overflow, a `jump` issued while both edges hold an
+ * unfinished page (plus 3), and every load the source answered with a different `self` need more:
+ * the loading page under the asked-for `self` stays in the cache until a later completed load
+ * trims it, so allow one more page per such load. With a smaller limit that
+ * strategy picks the victim by its own rule before the load completes, instead of the nearest
+ * rule. [CursorTimeLimitedPagingCache] combines freely.
  *
  * ```kotlin
  * val cache = CursorNearestPagingCache<String, Message>(maxSize = 3) +
