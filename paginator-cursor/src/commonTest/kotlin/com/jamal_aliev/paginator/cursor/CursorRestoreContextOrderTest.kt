@@ -231,20 +231,24 @@ class CursorRestoreContextOrderTest {
             CursorMostRecentPagingCache(maxSize = 2, protectContextWindow = true, evictionListener = listener)
         }
         val paginator = env.paginator
-        // Window p1..p2, three entries: one of them has to go. Judged by the old window (p6) nothing
-        // is protected and the least recent page, p1, would go.
+        // Window p1..p2 and a second chain q0 -> q1. The entries are written in chain order: p1, p2,
+        // q0, q1. Judged by the window the paginator had before the restore (none) the least recent
+        // pages p1 and p2 would go; judged by the restored window they are protected and the
+        // unprotected q0 is the page that has to give way once q1 arrives.
         val snapshot = snapshotOf(
             start = "p1", end = "p2",
-            entries = listOf(entry(1, last = 2), entry(0, last = 2), entry(2, last = 2)),
+            entries = listOf(
+                rawEntry("p1", prev = "p0", next = "p2"),
+                rawEntry("p2", prev = "p1", next = null),
+                rawEntry("q0", prev = null, next = "q1"),
+                rawEntry("q1", prev = "q0", next = null),
+            ),
         )
-
-        paginator.jump(cb("p6"))
-        env.evicted.clear()
 
         paginator.core.restoreState(snapshot, selfDecoder = decode)
 
-        assertEquals(setOf("p1", "p2"), paginator.cachedSelves())
-        assertEquals(listOf("p0"), env.evicted)
+        assertEquals(listOf("q0"), env.evicted)
+        assertEquals(setOf("p1", "p2", "q1"), paginator.cachedSelves())
         assertEquals("p1" to "p2", paginator.window())
     }
 
@@ -395,7 +399,7 @@ class CursorRestoreContextOrderTest {
 
     @Test
     fun `restoreState keeps orphan entries order after main chain`() = runTest {
-        val env = fifoEnv(maxSize = 2)
+        val env = fifoEnv(maxSize = 1)
         val paginator = env.paginator
         // main chain p0 -> p1 -> p2 and a cycle c0 <-> c1 that no head reaches
         val snapshot = snapshotOf(
@@ -411,9 +415,10 @@ class CursorRestoreContextOrderTest {
 
         paginator.core.restoreState(snapshot, selfDecoder = decode)
 
-        // written: p0, p1, p2 (the chain), then c1, c0 (the cycle in snapshot order)
-        assertEquals(listOf("p0", "p1", "p2"), env.evicted)
-        assertEquals(setOf("c0", "c1"), paginator.cachedSelves())
+        // written: p0, p1, p2 (the chain), then c1, c0 (the cycle in snapshot order); with one slot
+        // every write evicts the previous page, so the eviction order is the write order
+        assertEquals(listOf("p0", "p1", "p2", "c1"), env.evicted)
+        assertEquals(setOf("c0"), paginator.cachedSelves())
     }
 
     @Test
