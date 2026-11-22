@@ -3,10 +3,12 @@ package com.jamal_aliev.paginator.offset.cache.eviction
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
+import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.PagingCore
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -80,6 +82,65 @@ class CacheEvictionIntegrationTest {
             }
         }
         return Pair(paginator, timeSource)
+    }
+
+    /**
+     * The context window invariant on a started paginator: both window boundaries are cached, every
+     * page of `startContextPage..endContextPage` is cached (no hole), and the last published
+     * snapshot is not empty, has no hole and holds exactly the window pages.
+     */
+    private suspend fun assertWindowConsistent(paginator: MutablePaginator<String>) {
+        val core = paginator.core
+        assertTrue(core.isStarted, "paginator must be started")
+        val window = (core.startContextPage..core.endContextPage).toList()
+        for (page in window) {
+            assertNotNull(core.cache.peekStateOf(page), "window page $page must be cached: ${core.cache.pages}")
+        }
+        val snapshotPages = core.snapshot.first().map { it.page }
+        assertTrue(snapshotPages.isNotEmpty(), "the published snapshot must not be empty")
+        assertEquals(window, snapshotPages, "the published snapshot must hold exactly the window pages")
+    }
+
+    private fun createPaginatorOver(cache: PagingCache<String>): MutablePaginator<String> =
+        MutablePaginator(
+            core = PagingCore(cache = cache, initialCapacity = 3)
+        ) { page: Int -> LoadResult(List(this.core.capacity) { "p${page}_item$it" }) }
+
+    /** Visible navigation 1..3 then page 4 under a limit of three pages. */
+    private suspend fun assertFourthPageUnderLimitOfThree(cache: PagingCache<String>) {
+        val paginator = createPaginatorOver(cache)
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+        paginator.goNextPage()
+        assertWindowConsistent(paginator)
+
+        paginator.goNextPage()
+
+        assertTrue(paginator.cache.size <= 3, "limit exceeded: ${paginator.cache.pages}")
+        assertNotNull(paginator.cache.peekStateOf(4))
+        assertWindowConsistent(paginator)
+    }
+
+    /** Window 1..3, forward to 2..4, back to 1..3: the window and the snapshot never get a hole. */
+    private suspend fun assertDirectionChangeKeepsWindowWhole(cache: PagingCache<String>): List<List<Int>> {
+        val paginator = createPaginatorOver(cache)
+        val snapshots = mutableListOf<List<Int>>()
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+        paginator.goNextPage()
+        assertWindowConsistent(paginator)
+        snapshots += paginator.core.snapshot.first().map { it.page }
+
+        paginator.goNextPage()
+        assertWindowConsistent(paginator)
+        assertNotNull(paginator.cache.peekStateOf(4))
+        snapshots += paginator.core.snapshot.first().map { it.page }
+
+        paginator.goPreviousPage()
+        assertWindowConsistent(paginator)
+        assertNotNull(paginator.cache.peekStateOf(1))
+        snapshots += paginator.core.snapshot.first().map { it.page }
+        return snapshots
     }
 
     // -- 1. LRU: jump to new location evicts old pages --
@@ -289,6 +350,53 @@ class CacheEvictionIntegrationTest {
         // With protectContextWindow=false, oldest page should be evicted
         assertTrue(paginator.cache.size <= 2)
         assertNotNull(paginator.cache.getStateOf(3))
+        // The silent step already left the window whole: the part of the invariant that does not
+        // need a snapshot (a visible step would repair the window itself and hide a regression here).
+        assertEquals(3, paginator.core.endContextPage)
+        for (page in paginator.core.startContextPage..paginator.core.endContextPage) {
+            assertNotNull(paginator.cache.peekStateOf(page), "window page $page must be cached: ${paginator.cache.pages}")
+        }
+        // The visible step publishes a snapshot that holds exactly the window pages.
+        paginator.goPreviousPage()
+        assertWindowConsistent(paginator)
+        assertTrue(paginator.cache.size <= 2)
+    }
+
+    // -- 10b. A fourth page under a limit of three: window and snapshot stay whole --
+
+    @Test
+    fun `fourth page under a limit of three with LRU without window protection keeps window and snapshot whole`() = runTest {
+        assertFourthPageUnderLimitOfThree(MostRecentPagingCache(maxSize = 3, protectContextWindow = false))
+    }
+
+    @Test
+    fun `fourth page under a limit of three with FIFO without window protection keeps window and snapshot whole`() = runTest {
+        assertFourthPageUnderLimitOfThree(QueuedPagingCache(maxSize = 3, protectContextWindow = false))
+    }
+
+    @Test
+    fun `fourth page under a limit of three with NearestPagingCache keeps window and snapshot whole`() = runTest {
+        val cache = NearestPagingCache<String>(maxSize = 3)
+        assertFourthPageUnderLimitOfThree(cache)
+        assertEquals(listOf(2, 3, 4), cache.pages)
+    }
+
+    // -- 10c. Direction change inside a bounded window --
+
+    @Test
+    fun `direction change 1-3 then 2-4 then 1-3 with NearestPagingCache keeps window and snapshot whole`() = runTest {
+        val snapshots = assertDirectionChangeKeepsWindowWhole(NearestPagingCache(maxSize = 3))
+
+        assertEquals(listOf(listOf(1, 2, 3), listOf(2, 3, 4), listOf(1, 2, 3)), snapshots)
+    }
+
+    @Test
+    fun `direction change 1-3 then 2-4 then 1-3 with LRU without window protection keeps window and snapshot without holes`() = runTest {
+        val snapshots = assertDirectionChangeKeepsWindowWhole(
+            MostRecentPagingCache(maxSize = 3, protectContextWindow = false)
+        )
+        // LRU evicts a page from the middle of the window; the window narrows around the loaded page (D-3)
+        assertEquals(listOf(listOf(1, 2, 3), listOf(2, 3, 4), listOf(1, 2)), snapshots)
     }
 
     // -- 11. Eviction during jump --
