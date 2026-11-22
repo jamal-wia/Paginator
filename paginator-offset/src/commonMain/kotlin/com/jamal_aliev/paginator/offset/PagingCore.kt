@@ -414,8 +414,9 @@ open class PagingCore<T>(
      * untracked: reconciling must not reorder an LRU strategy or restart a TTL timer.
      *
      * Call it under the navigation lock, before [snapshot], after anything that wrote to the cache
-     * ([PagingCache.setState]) or can have damaged the window. [Paginator.restart] does not need
-     * it: it clears the cache and sets the window to page `1..1`, so a hole cannot appear.
+     * ([PagingCache.setState]) or can have damaged the window. The main path of [Paginator.restart]
+     * does not need it: it clears the cache and sets the window to page `1..1`, so a hole cannot
+     * appear. Its cancellation path writes the erased pages back and calls it as insurance.
      *
      * @param anchor The page navigation is anchored on. It may lie outside the window.
      */

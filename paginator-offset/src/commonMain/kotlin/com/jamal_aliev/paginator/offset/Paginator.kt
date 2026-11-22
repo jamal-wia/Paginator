@@ -971,6 +971,9 @@ open class Paginator<T>(
      * Clears all cached pages except page 1's structure, resets the context window
      * to page 1, and reloads it from the [load]. Ideal for swipe-to-refresh scenarios.
      *
+     * If the reload is cancelled, the paginator is put back as it was before the call: the context
+     * window, **all** the pages the call cleared and the dirty marks.
+     *
      * @param silentlyLoading If `true`, the snapshot will **not** be emitted during loading.
      * @param silentlyResult If `true`, the snapshot will **not** be emitted after loading.
      * @param loadGuard A guard callback invoked before page 1 is reloaded.
@@ -996,12 +999,17 @@ open class Paginator<T>(
         var savedStartContextPage: Int = cache.startContextPage
         var savedEndContextPage: Int = cache.endContextPage
         var savedFirstPageState: OffsetPageState<T>? = null
+        var savedStates: List<OffsetPageState<T>> = emptyList()
+        var savedDirtyPages: Set<Int> = emptySet()
         var shouldCleanup = false
 
         navigationMutex.lock()
         try {
             savedStartContextPage = cache.startContextPage
             savedEndContextPage = cache.endContextPage
+            // kept for the cancellation path: the pages erased below come back with the window
+            savedStates = core.states
+            savedDirtyPages = core.dirtyPages
 
             val firstPage: OffsetPageState<T>? = cache.getStateOf(1)
             cache.clear()
@@ -1064,13 +1072,15 @@ open class Paginator<T>(
         } catch (e: CancellationException) {
             if (shouldCleanup) {
                 withContext(NonCancellable) {
+                    // the window first, then the pages: an eviction strategy judges them by it
                     core.startContextPage = savedStartContextPage
                     core.endContextPage = savedEndContextPage
-                    if (savedFirstPageState != null) {
-                        cache.setState(savedFirstPageState, silently = true)
-                    } else {
-                        cache.removeFromCache(1)
-                    }
+                    savedStates.forEach { cache.setState(it, silently = true) }
+                    if (savedFirstPageState == null) cache.removeFromCache(1)
+                    savedDirtyPages.forEach { core.markDirty(it) }
+                    // Insurance: a strategy may still evict while the pages are written back
+                    core.reconcileContextWindow(anchor = savedStartContextPage)
+                    core.markCacheReplaced()
                     core.snapshot()
                 }
             }
