@@ -36,6 +36,7 @@ class EvictionContextReconcileTest {
     private class Env(
         val paginator: MutablePaginator<String>,
         val gates: MutableMap<Int, CompletableDeferred<Unit>>,
+        val failing: MutableSet<Int>,
     )
 
     /**
@@ -48,6 +49,7 @@ class EvictionContextReconcileTest {
         capacity: Int = 5,
     ): Env {
         val gates = mutableMapOf<Int, CompletableDeferred<Unit>>()
+        val failing = mutableSetOf<Int>()
         val cache = QueuedPagingCache<String>(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
@@ -56,9 +58,10 @@ class EvictionContextReconcileTest {
             core = PagingCore(cache = cache, initialCapacity = capacity)
         ) { page: Int ->
             gates[page]?.await()
+            if (page in failing) error("load of page $page failed")
             LoadResult(List(this.core.capacity) { "p${page}_item$it" })
         }
-        return Env(paginator, gates)
+        return Env(paginator, gates, failing)
     }
 
     private suspend fun MutablePaginator<String>.snapshotPages(): List<Int> =
@@ -210,6 +213,30 @@ class EvictionContextReconcileTest {
         assertEquals(listOf(1, 2), paginator.cache.pages)
         assertEquals(1, paginator.core.startContextPage)
         assertEquals(2, paginator.core.endContextPage)
+        assertWindowInvariant(paginator)
+    }
+
+    @Test
+    fun `goPreviousPage with a fully removed window and a failing load keeps the paginator started`() = runTest {
+        val env = createEnv(maxSize = 10)
+        val paginator = env.paginator
+
+        paginator.jump(BookmarkInt(3))
+        paginator.goNextPage()
+        // every page of the window is gone and nothing is cached
+        paginator.core.removeFromCache(3)
+        paginator.core.removeFromCache(4)
+        assertEquals(emptyList(), paginator.cache.pages)
+        env.failing += 2
+
+        val loaded = paginator.goPreviousPage()
+
+        assertEquals(2, loaded.page)
+        assertTrue(loaded is OffsetPageState.Error)
+        assertTrue(paginator.core.isStarted, "the paginator must stay started")
+        assertEquals(2, paginator.core.startContextPage)
+        assertEquals(2, paginator.core.endContextPage)
+        assertEquals(listOf(2), paginator.snapshotPages())
         assertWindowInvariant(paginator)
     }
 
@@ -448,6 +475,30 @@ class EvictionContextReconcileTest {
         core.reconcileContextWindow(anchor = 3)
         assertEquals(10, core.startContextPage)
         assertEquals(12, core.endContextPage)
+    }
+
+    @Test
+    fun `reconcileContextWindow keeps a started paginator started on a cached anchor outside the window`() {
+        val core = coreOf()
+        core.putPages(2) // an error or progress page that is being loaded would look the same
+        core.window(5, 6) // the whole window is gone
+        core.reconcileContextWindow(anchor = 2)
+        // page 2 is the only cached success page: the re-anchoring finds it on its own
+        assertEquals(2, core.startContextPage)
+        assertEquals(2, core.endContextPage)
+    }
+
+    @Test
+    fun `reconcileContextWindow turns a cached non success anchor into the window when nothing else is cached`() {
+        val core = coreOf()
+        core.cache.setState(
+            core.initializerErrorPage(RuntimeException("boom"), 2, mutableListOf(), null),
+            silently = true
+        )
+        core.window(5, 6) // the whole window is gone
+        core.reconcileContextWindow(anchor = 2)
+        assertEquals(2, core.startContextPage)
+        assertEquals(2, core.endContextPage)
     }
 
     @Test

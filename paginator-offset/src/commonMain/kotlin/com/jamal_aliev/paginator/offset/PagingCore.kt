@@ -404,7 +404,9 @@ open class PagingCore<T>(
      * or the page just loaded). If [anchor] itself is not cached, the nearest run is taken (on equal
      * distance the run on the side of [anchor]: the end side when `anchor >= endContextPage`, the
      * start side otherwise). If no page of the window is cached any more, the window is re-anchored
-     * with [reanchorAfterRewrite] around the old boundaries. The window never moves to a foreign
+     * with [reanchorAfterRewrite] around the old boundaries; when that finds nothing either and the
+     * [anchor] page is cached (e.g. a progress or error page that is being loaded), the window is
+     * that single page, so a started paginator is not turned into an unstarted one. The window never moves to a foreign
      * island of the cache while a page of the old window survives.
      *
      * Only the presence of a page is checked ([PagingCache.peekStateOf]), not whether it is filled;
@@ -450,6 +452,11 @@ open class PagingCore<T>(
         val runs: List<IntRange> = runsOfCachedPages()
         if (runs.isEmpty()) {
             withUntrackedReads { reanchorAfterRewrite(startPoint = oldStart, endPoint = oldEnd) }
+            // A started paginator is never left unstarted while the page navigation holds is cached
+            if (!isStarted && cache.peekStateOf(anchor) != null) {
+                startContextPage = anchor
+                endContextPage = anchor
+            }
         } else {
             fun distanceToAnchor(run: IntRange): Int = when {
                 anchor < run.first -> run.first - anchor

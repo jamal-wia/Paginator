@@ -837,7 +837,8 @@ open class Paginator<T>(
             // eviction strategy): repair it before the pivot is read from its boundary.
             val windowStart: Int = cache.startContextPage
             core.reconcileContextWindow(anchor = windowStart)
-            if (!cache.isStarted) {
+            val isWindowGone: Boolean = !cache.isStarted
+            if (isWindowGone) {
                 // Not a single window page is cached any more: keep the old boundary as the anchor
                 // (the page before it is loaded), never a window at page 0.
                 core.startContextPage = windowStart
@@ -897,8 +898,9 @@ open class Paginator<T>(
                         silently = true
                     )
                     // The progress state may have evicted a page of the window (strategies without
-                    // window protection): narrow the window before it is published.
-                    core.reconcileContextWindow(anchor = pivotContextPage)
+                    // window protection): narrow the window before it is published. When the whole
+                    // window was gone, the page being loaded becomes the window, like a jump target.
+                    core.reconcileContextWindow(anchor = if (isWindowGone) page else pivotContextPage)
                     if (enableCacheFlow) {
                         core.repeatCacheFlow()
                     }
