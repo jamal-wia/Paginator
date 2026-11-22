@@ -7,6 +7,7 @@ import com.jamal_aliev.paginator.core.load.Metadata
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
+import com.jamal_aliev.paginator.offset.cache.eviction.NearestPagingCache
 import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.offset.dsl.mutablePaginator
 import com.jamal_aliev.paginator.offset.dsl.paginator
@@ -269,6 +270,25 @@ class PaginatorBuilderTest {
     private class LiveTable {
         val rows = MutableStateFlow(List(20) { "r$it" })
         fun observe(limit: Int, offset: Int): Flow<List<String>> = rows.map { it.drop(offset).take(limit) }
+    }
+
+    @Test
+    fun `builder keeps NearestPagingCache together with livePages`() = runTest {
+        val table = LiveTable()
+        val nearest = NearestPagingCache<String>(maxSize = 3)
+        val paginator = mutablePaginator<String>(capacity = 3) {
+            cache = nearest
+            livePages(backgroundScope) { page -> table.observe(core.capacity, (page - 1) * core.capacity) }
+        }
+
+        // The exact strategy instance is the one the core uses.
+        assertSame(nearest, paginator.core.cache)
+
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+        paginator.goNextPage()
+        assertEquals(listOf(1, 2, 3), nearest.pages)
+        assertEquals(listOf("r6", "r7", "r8"), paginator.cache.getStateOf(3)!!.data)
     }
 
     @Test

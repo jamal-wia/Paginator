@@ -1,6 +1,7 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
+import com.jamal_aliev.paginator.offset.extension.plus
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -341,5 +342,37 @@ class MostRecentPagingCacheTest {
     fun `getElement for missing page returns null`() {
         val core = createCore(maxSize = 3)
         assertNull(core.getElement(999, 0))
+    }
+
+    // -- 19. Composition with an inner evicting strategy --
+
+    @Test
+    fun `re-added page after inner eviction becomes most recently used`() {
+        val core = MostRecentPagingCache<String>(maxSize = 2, protectContextWindow = false) +
+                ContextWindowPagingCache<String>(margin = 0)
+
+        // Context 1..2: both pages cached.
+        core.startContextPage = 1
+        core.endContextPage = 2
+        core.setState(successPage(1), silently = true)
+        core.setState(successPage(2), silently = true)
+
+        // Context 2..2: the inner window strategy drops page 1 behind the LRU decorator's back.
+        core.startContextPage = 2
+        core.setState(successPage(2), silently = true)
+        assertNull(core.peekStateOf(1))
+
+        // Page 1 comes back: it is the most recently used page now, page 2 is older.
+        core.startContextPage = 1
+        core.setState(successPage(1), silently = true)
+
+        // Page 3 overflows maxSize: the least recently used surviving page is 2.
+        core.endContextPage = 3
+        core.setState(successPage(3), silently = true)
+
+        assertEquals(2, core.size)
+        assertNull(core.peekStateOf(2))
+        assertNotNull(core.peekStateOf(1))
+        assertNotNull(core.peekStateOf(3))
     }
 }

@@ -1,6 +1,8 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
+import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
+import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -246,5 +248,164 @@ class QueuedPagingCacheTest {
         assertNull(core.getStateOf(2))
         assertNotNull(core.getStateOf(1))
         assertNotNull(core.getStateOf(3))
+    }
+
+    // -- 14. Composition with an inner evicting strategy --
+
+    /** FIFO decorator (outer) over a strict context window strategy (inner, `margin = 0`). */
+    private fun createComposition(maxSize: Int): QueuedPagingCache<String> =
+        QueuedPagingCache(
+            cache = ContextWindowPagingCache(margin = 0),
+            maxSize = maxSize,
+            protectContextWindow = false,
+        )
+
+    /** Moves the context window; the end is set first so the window is never inverted. */
+    private fun PagingCache<String>.setContext(start: Int, end: Int) {
+        endContextPage = end
+        startContextPage = start
+    }
+
+    @Test
+    fun `re-added page after inner eviction is evicted after the older surviving page`() {
+        val evicted = mutableListOf<Int>()
+        val core = createComposition(maxSize = 2)
+        core.evictionListener = CacheEvictionListener { evicted.add((it as OffsetPageState).page) }
+
+        // Context 1..2: pages 1 and 2 are inserted.
+        core.setContext(1, 2)
+        core.setState(successPage(1), silently = true)
+        core.setState(successPage(2), silently = true)
+
+        // Context 2..2: the inner window strategy drops page 1 behind the FIFO decorator's back.
+        core.setContext(2, 2)
+        core.setState(successPage(2), silently = true)
+        assertNull(core.peekStateOf(1))
+
+        // Context 1..2: page 1 is inserted again, so it is newer than page 2.
+        core.setContext(1, 2)
+        core.setState(successPage(1), silently = true)
+
+        // Context 1..3: page 3 overflows maxSize, the oldest surviving page is 2, not 1.
+        core.setContext(1, 3)
+        core.setState(successPage(3), silently = true)
+
+        assertEquals(2, core.size)
+        assertNull(core.getStateOf(2))
+        assertNotNull(core.getStateOf(1))
+        assertNotNull(core.getStateOf(3))
+        assertEquals(listOf(2), evicted)
+    }
+
+    @Test
+    fun `insertion order stays bounded when inner strategy evicts`() {
+        val core = createComposition(maxSize = 5)
+
+        for (i in 1..1000) {
+            core.setContext(i, i)
+            core.setState(successPage(i), silently = true)
+        }
+
+        assertEquals(1, core.size)
+        assertTrue(core.trackedEntryCount < 50, "tracked ${core.trackedEntryCount} entries")
+    }
+
+    @Test
+    fun `page re-added many times keeps fifo order of surviving pages`() {
+        val evicted = mutableListOf<Int>()
+        val core = createComposition(maxSize = 2)
+        core.evictionListener = CacheEvictionListener { evicted.add((it as OffsetPageState).page) }
+
+        // Round 1: inner eviction of 1, then 1 is added again, then 3 overflows -> evicts 2.
+        core.setContext(1, 2)
+        core.setState(successPage(1), silently = true)
+        core.setState(successPage(2), silently = true)
+        core.setContext(2, 2)
+        core.setState(successPage(2), silently = true)
+        core.setContext(1, 2)
+        core.setState(successPage(1), silently = true)
+        core.setContext(1, 3)
+        core.setState(successPage(3), silently = true)
+        assertEquals(listOf(2), evicted)
+
+        // Round 2: inner eviction of 1 again, 1 re-added, 4 overflows -> evicts 3 (older than 1).
+        core.setContext(3, 3)
+        core.setState(successPage(3), silently = true)
+        assertNull(core.peekStateOf(1))
+        core.setContext(1, 3)
+        core.setState(successPage(1), silently = true)
+        core.setContext(1, 4)
+        core.setState(successPage(4), silently = true)
+        assertEquals(listOf(2, 3), evicted)
+
+        // Round 3: same again -> evicts 4.
+        core.setContext(4, 4)
+        core.setState(successPage(4), silently = true)
+        assertNull(core.peekStateOf(1))
+        core.setContext(1, 4)
+        core.setState(successPage(1), silently = true)
+        core.setContext(1, 5)
+        core.setState(successPage(5), silently = true)
+        assertEquals(listOf(2, 3, 4), evicted)
+
+        assertEquals(2, core.size)
+        assertNotNull(core.peekStateOf(1))
+        assertNotNull(core.peekStateOf(5))
+    }
+
+    @Test
+    fun `removeFromCache of a re-added page leaves no entry behind`() {
+        val core = createComposition(maxSize = 5)
+
+        core.setContext(1, 2)
+        core.setState(successPage(1), silently = true)
+        core.setState(successPage(2), silently = true)
+
+        // The inner window strategy drops page 1, then page 1 is added again.
+        core.setContext(2, 2)
+        core.setState(successPage(2), silently = true)
+        assertNull(core.peekStateOf(1))
+        core.setContext(1, 2)
+        core.setState(successPage(1), silently = true)
+        assertEquals(2, core.size)
+
+        // Removing it through the outer decorator must not leave a second entry for page 1.
+        assertNotNull(core.removeFromCache(1))
+        assertEquals(1, core.size)
+        assertEquals(core.size, core.trackedEntryCount)
+    }
+
+    @Test
+    fun `compaction keeps the insertion order of surviving pages`() {
+        val evicted = mutableListOf<Int>()
+        val leaf = InMemoryPagingCache<String>()
+        val core = QueuedPagingCache(
+            cache = leaf,
+            maxSize = 4,
+            protectContextWindow = false,
+            evictionListener = CacheEvictionListener { evicted.add((it as OffsetPageState).page) },
+        )
+
+        // The survivors 3, 2, 1 are inserted in this order, not in ascending order.
+        core.setState(successPage(3), silently = true)
+        core.setState(successPage(2), silently = true)
+        core.setState(successPage(1), silently = true)
+
+        // Churn pages are removed behind the decorator's back and leave stale entries: far more
+        // than the compaction limit, so the compaction runs while the survivors are queued.
+        for (i in 100 until 140) {
+            core.setState(successPage(i), silently = true)
+            leaf.removeFromCache(i)
+        }
+        assertEquals(listOf(1, 2, 3), core.pages)
+        assertTrue(core.trackedEntryCount < 50, "tracked ${core.trackedEntryCount} entries")
+        assertEquals(emptyList(), evicted)
+
+        // Overflow: the oldest insertion is page 3, not the lowest page 1.
+        core.setState(successPage(4), silently = true)
+        core.setState(successPage(5), silently = true)
+
+        assertEquals(listOf(3), evicted)
+        assertEquals(listOf(1, 2, 4, 5), core.pages)
     }
 }
