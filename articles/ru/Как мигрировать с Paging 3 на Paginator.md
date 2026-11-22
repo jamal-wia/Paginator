@@ -168,9 +168,9 @@ private val paginator = mutablePaginator<Item>(capacity = 20) {
   [Capacity & Incomplete Pages](https://github.com/jamal-wia/Paginator/blob/master/docs/1.%20core-concepts.md#capacity--incomplete-pages)).
 - **`maxSize`** → стратегия кэша. Самый прямой аналог —
   `MostRecentPagingCache(maxSize = N страниц)`.
-  При прокрутке в обе стороны по смыслу ближе к `maxSize` из Paging 3 `NearestPagingCache(maxSize = N)`:
-  он держит N страниц, ближайших к только что загруженной, и вытесняет самую дальнюю, а не самую
-  давно использованную.
+  Если список листают в обе стороны, по смыслу к `maxSize` из Paging 3 ближе `NearestPagingCache(maxSize = N)`:
+  он держит N страниц, ближайших к только что загруженной, и вытесняет самую дальнюю, а не ту,
+  к которой дольше всего не обращались.
   Стратегии композируются оператором `+`, можно добавить TTL (`TimeLimitedPagingCache`) или окно
   вокруг видимой области (`ContextWindowPagingCache`). Деталей — в
   [docs/6. caching.md](https://github.com/jamal-wia/Paginator/blob/master/docs/6.%20caching.md).
