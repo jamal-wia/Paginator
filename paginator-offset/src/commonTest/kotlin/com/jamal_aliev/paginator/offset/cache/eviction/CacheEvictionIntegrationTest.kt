@@ -3,12 +3,22 @@ package com.jamal_aliev.paginator.offset.cache.eviction
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
+import com.jamal_aliev.paginator.core.extension.isEmptyState
+import com.jamal_aliev.paginator.core.extension.isErrorState
+import com.jamal_aliev.paginator.core.extension.isProgressState
+import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.MutablePaginator
 import com.jamal_aliev.paginator.offset.PagingCore
 import com.jamal_aliev.paginator.offset.bookmark.BookmarkInt
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,6 +28,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TestTimeSource
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CacheEvictionIntegrationTest {
 
     private fun createLruPaginator(
@@ -89,16 +100,29 @@ class CacheEvictionIntegrationTest {
      * page of `startContextPage..endContextPage` is cached (no hole), and the last published
      * snapshot is not empty, has no hole and holds exactly the window pages.
      */
-    private suspend fun assertWindowConsistent(paginator: MutablePaginator<String>) {
+    private suspend fun assertWindowConsistent(paginator: MutablePaginator<String>, exact: Boolean = true) {
         val core = paginator.core
         assertTrue(core.isStarted, "paginator must be started")
         val window = (core.startContextPage..core.endContextPage).toList()
         for (page in window) {
             assertNotNull(core.cache.peekStateOf(page), "window page $page must be cached: ${core.cache.pages}")
         }
-        val snapshotPages = core.snapshot.first().map { it.page }
+        val snapshot = core.snapshot.first()
+        val snapshotPages = snapshot.map { it.page }
         assertTrue(snapshotPages.isNotEmpty(), "the published snapshot must not be empty")
-        assertEquals(window, snapshotPages, "the published snapshot must hold exactly the window pages")
+        if (exact) {
+            assertEquals(window, snapshotPages, "the published snapshot must hold exactly the window pages")
+        } else {
+            // With an unfinished page next to the window (Error, Progress, incomplete or empty last
+            // page) the snapshot shows it after the window; it has no hole either way.
+            assertEquals((snapshotPages.first()..snapshotPages.last()).toList(), snapshotPages, "hole: $snapshotPages")
+            for (page in window) assertTrue(page in snapshotPages, "snapshot must cover window page $page")
+            for (state in snapshot) {
+                if (state.page !in window) {
+                    assertTrue(!core.isFilledSuccessState(state), "page ${state.page} outside the window is filled")
+                }
+            }
+        }
     }
 
     private fun createPaginatorOver(cache: PagingCache<String>): MutablePaginator<String> =
@@ -397,6 +421,152 @@ class CacheEvictionIntegrationTest {
         )
         // LRU evicts a page from the middle of the window; the window narrows around the loaded page (D-3)
         assertEquals(listOf(listOf(1, 2, 3), listOf(2, 3, 4), listOf(1, 2)), snapshots)
+    }
+
+    // -- 10d. Edge cases under a bounded cache (limit of two pages) --
+
+    private class LimitedEnv(
+        val paginator: MutablePaginator<String>,
+        val gates: MutableMap<Int, CompletableDeferred<Unit>>,
+        val failing: MutableSet<Int>,
+        /** Number of items a page returns instead of the capacity: 2 makes it incomplete, 0 empty. */
+        val lengths: MutableMap<Int, Int>,
+    )
+
+    private fun createLimitedEnv(cache: PagingCache<String>): LimitedEnv {
+        val gates = mutableMapOf<Int, CompletableDeferred<Unit>>()
+        val failing = mutableSetOf<Int>()
+        val lengths = mutableMapOf<Int, Int>()
+        val paginator = MutablePaginator(
+            core = PagingCore(cache = cache, initialCapacity = 3)
+        ) { page: Int ->
+            gates[page]?.await()
+            if (page in failing) error("load of page $page failed")
+            LoadResult(List(lengths[page] ?: this.core.capacity) { "p${page}_item$it" })
+        }
+        return LimitedEnv(paginator, gates, failing, lengths)
+    }
+
+    private suspend fun TestScope.assertCancelledGoNextPageKeepsWindowWhole(cache: PagingCache<String>): LimitedEnv {
+        val env = createLimitedEnv(cache)
+        val paginator = env.paginator
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+        env.gates[3] = CompletableDeferred()
+
+        val job = launch { paginator.goNextPage() }
+        runCurrent()
+        job.cancelAndJoin()
+
+        assertTrue(paginator.cache.pages.none { paginator.cache.peekStateOf(it).isProgressState() }, "a Progress page is left behind")
+        assertWindowConsistent(paginator)
+        return env
+    }
+
+    private suspend fun assertIncompleteLastPageThenGoNextPage(cache: PagingCache<String>) {
+        val env = createLimitedEnv(cache)
+        val paginator = env.paginator
+        env.lengths[3] = 2
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+
+        val incomplete = paginator.goNextPage() // page 3 has two of three items
+        assertTrue(incomplete.isSuccessState() && incomplete.data.size == 2)
+        assertWindowConsistent(paginator, exact = false)
+        assertTrue(3 in paginator.core.snapshot.first().map { it.page })
+
+        val again = paginator.goNextPage() // the unfinished end page is reloaded in place
+
+        assertEquals(3, again.page)
+        assertNotNull(paginator.cache.peekStateOf(3))
+        assertTrue(paginator.cache.size <= 2, "limit exceeded: ${paginator.cache.pages}")
+        assertWindowConsistent(paginator, exact = false)
+        assertTrue(3 in paginator.core.snapshot.first().map { it.page })
+    }
+
+    private suspend fun assertFailedNextPageThenRetry(cache: PagingCache<String>) {
+        val env = createLimitedEnv(cache)
+        val paginator = env.paginator
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+        env.failing += 3
+
+        val failed = paginator.goNextPage()
+
+        assertTrue(failed.isErrorState())
+        assertTrue(paginator.cache.peekStateOf(3).isErrorState(), "the error page is cached")
+        assertWindowConsistent(paginator, exact = false)
+        assertTrue(3 in paginator.core.snapshot.first().map { it.page }, "the snapshot shows the error page")
+
+        env.failing -= 3
+        val retried = paginator.goNextPage()
+
+        assertEquals(3, retried.page)
+        assertTrue(retried.isSuccessState())
+        assertTrue(paginator.cache.size <= 2, "limit exceeded: ${paginator.cache.pages}")
+        assertWindowConsistent(paginator)
+        assertTrue(3 in paginator.core.snapshot.first().map { it.page })
+    }
+
+    private suspend fun assertEmptySourceKeepsWindowWhole(cache: PagingCache<String>) {
+        val env = createLimitedEnv(cache)
+        val paginator = env.paginator
+        env.lengths[3] = 0
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+
+        val result = paginator.goNextPage()
+
+        assertTrue(result.isEmptyState())
+        assertTrue(paginator.cache.peekStateOf(3).isEmptyState(), "the empty page is cached")
+        assertNotNull(paginator.cache.peekStateOf(2), "the page next to the empty one must stay")
+        assertTrue(paginator.cache.size <= 2, "limit exceeded: ${paginator.cache.pages}")
+        assertWindowConsistent(paginator, exact = false)
+        assertTrue(3 in paginator.core.snapshot.first().map { it.page }, "the snapshot shows the empty page")
+    }
+
+    @Test
+    fun `cancelled goNextPage with LRU without window protection leaves no progress page and a valid window`() = runTest {
+        assertCancelledGoNextPageKeepsWindowWhole(MostRecentPagingCache(maxSize = 2, protectContextWindow = false))
+    }
+
+    @Test
+    fun `cancelled goNextPage with NearestPagingCache keeps the previous window`() = runTest {
+        val env = assertCancelledGoNextPageKeepsWindowWhole(NearestPagingCache(maxSize = 2))
+
+        assertEquals(listOf(1, 2), env.paginator.cache.pages)
+        assertEquals(1, env.paginator.core.startContextPage)
+        assertEquals(2, env.paginator.core.endContextPage)
+    }
+
+    @Test
+    fun `incomplete last page then goNextPage with LRU without window protection keeps state and snapshot valid`() = runTest {
+        assertIncompleteLastPageThenGoNextPage(MostRecentPagingCache(maxSize = 2, protectContextWindow = false))
+    }
+
+    @Test
+    fun `incomplete last page then goNextPage with NearestPagingCache keeps state and snapshot valid`() = runTest {
+        assertIncompleteLastPageThenGoNextPage(NearestPagingCache(maxSize = 2))
+    }
+
+    @Test
+    fun `failed next page then retry with LRU without window protection ends with a whole window`() = runTest {
+        assertFailedNextPageThenRetry(MostRecentPagingCache(maxSize = 2, protectContextWindow = false))
+    }
+
+    @Test
+    fun `failed next page then retry with NearestPagingCache ends with a whole window`() = runTest {
+        assertFailedNextPageThenRetry(NearestPagingCache(maxSize = 2))
+    }
+
+    @Test
+    fun `emptied source with LRU without window protection publishes the empty page and keeps the window whole`() = runTest {
+        assertEmptySourceKeepsWindowWhole(MostRecentPagingCache(maxSize = 2, protectContextWindow = false))
+    }
+
+    @Test
+    fun `emptied source with NearestPagingCache publishes the empty page and keeps the window whole`() = runTest {
+        assertEmptySourceKeepsWindowWhole(NearestPagingCache(maxSize = 2))
     }
 
     // -- 11. Eviction during jump --
