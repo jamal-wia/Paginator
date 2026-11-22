@@ -1,5 +1,6 @@
 package com.jamal_aliev.paginator.cursor
 
+import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
 import com.jamal_aliev.paginator.cursor.page.CursorPageState
 
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
@@ -271,6 +272,85 @@ class CursorCacheEvictionTest {
 
     private fun CursorPagingCache<String, String>.put(i: Int) =
         setState(bookmarkAt(i, TOTAL), successPage(i, "item_$i"))
+
+    /** FIFO decorator (outer) over a strict context window strategy (inner, `margin = 0`). */
+    private fun fifoOverWindow(maxSize: Int): CursorQueuedPagingCache<String, String> =
+        CursorQueuedPagingCache(
+            cache = CursorContextWindowPagingCache(margin = 0),
+            maxSize = maxSize,
+            protectContextWindow = false,
+        )
+
+    @Test
+    fun fifo_readded_page_after_inner_eviction_is_evicted_after_older_survivor() {
+        val evicted = mutableListOf<Any>()
+        val c = fifoOverWindow(maxSize = 2)
+        c.evictionListener = CacheEvictionListener { evicted.add((it as CursorPageState<*, *>).bookmark.self) }
+
+        c.setContext(0, 1)
+        c.put(0)
+        c.put(1)
+
+        // The inner window strategy drops p0 behind the FIFO decorator's back.
+        c.setContext(1, 1)
+        c.put(1)
+        assertNull(c.peekStateOf("p0"))
+
+        // p0 is inserted again, so it is newer than p1.
+        c.setContext(0, 1)
+        c.put(0)
+
+        // p2 overflows maxSize: the oldest surviving page is p1, not p0.
+        c.setContext(0, 2)
+        c.put(2)
+
+        assertEquals(2, c.size)
+        assertNull(c.peekStateOf("p1"))
+        assertNotNull(c.peekStateOf("p0"))
+        assertNotNull(c.peekStateOf("p2"))
+        assertEquals(listOf<Any>("p1"), evicted)
+    }
+
+    @Test
+    fun fifo_insertion_order_stays_bounded_when_inner_strategy_evicts() {
+        val c = CursorQueuedPagingCache<String, String>(
+            cache = CursorContextWindowPagingCache(margin = 0),
+            maxSize = 5,
+            protectContextWindow = false,
+        )
+
+        for (i in 0 until 1000) {
+            val bookmark = bookmarkAt(i, 1000)
+            c.startContextCursor = bookmark
+            c.endContextCursor = bookmark
+            c.setState(bookmark, successPage(i, "item_$i"))
+        }
+
+        assertEquals(1, c.size)
+        assertTrue(c.trackedEntryCount < 50, "tracked ${c.trackedEntryCount} entries")
+    }
+
+    @Test
+    fun fifo_remove_from_cache_of_readded_page_leaves_no_entry() {
+        val c = fifoOverWindow(maxSize = 5)
+
+        c.setContext(0, 1)
+        c.put(0)
+        c.put(1)
+
+        // The inner window strategy drops p0, then p0 is added again.
+        c.setContext(1, 1)
+        c.put(1)
+        assertNull(c.peekStateOf("p0"))
+        c.setContext(0, 1)
+        c.put(0)
+        assertEquals(2, c.size)
+
+        // Removing it through the outer decorator must not leave a second entry for p0.
+        assertNotNull(c.removeFromCache("p0"))
+        assertEquals(1, c.size)
+        assertEquals(c.size, c.trackedEntryCount)
+    }
 
     @Test
     fun lru_readded_page_after_inner_eviction_becomes_most_recent() {
