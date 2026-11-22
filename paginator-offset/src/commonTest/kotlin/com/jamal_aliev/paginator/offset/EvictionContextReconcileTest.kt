@@ -1,3 +1,6 @@
+// Exercises the deprecated L2 persistent cache, which stays tested until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.offset
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
@@ -8,6 +11,7 @@ import com.jamal_aliev.paginator.offset.cache.eviction.ContextWindowPagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.MostRecentPagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.QueuedPagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.TimeLimitedPagingCache
+import com.jamal_aliev.paginator.offset.cache.persistent.PersistentPagingCache
 import com.jamal_aliev.paginator.offset.extension.plus
 import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
@@ -291,6 +295,73 @@ class EvictionContextReconcileTest {
         assertEquals(1, paginator.core.startContextPage)
         assertEquals(1, paginator.core.endContextPage)
         assertEquals(listOf(1), paginator.snapshotPages())
+        assertWindowInvariant(paginator)
+    }
+
+    // ── cache hits that promote a page from the L2 persistent cache ──────────
+
+    private class FakePersistentCache<T> : PersistentPagingCache<T> {
+        val store = mutableMapOf<Int, OffsetPageState<T>>()
+        override suspend fun save(state: OffsetPageState<T>) {
+            store[state.page] = state
+        }
+
+        override suspend fun load(page: Int): OffsetPageState<T>? = store[page]
+        override suspend fun loadAll(): List<OffsetPageState<T>> = store.values.toList()
+        override suspend fun remove(page: Int) {
+            store.remove(page)
+        }
+
+        override suspend fun clear() {
+            store.clear()
+        }
+    }
+
+    /** `Queued(2, protect = false) + ContextWindow`, capacity 3, [persistedPage] only in L2. */
+    private fun createL2Paginator(persistedPage: Int): MutablePaginator<String> {
+        val persistent = FakePersistentCache<String>()
+        persistent.store[persistedPage] = OffsetPageState.Success(
+            page = persistedPage,
+            data = mutableListOf("a$persistedPage", "b$persistedPage", "c$persistedPage"),
+        )
+        val cache = QueuedPagingCache<String>(maxSize = 2, protectContextWindow = false) +
+                ContextWindowPagingCache()
+        return MutablePaginator(
+            core = PagingCore(cache = cache, persistentCache = persistent, initialCapacity = 3)
+        ) { page: Int -> LoadResult(List(3) { "p${page}_item$it" }) }
+    }
+
+    @Test
+    fun `goNextPage cache hit from L2 that evicts the start publishes a valid window`() = runTest {
+        val paginator = createL2Paginator(persistedPage = 4)
+        paginator.jump(BookmarkInt(2))
+        paginator.goNextPage() // pages 2, 3
+
+        // page 4 is promoted from L2 and evicts page 2, the oldest one
+        val loaded = paginator.goNextPage()
+
+        assertEquals(4, loaded.page)
+        assertEquals(listOf(3, 4), paginator.cache.pages)
+        assertEquals(3, paginator.core.startContextPage)
+        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(listOf(3, 4), paginator.snapshotPages())
+        assertWindowInvariant(paginator)
+    }
+
+    @Test
+    fun `goPreviousPage cache hit from L2 that evicts a window page publishes a valid window`() = runTest {
+        val paginator = createL2Paginator(persistedPage = 4)
+        paginator.jump(BookmarkInt(5))
+        paginator.goNextPage() // pages 5, 6
+
+        // page 4 is promoted from L2 and evicts page 5, the oldest one: a hole inside the window
+        val loaded = paginator.goPreviousPage()
+
+        assertEquals(4, loaded.page)
+        assertEquals(listOf(4, 6), paginator.cache.pages)
+        assertEquals(4, paginator.core.startContextPage)
+        assertEquals(4, paginator.core.endContextPage)
+        assertEquals(listOf(4), paginator.snapshotPages())
         assertWindowInvariant(paginator)
     }
 

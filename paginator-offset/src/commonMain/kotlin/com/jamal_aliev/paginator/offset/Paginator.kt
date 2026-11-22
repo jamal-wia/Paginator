@@ -704,6 +704,8 @@ open class Paginator<T>(
             if (core.isFilledSuccessState(nextPageState)) {
                 core.endContextPage = nextPage
                 core.expandEndContextPage(cache.getStateOf(nextPage + 1))
+                // A page promoted from the L2 cache was written through the eviction strategy
+                core.reconcileContextWindow(anchor = nextPage)
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyPagesInContext()
@@ -871,6 +873,8 @@ open class Paginator<T>(
             if (core.isFilledSuccessState(previousPageState)) {
                 core.startContextPage = previousPage
                 core.expandStartContextPage(cache.getStateOf(previousPage - 1))
+                // A page promoted from the L2 cache was written through the eviction strategy
+                core.reconcileContextWindow(anchor = previousPage)
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyPagesInContext()
