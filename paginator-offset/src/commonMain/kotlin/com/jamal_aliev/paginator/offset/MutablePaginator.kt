@@ -234,6 +234,9 @@ open class MutablePaginator<T>(
                     if (cache.isStarted) syncBookmarkIndex(cache.startContextPage)
                 }
             }
+
+            // The re-labelling above writes pages, which can make a strategy evict one of the window
+            reconcileWindow(anchor = cache.startContextPage)
         }
 
         // Pages at or above the removed one are exactly the ones whose L2 representation
@@ -287,6 +290,7 @@ open class MutablePaginator<T>(
 
         markAffected(page)
 
+        reconcileWindow(anchor = page)
         if (isDirty) core.markDirty(page)
         core.markCacheChanged()
 
@@ -318,16 +322,44 @@ open class MutablePaginator<T>(
         isDirty: Boolean = false,
     ): T {
         logger.debug(LogComponent.MUTATION) { "removeElement: page=$page index=$index isDirty=$isDirty" }
-        val pageState: OffsetPageState<T> = requireNotNull(
-            value = cache.getStateOf(page)
-        ) { "page-$page was not created" }
-        markAffected(page)
-        val removed: T
 
         // Snapshot the context window before mutating: emptying the page may drop it and
         // re-anchor the window (via removeState), which we must detect to emit correctly.
         val startBefore: Int = cache.startContextPage
         val endBefore: Int = cache.endContextPage
+
+        val removed: T = removeElementCascade(page, index)
+
+        // A write can make a strategy evict a page of the window; the check precedes the
+        // comparison below, so a narrowed window is emitted as a whole. Once per call, not per
+        // cascade level: the refill reaches every cached page after the removed element
+        reconcileWindow(anchor = page)
+        if (isDirty) core.markDirty(page)
+        core.markCacheChanged()
+
+        if (!silently) {
+            if (cache.startContextPage != startBefore || cache.endContextPage != endBefore) {
+                // The removal moved/shrank the context window — e.g. the currently viewed
+                // page was emptied and dropped, re-anchoring to the nearest filled group.
+                // Emit the whole new window: snapshotIfPageVisible(page) would suppress the
+                // emission because the old page is no longer inside the visible range, leaving
+                // the UI stuck on a stale/blank window while live data sits in the cache.
+                core.snapshot()
+            } else {
+                snapshotIfPageVisible(page)
+            }
+        }
+
+        return removed
+    }
+
+    /** The removal and the refill from the next pages of [removeElement]; no window, dirty or snapshot work. */
+    private fun removeElementCascade(page: Int, index: Int): T {
+        val pageState: OffsetPageState<T> = requireNotNull(
+            value = cache.getStateOf(page)
+        ) { "page-$page was not created" }
+        markAffected(page)
+        val removed: T
 
         val updatedData = pageState.data
             .let { it as MutableList }
@@ -344,10 +376,9 @@ open class MutablePaginator<T>(
                     nextPageState.data.isNotEmpty()
                 ) {
                     updatedData.add(
-                        removeElement(
+                        removeElementCascade(
                             page = page + 1,
-                            index = 0,
-                            silently = true
+                            index = 0
                         )
                     )
                 }
@@ -364,22 +395,6 @@ open class MutablePaginator<T>(
                 state = pageState.copy(data = updatedData),
                 silently = true
             )
-        }
-
-        if (isDirty) core.markDirty(page)
-        core.markCacheChanged()
-
-        if (!silently) {
-            if (cache.startContextPage != startBefore || cache.endContextPage != endBefore) {
-                // The removal moved/shrank the context window — e.g. the currently viewed
-                // page was emptied and dropped, re-anchoring to the nearest filled group.
-                // Emit the whole new window: snapshotIfPageVisible(page) would suppress the
-                // emission because the old page is no longer inside the visible range, leaving
-                // the UI stuck on a stale/blank window while live data sits in the cache.
-                core.snapshot()
-            } else {
-                snapshotIfPageVisible(page)
-            }
         }
 
         return removed
@@ -419,6 +434,24 @@ open class MutablePaginator<T>(
         logger.debug(LogComponent.MUTATION) {
             "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty"
         }
+        addAllElementsCascade(elements, targetPage, index, initPageState)
+
+        // A page created by the overflow can make a strategy evict a page of the window. Once per
+        // call, not per cascade level: the cascade reaches every cached page after the target
+        reconcileWindow(anchor = targetPage)
+        if (isDirty) core.markDirty(targetPage)
+        core.markCacheChanged()
+
+        if (!silently) snapshotAfterMutation(targetPage)
+    }
+
+    /** The insert and its overflow cascade of [addAllElements]; no window, dirty or snapshot work. */
+    private fun addAllElementsCascade(
+        elements: List<T>,
+        targetPage: Int,
+        index: Int,
+        initPageState: ((page: Int, data: List<T>) -> OffsetPageState<T>)?,
+    ) {
         markAffected(targetPage)
         val targetState: OffsetPageState<T> =
             (cache.getStateOf(targetPage)
@@ -448,11 +481,10 @@ open class MutablePaginator<T>(
         if (!extraElements.isNullOrEmpty()) {
             val nextPageState: OffsetPageState<T>? = cache.getStateOf(targetPage + 1)
             if (nextPageState != null && nextPageState::class == targetState::class) {
-                addAllElements(
+                addAllElementsCascade(
                     elements = extraElements,
                     targetPage = targetPage + 1,
                     index = 0,
-                    silently = true,
                     initPageState = initPageState
                 )
             } else {
@@ -509,11 +541,10 @@ open class MutablePaginator<T>(
                             )
                         }
 
-                        addAllElements(
+                        addAllElementsCascade(
                             elements = displaced,
                             targetPage = nextChunkStart + 1,
                             index = 0,
-                            silently = true,
                             initPageState = { pageNum, pageData ->
                                 // Synthesize a page of the same class as targetState.
                                 // addAllElements's prologue registers it in the cache and
@@ -531,11 +562,10 @@ open class MutablePaginator<T>(
                 // This runs ALONGSIDE the rebalance above, so a cross-gap insert both fills toward
                 // the gap and keeps the far chunk consistent.
                 if (nextPageState == null && initPageState != null) {
-                    addAllElements(
+                    addAllElementsCascade(
                         elements = extraElements,
                         targetPage = targetPage + 1,
                         index = 0,
-                        silently = true,
                         initPageState = initPageState,
                     )
                 }
@@ -543,11 +573,6 @@ open class MutablePaginator<T>(
                 //  rebalance, the overflow has no valid home and is dropped — unchanged edge case.)
             }
         }
-
-        if (isDirty) core.markDirty(targetPage)
-        core.markCacheChanged()
-
-        if (!silently) snapshotAfterMutation(targetPage)
     }
 
     /**
@@ -599,6 +624,20 @@ open class MutablePaginator<T>(
         }
         if (!silently) {
             core.snapshot()
+        }
+    }
+
+    /**
+     * Restores the context window invariant after a write that can have made an eviction strategy
+     * drop a page of the window (see [PagingCore.reconcileContextWindow]) and realigns the bookmark
+     * cursor when the window start moved. Runs even for `silently` operations: the window is state,
+     * the snapshot is only its publication.
+     */
+    private fun reconcileWindow(anchor: Int) {
+        val startBefore: Int = cache.startContextPage
+        core.reconcileContextWindow(anchor)
+        if (cache.isStarted && cache.startContextPage != startBefore) {
+            syncBookmarkIndex(cache.startContextPage)
         }
     }
 
