@@ -2,6 +2,7 @@ package com.jamal_aliev.paginator.cursor.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
 import com.jamal_aliev.paginator.core.extension.isEmptyState
+import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
@@ -18,11 +19,11 @@ import com.jamal_aliev.paginator.cursor.page.CursorPageState
  *
  * Cursor pages have no numbers, so the distance between two pages is the number of steps along the
  * `prev`/`next` links of the cached bookmarks (`walkBackward` / `walkForward`), counted from the
- * page that was just written (the *anchor*):
+ * page whose load just completed (the *anchor*):
  *
  * ```
- * cached [p0, p1, p2] + p3 settles  ->  [p1, p2, p3]   // scrolled forward: p0 is farthest
- * cached [p1, p2, p3] + p0 settles  ->  [p0, p1, p2]   // scrolled backward: p3 is farthest
+ * cached [p0, p1, p2] + p3 loaded  ->  [p1, p2, p3]   // scrolled forward: p0 is farthest
+ * cached [p1, p2, p3] + p0 loaded  ->  [p0, p1, p2]   // scrolled backward: p3 is farthest
  * ```
  *
  * The strategy keeps **no state of its own**: the rule only looks at which pages are cached right
@@ -31,19 +32,27 @@ import com.jamal_aliev.paginator.cursor.page.CursorPageState
  *
  * ## Which writes evict
  *
- * Only a settled page evicts, and only while the cache holds more than [maxSize] pages:
+ * Only the **completion of a page load** evicts: a Success (with or without data) written over a
+ * page whose current state is Progress, and only while the cache holds more than [maxSize] pages.
+ * Navigation always writes Progress for a page before it loads it, under the same `self` key as the
+ * result. Every other write leaves the cache alone. In particular an in-place edit never evicts:
+ * when a message is inserted into the first page of a full window and the overflow creates a new
+ * page at the end, that new page was not loaded, and evicting the farthest page would throw away
+ * the page that was just edited.
  *
- * | Written state                                              | Evicts down to [maxSize]? |
- * |------------------------------------------------------------|---------------------------|
- * | Success with data (including an incomplete tail page)      | yes                       |
- * | Success without data (empty page, end of the feed)         | yes                       |
- * | Progress                                                   | no                        |
- * | Error                                                      | no                        |
- * | Replacing a page that is already cached (`size` unchanged) | nothing to evict          |
- * | [setStateUntracked] / [peekStateOf]                        | no                        |
+ * | Written state                                                         | Evicts down to [maxSize]? |
+ * |-----------------------------------------------------------------------|---------------------------|
+ * | Success (with or without data) over Progress: a load completes        | yes                       |
+ * | Success over anything else: CRUD overflow page, L2 promotion          | no                        |
+ * | Progress                                                              | no                        |
+ * | Error                                                                 | no                        |
+ * | [setStateUntracked] / [peekStateOf]                                   | no                        |
  *
- * Because Progress and Error pages do not evict, the cache can temporarily hold more than
- * [maxSize] pages: the window plus one unfinished page on each edge. The next settled page trims
+ * A cancelled load that restores the previous Success state over its Progress looks like a
+ * completion, but it only evicts if the cache is over [maxSize] at that moment.
+ *
+ * The cache can therefore temporarily hold more than [maxSize] pages: the window plus one
+ * unfinished page on each edge, plus pages created by CRUD overflow. The next completed load trims
  * the excess, including unfinished pages that are far away.
  *
  * ## Victim selection
@@ -103,8 +112,10 @@ class CursorNearestPagingCache<K : Any, T>(
         state: CursorPageState<K, T>,
         silently: Boolean
     ) {
+        // peekStateOf: reading the previous state must not count as a use for inner strategies.
+        val completesLoad = cache.peekStateOf(cursor.self).isProgressState()
         cache.setState(cursor, state, silently)
-        if (!(state.isSuccessState() || state.isEmptyState())) return
+        if (!completesLoad || !(state.isSuccessState() || state.isEmptyState())) return
         if (cache.size <= maxSize) return
 
         val anchor = cursor.self
@@ -140,13 +151,16 @@ class CursorNearestPagingCache<K : Any, T>(
         val backward = stepsFromAnchor(cache::walkBackward)
         val window = contextWindowSelves()
 
-        // Farthest first; `sortedWith` is stable, so unreachable pages keep the order of `cursors`.
+        fun distanceOf(self: K): Int = minOf(forward[self] ?: unreachable, backward[self] ?: unreachable)
+
+        // Farthest first; `sortedWith` is stable, so unreachable pages keep the order of `cursors`:
+        // the window and side keys apply to reachable pages only.
         val victims = cache.cursors.map { it.self }
             .filter { it != anchor }
             .sortedWith(
-                compareByDescending<K> { minOf(forward[it] ?: unreachable, backward[it] ?: unreachable) }
-                    .thenBy { if (it in window) 1 else 0 }
-                    .thenBy { if ((forward[it] ?: unreachable) <= (backward[it] ?: unreachable)) 0 else 1 }
+                compareByDescending<K> { distanceOf(it) }
+                    .thenBy { if (distanceOf(it) != unreachable && it in window) 1 else 0 }
+                    .thenBy { if ((forward[it] ?: unreachable) > (backward[it] ?: unreachable)) 1 else 0 }
             )
 
         for (self in victims) {

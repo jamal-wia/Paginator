@@ -9,7 +9,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TestTimeSource
 
 class CursorNearestPagingCacheTest {
@@ -39,6 +41,16 @@ class CursorNearestPagingCacheTest {
 
     private fun CursorPagingCache<String, String>.putSuccess(i: Int, data: List<String>) =
         setState(bookmarkAt(i), CursorPageState.Success(bookmarkAt(i), data), silently = true)
+
+    /** A page load: Progress is written first, then the settled Success of the same page. */
+    private fun CursorPagingCache<String, String>.settle(i: Int, data: List<String>) {
+        putProgress(i)
+        putSuccess(i, data)
+    }
+
+    private fun CursorPagingCache<String, String>.load(vararg pages: Int) {
+        pages.forEach { settle(it, listOf("item_$it")) }
+    }
 
     private fun CursorPagingCache<String, String>.putProgress(i: Int) =
         setState(bookmarkAt(i), CursorPageState.Progress(bookmarkAt(i), emptyList()), silently = true)
@@ -74,7 +86,7 @@ class CursorNearestPagingCacheTest {
     fun `forward add evicts the head page`() {
         val cache = cacheWith(0, 1, 2)
 
-        cache.put(3)
+        cache.load(3)
 
         assertEquals(names(1, 2, 3), cache.selves())
         assertEquals(names(0), evicted)
@@ -84,7 +96,7 @@ class CursorNearestPagingCacheTest {
     fun `backward add evicts the tail page`() {
         val cache = cacheWith(1, 2, 3)
 
-        cache.put(0)
+        cache.load(0)
 
         assertEquals(names(0, 1, 2), cache.selves())
         assertEquals(names(3), evicted)
@@ -100,7 +112,7 @@ class CursorNearestPagingCacheTest {
         assertEquals(names(0, 1, 2, 3), cache.selves())
         assertEquals(emptyList(), evicted)
 
-        cache.put(3)
+        cache.load(3)
         assertEquals(names(1, 2, 3), cache.selves())
         assertEquals(names(0), evicted)
     }
@@ -113,7 +125,7 @@ class CursorNearestPagingCacheTest {
         assertEquals(names(0, 1, 2, 3), cache.selves())
         assertEquals(emptyList(), evicted)
 
-        cache.put(3)
+        cache.load(3)
         assertEquals(names(1, 2, 3), cache.selves())
         assertEquals(names(0), evicted)
     }
@@ -126,7 +138,7 @@ class CursorNearestPagingCacheTest {
         assertEquals(names(0, 1, 2, 3), cache.selves())
         assertEquals(emptyList(), evicted)
 
-        cache.put(0)
+        cache.load(0)
         assertEquals(names(0, 1, 2), cache.selves())
         assertEquals(names(3), evicted)
     }
@@ -135,7 +147,7 @@ class CursorNearestPagingCacheTest {
     fun `empty success page evicts like a success page`() {
         val cache = cacheWith(0, 1, 2)
 
-        cache.putSuccess(3, emptyList())
+        cache.settle(3, emptyList())
 
         assertEquals(names(1, 2, 3), cache.selves())
         assertEquals(names(0), evicted)
@@ -146,7 +158,7 @@ class CursorNearestPagingCacheTest {
         val cache = cacheWith(0, 1, 2)
 
         // Fewer items than a full page: still a settled page.
-        cache.putSuccess(3, listOf("only"))
+        cache.settle(3, listOf("only"))
 
         assertEquals(names(1, 2, 3), cache.selves())
         assertEquals(names(0), evicted)
@@ -194,11 +206,83 @@ class CursorNearestPagingCacheTest {
         cache.putProgress(4)
         assertEquals(names(1, 2, 3, 4), cache.selves())
 
-        cache.put(0)
+        cache.load(0)
 
         assertEquals(names(0, 1, 2), cache.selves())
         // Farthest first: the pending page p4, then p3.
         assertEquals(names(4, 3), evicted)
+    }
+
+    // -- 2b. Only the completion of a load evicts --
+
+    @Test
+    fun `success written without a preceding progress does not evict`() {
+        val cache = cacheWith(0, 1, 2)
+
+        // CRUD overflow or L2 promotion: a new page appears without a load.
+        cache.put(3)
+
+        assertEquals(names(0, 1, 2, 3), cache.selves())
+        assertEquals(emptyList(), evicted)
+    }
+
+    @Test
+    fun `editing an already loaded page and its overflow page keeps the edited page`() {
+        val cache = cacheWith(0, 1, 2)
+
+        // A message is inserted into p0; the overflow cascades and creates p3 at the end.
+        cache.putSuccess(0, listOf("new", "item_0"))
+        cache.putSuccess(1, listOf("item_0", "item_1"))
+        cache.putSuccess(2, listOf("item_1", "item_2"))
+        cache.putSuccess(3, listOf("item_2"))
+
+        assertEquals(names(0, 1, 2, 3), cache.selves())
+        assertEquals(listOf("new", "item_0"), cache.getStateOf("p0")!!.data)
+        assertEquals(emptyList(), evicted)
+    }
+
+    @Test
+    fun `next completed load trims crud overflow pages`() {
+        val cache = cacheWith(0, 1, 2)
+        cache.put(3)
+        assertEquals(names(0, 1, 2, 3), cache.selves())
+
+        cache.load(4)
+
+        assertEquals(names(2, 3, 4), cache.selves())
+        assertEquals(names(0, 1), evicted)
+    }
+
+    @Test
+    fun `success over an error page without a new progress does not evict`() {
+        val cache = cacheWith(0, 1, 2)
+        cache.putError(3)
+
+        cache.put(3)
+
+        assertEquals(names(0, 1, 2, 3), cache.selves())
+        assertEquals(emptyList(), evicted)
+    }
+
+    // -- 2c. Links --
+
+    @Test
+    fun `cyclic links terminate and evict by the shortest distance`() {
+        // p1 and p2 link to each other and the walk from p3 never reaches the anchor again: only
+        // the visited set stops it.
+        val b1 = CursorBookmark(prev = "p2", self = "p1", next = "p2")
+        val b2 = CursorBookmark(prev = "p1", self = "p2", next = "p1")
+        val b3 = CursorBookmark<String>(prev = "p2", self = "p3", next = null)
+        val cache = createCache(maxSize = 2)
+        cache.setStateUntracked(b1, CursorPageState.Success(b1, listOf("a")), silently = true)
+        cache.setStateUntracked(b2, CursorPageState.Success(b2, listOf("b")), silently = true)
+        cache.setState(b3, CursorPageState.Progress(b3, emptyList()), silently = true)
+
+        cache.setState(b3, CursorPageState.Success(b3, listOf("c")), silently = true)
+
+        // p2 is one step behind p3, p1 two steps: the farthest page goes.
+        assertEquals(names(2, 3), cache.selves())
+        assertEquals(names(1), evicted)
     }
 
     // -- 3. Unreachable pages --
@@ -216,7 +300,7 @@ class CursorNearestPagingCacheTest {
         cache.putIsland()
         evicted.clear()
 
-        cache.put(3)
+        cache.load(3)
 
         assertEquals(listOf("p1", "p2", "p3"), cache.selves())
         assertEquals(listOf("x"), evicted)
@@ -229,10 +313,32 @@ class CursorNearestPagingCacheTest {
         cache.putIsland()
         evicted.clear()
 
-        cache.put(3)
+        cache.load(3)
 
         assertEquals(names(2, 3), cache.selves())
         assertEquals(listOf("x", "p1"), evicted)
+    }
+
+    @Test
+    fun `unreachable pages keep the order of cursors even inside the context window`() {
+        val other = CursorBookmark<String>(prev = null, self = "y", next = null)
+        val cache = createCache(maxSize = 2)
+        cache.put(1)
+        cache.putIsland()
+        cache.setStateUntracked(other, CursorPageState.Success(other, listOf("other")), silently = true)
+        cache.putProgress(2)
+
+        // The island that comes first in `cursors` is the one the context window points at.
+        val islands = cache.cursors.filter { it.self == "x" || it.self == "y" }
+        cache.startContextCursor = islands.first()
+        cache.endContextCursor = islands.first()
+        evicted.clear()
+
+        cache.putSuccess(2, listOf("item_2"))
+
+        // Both islands are unreachable from p2: they go first, in the order of `cursors`.
+        assertEquals(islands.map { it.self }, evicted)
+        assertEquals(names(1, 2), cache.selves())
     }
 
     // -- 4. Equal distance --
@@ -242,7 +348,7 @@ class CursorNearestPagingCacheTest {
         val cache = cacheWith(0, 1, 3, 4, maxSize = 4)
         cache.setContext(3, 4)
 
-        cache.put(2)
+        cache.load(2)
 
         // p0 and p4 are both two steps from p2, but p4 is inside the window.
         assertEquals(names(1, 2, 3, 4), cache.selves())
@@ -254,7 +360,7 @@ class CursorNearestPagingCacheTest {
         val cache = cacheWith(0, 1, 3, 4, maxSize = 4)
         cache.setContext(2, 2)
 
-        cache.put(2)
+        cache.load(2)
 
         // p0 and p4 are both two steps from p2 and both outside the window.
         assertEquals(names(0, 1, 2, 3), cache.selves())
@@ -265,7 +371,7 @@ class CursorNearestPagingCacheTest {
     fun `equal distance without a started window evicts the next side page`() {
         val cache = cacheWith(0, 1, 3, 4, maxSize = 4)
 
-        cache.put(2)
+        cache.load(2)
 
         assertEquals(names(0, 1, 2, 3), cache.selves())
         assertEquals(names(4), evicted)
@@ -277,11 +383,11 @@ class CursorNearestPagingCacheTest {
     fun `maxSize of one keeps only the added page`() {
         val cache = createCache(maxSize = 1)
 
-        cache.put(0)
-        cache.put(1)
+        cache.load(0)
+        cache.load(1)
         assertEquals(names(1), cache.selves())
 
-        cache.put(4)
+        cache.load(4)
         assertEquals(names(4), cache.selves())
         assertEquals(names(0, 1), evicted)
     }
@@ -301,7 +407,7 @@ class CursorNearestPagingCacheTest {
 
         assertEquals(2, replaced.maxSize)
         assertSame(listener, replaced.evictionListener)
-        replaced.put(0, 1, 2)
+        replaced.load(0, 1, 2)
         assertEquals(names(1, 2), replaced.selves())
         assertEquals(names(0), evicted)
     }
@@ -319,11 +425,11 @@ class CursorNearestPagingCacheTest {
                 CursorQueuedPagingCache<String, String>(maxSize = 5, protectContextWindow = false)
 
         // Forward over five pages, then back to the start.
-        cache.put(0, 1, 2, 3, 4)
+        cache.load(0, 1, 2, 3, 4)
         assertEquals(names(2, 3, 4), cache.selves())
-        cache.put(1)
+        cache.load(1)
         assertEquals(names(1, 2, 3), cache.selves())
-        cache.put(0)
+        cache.load(0)
         assertEquals(names(0, 1, 2), cache.selves())
 
         assertEquals(names(0, 1, 4, 3), evicted)
@@ -340,34 +446,58 @@ class CursorNearestPagingCacheTest {
         )
 
         // Six pages forward: the inner nearest strategy drops pages behind the FIFO decorator's back.
-        outer.put(0, 1, 2, 3, 4, 5)
+        outer.load(0, 1, 2, 3, 4, 5)
         assertEquals(names(3, 4, 5), outer.selves())
         assertEquals(names(0, 1, 2), evicted)
 
         // Two pages backward: only the farthest pages go, the neighbours of the added page stay.
-        outer.put(2)
+        outer.load(2)
         assertEquals(names(2, 3, 4), outer.selves())
-        outer.put(1)
+        outer.load(1)
         assertEquals(names(1, 2, 3), outer.selves())
 
         assertEquals(names(0, 1, 2, 5, 4), evicted)
         assertEquals(emptyList(), outerEvicted)
         assertEquals(3, outer.size)
+
+        // A long scroll forward: the decorator must not keep a history of the removed pages.
+        for (i in 100..160) {
+            val bookmark = CursorBookmark(prev = "p${i - 1}", self = "p$i", next = "p${i + 1}")
+            outer.setState(bookmark, CursorPageState.Progress(bookmark, emptyList()), silently = true)
+            outer.setState(bookmark, CursorPageState.Success(bookmark, listOf("item_$i")), silently = true)
+        }
+        assertEquals(listOf("p158", "p159", "p160"), outer.selves())
+        assertTrue(
+            outer.trackedEntryCount <= 2 * outer.size + 16,
+            "tracked ${outer.trackedEntryCount} entries for ${outer.size} pages"
+        )
+        assertEquals(emptyList(), outerEvicted)
     }
 
     @Test
     fun `plus with CursorTimeLimitedPagingCache keeps the nearest rule`() {
+        val time = TestTimeSource()
         val cache = CursorNearestPagingCache<String, String>(maxSize = 3, evictionListener = listener) +
-                CursorTimeLimitedPagingCache<String, String>(ttl = 1.hours, timeSource = TestTimeSource())
+                CursorTimeLimitedPagingCache<String, String>(ttl = 1.hours, timeSource = time)
 
+        // t = 0: p0..p2. t = 40 min: p3 arrives, the nearest rule drops p0.
         cache.put(0, 1, 2)
-        cache.put(3)
+        time += 40.minutes
+        cache.load(3)
         assertEquals(names(1, 2, 3), cache.selves())
         assertEquals(names(0), evicted)
 
-        cache.put(0)
-        assertEquals(names(0, 1, 2), cache.selves())
-        assertEquals(names(0, 3), evicted)
+        // t = 70 min: p1 and p2 are older than the ttl and expire on the next write, p3 is fresh.
+        time += 30.minutes
+        cache.load(4)
+        assertEquals(names(3, 4), cache.selves())
+
+        // The nearest rule still applies to the fresh pages.
+        cache.load(5)
+        assertEquals(names(3, 4, 5), cache.selves())
+        cache.load(2)
+        assertEquals(names(2, 3, 4), cache.selves())
+        assertEquals(names(0, 5), evicted)
     }
 
     private companion object {
