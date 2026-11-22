@@ -35,7 +35,9 @@ import com.jamal_aliev.paginator.cursor.page.CursorPageState
  * Only the **completion of a page load** evicts: a Success (with or without data) written over a
  * page whose current state is Progress, and only while the cache holds more than [maxSize] pages.
  * Navigation always writes Progress for a page before it loads it, under the same `self` key as the
- * result. Every other write leaves the cache alone. In particular an in-place edit never evicts:
+ * result. If the source answers with a different `self`, the result is not a write over that
+ * Progress, so the load evicts nothing until the next one. Every other write leaves the cache
+ * alone. In particular an in-place edit never evicts:
  * when a message is inserted into the first page of a full window and the overflow creates a new
  * page at the end, that new page was not loaded, and evicting the farthest page would throw away
  * the page that was just edited.
