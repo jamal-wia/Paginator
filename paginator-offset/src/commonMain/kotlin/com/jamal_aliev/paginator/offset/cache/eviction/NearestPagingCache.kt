@@ -101,10 +101,15 @@ import kotlin.math.abs
  *
  * The strategy is a [ChainablePagingCache] and works with the `+` operator. An outer decorator
  * calls the `setState` of the inner one first, so the eviction of **inner strategies happens
- * before** this one. Other size-limiting strategies in the same chain (`QueuedPagingCache`,
- * `MostRecentPagingCache`) must therefore have a `maxSize` **greater than or equal to** this
- * strategy's [maxSize]; otherwise they pick the victim instead of the nearest rule.
- * [TimeLimitedPagingCache] combines freely.
+ * before** this one. This strategy tolerates more than [maxSize] pages until a load completes,
+ * but `QueuedPagingCache` and `MostRecentPagingCache` evict on **every** write, a Progress page
+ * included, wherever they sit in the chain. Another size limit in the chain must therefore leave
+ * room for the temporary excess: give it a `maxSize` of at least this strategy's [maxSize] **plus
+ * 2** (the window, plus an unfinished page on each edge: a failed or incomplete page on one side
+ * and the page being loaded on the other). Navigation alone never needs more. Pages created by
+ * CRUD overflow, or a `jump` issued while both edges hold an unfinished page (plus 3), need more.
+ * With a smaller limit that strategy picks the victim by its own rule before the load completes,
+ * instead of the nearest rule. [TimeLimitedPagingCache] combines freely.
  *
  * ```kotlin
  * val cache = NearestPagingCache<Item>(maxSize = 3) + TimeLimitedPagingCache(ttl = 5.minutes)

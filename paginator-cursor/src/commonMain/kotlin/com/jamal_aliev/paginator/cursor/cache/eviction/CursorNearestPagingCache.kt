@@ -78,9 +78,16 @@ import com.jamal_aliev.paginator.cursor.page.CursorPageState
  * ## Composition
  *
  * The strategy is a [CursorChainablePagingCache] and works with the `+` operator. Inner strategies
- * evict **before** it (an outer decorator calls the inner `setState` first), so other size-limiting
- * strategies in the same chain must have a `maxSize` **greater than or equal to** this strategy's
- * [maxSize]. [CursorTimeLimitedPagingCache] combines freely.
+ * evict **before** it (an outer decorator calls the inner `setState` first). This strategy
+ * tolerates more than [maxSize] pages until a load completes, but `CursorQueuedPagingCache` and
+ * `CursorMostRecentPagingCache` evict on **every** write, a Progress page included, wherever they
+ * sit in the chain. Another size limit in the chain must therefore leave room for the temporary
+ * excess: give it a `maxSize` of at least this strategy's [maxSize] **plus 2** (the window, plus an
+ * unfinished page on each edge: a failed or incomplete page on one side and the page being loaded
+ * on the other). Navigation alone never needs more. Pages created by CRUD overflow, or a `jump`
+ * issued while both edges hold an unfinished page (plus 3), need more. With a smaller limit that
+ * strategy picks the victim by its own rule before the load completes, instead of the nearest
+ * rule. [CursorTimeLimitedPagingCache] combines freely.
  *
  * ```kotlin
  * val cache = CursorNearestPagingCache<String, Message>(maxSize = 3) +
