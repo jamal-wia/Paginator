@@ -84,8 +84,11 @@ import com.jamal_aliev.paginator.cursor.page.CursorPageState
  * sit in the chain. Another size limit in the chain must therefore leave room for the temporary
  * excess: give it a `maxSize` of at least this strategy's [maxSize] **plus 2** (the window, plus an
  * unfinished page on each edge: a failed or incomplete page on one side and the page being loaded
- * on the other). Navigation alone never needs more. Pages created by CRUD overflow, or a `jump`
- * issued while both edges hold an unfinished page (plus 3), need more. With a smaller limit that
+ * on the other). Navigation alone does not need more as long as the source answers with the `self`
+ * that was asked for. Pages created by CRUD overflow, a `jump` issued while both edges hold an
+ * unfinished page (plus 3), and every load the source answered with a different `self` need more:
+ * the loading page under the asked-for `self` stays in the cache until a later completed load
+ * trims it, so allow one more page per such load. With a smaller limit that
  * strategy picks the victim by its own rule before the load completes, instead of the nearest
  * rule. [CursorTimeLimitedPagingCache] combines freely.
  *
