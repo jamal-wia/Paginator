@@ -421,7 +421,8 @@ differs only in **how pages are addressed**. Read the full guide at
 - **Page caching** -- loaded pages are cached in a sorted map for instant access
 - **Cache eviction strategies** -- pluggable eviction via decorator subclasses of `PagingCore`:
   `MostRecentPagingCache` (LRU), `QueuedPagingCache` (FIFO), `TimeLimitedPagingCache` (TTL),
-  and `ContextWindowPagingCache` (evicts outside context). Eviction listener callback for reacting
+  `ContextWindowPagingCache` (evicts outside context) and `NearestPagingCache` (keeps a bounded
+  window of the pages nearest to the page just loaded). Eviction listener callback for reacting
   to
   page removal
 - **Live database pages** -- `observePages(viewModelScope) { page -> dao.observeUsers(limit, offset) }` keeps
@@ -547,7 +548,7 @@ Detailed documentation lives in the [`docs/`](docs/) directory:
 5. [**State Serialization**](docs/5.%20serialization.md) — saving & restoring paginator state via
   `kotlinx.serialization`, surviving process death
 6. [**Caching**](docs/6.%20caching.md) — eviction strategies (MostRecent, Queued, TimeLimited,
-   ContextWindow),
+   ContextWindow, Nearest),
    composing
    strategies, persistent L2 cache (deprecated since 10.3.0)
 7. [**Prefetch**](docs/7.%20prefetch.md) — auto-pagination on scroll with
