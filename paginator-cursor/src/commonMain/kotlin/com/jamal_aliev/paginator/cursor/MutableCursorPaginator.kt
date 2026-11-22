@@ -204,6 +204,9 @@ open class MutableCursorPaginator<K : Any, T>(
             core.startContextCursor?.let { syncBookmarkIndex(it) }
         }
 
+        // The relinking above writes pages, which can make a strategy evict one of the window
+        core.startContextCursor?.let { reconcileWindow(anchor = it.self) }
+
         markAffected(selfToRemove)
         if (!silently) core.snapshot()
         return removedState
@@ -233,8 +236,12 @@ open class MutableCursorPaginator<K : Any, T>(
             silently = true,
         )
         markAffected(self)
+        val isWindowChanged: Boolean = reconcileWindow(anchor = self)
         if (isDirty) core.markDirty(self)
-        if (!silently) snapshotIfSelfVisible(self)
+        if (!silently) {
+            // the published snapshot is cut at the page the window lost: publish the new window
+            if (isWindowChanged) core.snapshot() else snapshotIfSelfVisible(self)
+        }
     }
 
     fun removeElement(
@@ -246,44 +253,18 @@ open class MutableCursorPaginator<K : Any, T>(
         logger.debug(LogComponent.MUTATION) {
             "removeElement: self=$self index=$index isDirty=$isDirty"
         }
-        val cursor = requireNotNull(cache.getCursorOf(self)) { "self=$self was not created" }
-        val pageState = requireNotNull(cache.getStateOf(self)) { "self=$self was not created" }
-        markAffected(self)
-        val removed: T
 
         // Snapshot the window before mutating: emptying the page may drop it and re-anchor
         // the window (via removeState), which we must detect to emit the new window.
         val startBeforeSelf: K? = core.startContextCursor?.self
         val endBeforeSelf: K? = core.endContextCursor?.self
 
-        val updatedData = pageState.data
-            .let { it as MutableList }
-            .also { removed = it.removeAt(index) }
+        val removed: T = removeElementCascade(self, index)
 
-        if (updatedData.size < core.capacity && !core.isCapacityUnlimited) {
-            val nextCursor = cache.walkForward(cursor)
-            val nextState = nextCursor?.self?.let { cache.getStateOf(it) }
-            if (nextCursor != null && nextState != null
-                && nextState::class == pageState::class
-            ) {
-                while (updatedData.size < core.capacity && nextState.data.isNotEmpty()) {
-                    updatedData.add(
-                        removeElement(
-                            self = nextCursor.self,
-                            index = 0,
-                            silently = true,
-                        )
-                    )
-                }
-            }
-        }
-
-        if (updatedData.isEmpty()) {
-            removeState(selfToRemove = self, silently = true)
-        } else {
-            cache.setState(cursor, pageState.copy(data = updatedData), silently = true)
-        }
-
+        // A write can make a strategy evict a page of the window; the check precedes the
+        // comparison below, so a narrowed window is emitted as a whole. Once per call, not per
+        // cascade level: the refill reaches every cached page after the removed element
+        reconcileWindow(anchor = self)
         if (isDirty) core.markDirty(self)
         if (!silently) {
             if (core.startContextCursor?.self != startBeforeSelf
@@ -297,6 +278,43 @@ open class MutableCursorPaginator<K : Any, T>(
                 snapshotIfSelfVisible(self)
             }
         }
+        return removed
+    }
+
+    /** The removal and the refill from the next pages of [removeElement]; no window, dirty or snapshot work. */
+    private fun removeElementCascade(self: K, index: Int): T {
+        val cursor = requireNotNull(cache.getCursorOf(self)) { "self=$self was not created" }
+        val pageState = requireNotNull(cache.getStateOf(self)) { "self=$self was not created" }
+        markAffected(self)
+        val removed: T
+
+        val updatedData = pageState.data
+            .let { it as MutableList }
+            .also { removed = it.removeAt(index) }
+
+        if (updatedData.size < core.capacity && !core.isCapacityUnlimited) {
+            val nextCursor = cache.walkForward(cursor)
+            val nextState = nextCursor?.self?.let { cache.getStateOf(it) }
+            if (nextCursor != null && nextState != null
+                && nextState::class == pageState::class
+            ) {
+                while (updatedData.size < core.capacity && nextState.data.isNotEmpty()) {
+                    updatedData.add(
+                        removeElementCascade(
+                            self = nextCursor.self,
+                            index = 0,
+                        )
+                    )
+                }
+            }
+        }
+
+        if (updatedData.isEmpty()) {
+            removeState(selfToRemove = self, silently = true)
+        } else {
+            cache.setState(cursor, pageState.copy(data = updatedData), silently = true)
+        }
+
         return removed
     }
 
@@ -335,8 +353,13 @@ open class MutableCursorPaginator<K : Any, T>(
             bookmarkFactory = bookmarkFactory,
             initPageState = initPageState,
         )
+        // A tail page created by the overflow can make a strategy evict a page of the window
+        val isWindowChanged: Boolean = reconcileWindow(anchor = targetSelf)
         if (isDirty) core.markDirty(targetSelf)
-        if (!silently) snapshotIfSelfVisible(targetSelf)
+        if (!silently) {
+            // the published snapshot is cut at the page the window lost: publish the new window
+            if (isWindowChanged) core.snapshot() else snapshotIfSelfVisible(targetSelf)
+        }
     }
 
     private fun cascadeAddAll(
@@ -457,6 +480,23 @@ open class MutableCursorPaginator<K : Any, T>(
             }
         }
         if (!silently) core.snapshot()
+    }
+
+    /**
+     * Restores the context window invariant after a write that can have made an eviction strategy
+     * drop a page of the window (see [CursorPagingCore.reconcileContextWindow]) and realigns the
+     * bookmark cursor when the window start moved. Runs even for `silently` operations: the window
+     * is state, the snapshot is only its publication.
+     *
+     * @return `true` if a boundary of the window changed, so the caller has to publish the whole
+     *   window: [snapshotIfSelfVisible] looks at the published snapshot, which a hole has cut.
+     */
+    private fun reconcileWindow(anchor: K): Boolean {
+        val startBefore: K? = core.startContextCursor?.self
+        val endBefore: K? = core.endContextCursor?.self
+        core.reconcileContextWindow(anchor)
+        core.startContextCursor?.takeIf { it.self != startBefore }?.let { syncBookmarkIndex(it) }
+        return core.startContextCursor?.self != startBefore || core.endContextCursor?.self != endBefore
     }
 
     private fun snapshotIfSelfVisible(self: K) {
