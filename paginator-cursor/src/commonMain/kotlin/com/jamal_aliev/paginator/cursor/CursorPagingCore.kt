@@ -935,6 +935,17 @@ open class CursorPagingCore<K : Any, T>(
         )
     }
 
+    /**
+     * Restores this core's state from a previously saved [fromSnapshot].
+     *
+     * The capacity and the context window are restored **before** the pages are written, so an
+     * eviction strategy judges the restored pages by the restored window, not by the window the
+     * paginator had before the call. Every entry is decoded once, the window boundaries are the
+     * very bookmarks that are inserted afterwards; a boundary whose `self` has no entry in the
+     * snapshot is `null` (the paginator is then not started). The strategy's own bookkeeping is not
+     * restored: the LRU/FIFO order is the order of the snapshot's entries (every restored page
+     * counts as just inserted), and the timers of a TTL strategy start anew.
+     */
     fun restoreState(
         fromSnapshot: CursorPagingCoreSnapshot<T>,
         silently: Boolean = false,
@@ -947,7 +958,13 @@ open class CursorPagingCore<K : Any, T>(
         _dirtyCursors.clear()
         _bootstrapState.value = null
 
-        fromSnapshot.entries.forEach { entry ->
+        class RestoredPage(
+            val bookmark: CursorBookmark<K>,
+            val state: CursorPageState<K, T>,
+            val wasDirty: Boolean,
+        )
+
+        val restored: List<RestoredPage> = fromSnapshot.entries.map { entry ->
             val selfKey: K = selfDecoder.invoke(entry.selfKey)
             val prevKey: K? = entry.prevKey?.let(selfDecoder)
             val nextKey: K? = entry.nextKey?.let(selfDecoder)
@@ -958,15 +975,20 @@ open class CursorPagingCore<K : Any, T>(
                 entry.data.toMutableList(),
                 metadata,
             )
-            cache.setState(bookmark, pageState, silently = true)
-            if (entry.wasDirty) _dirtyCursors.add(selfKey)
+            RestoredPage(bookmark, pageState, entry.wasDirty)
         }
 
+        val startSelf: K? = fromSnapshot.startContextSelf?.let(selfDecoder)
+        val endSelf: K? = fromSnapshot.endContextSelf?.let(selfDecoder)
         capacity = fromSnapshot.capacity
-        startContextCursor =
-            fromSnapshot.startContextSelf?.let(selfDecoder)?.let { cache.getCursorOf(it) }
-        endContextCursor =
-            fromSnapshot.endContextSelf?.let(selfDecoder)?.let { cache.getCursorOf(it) }
+        startContextCursor = startSelf?.let { self -> restored.firstOrNull { it.bookmark.self == self }?.bookmark }
+        endContextCursor = endSelf?.let { self -> restored.firstOrNull { it.bookmark.self == self }?.bookmark }
+
+        restored.forEach { page ->
+            cache.setState(page.bookmark, page.state, silently = true)
+            if (page.wasDirty) _dirtyCursors.add(page.bookmark.self)
+        }
+
         markCacheReplaced()
 
         if (!silently) snapshot()

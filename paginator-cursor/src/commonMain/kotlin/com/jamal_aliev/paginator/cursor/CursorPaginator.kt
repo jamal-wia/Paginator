@@ -1290,16 +1290,23 @@ open class CursorPaginator<K : Any, T>(
         }
     }
 
+    /**
+     * Puts the paginator back to [savepoint]. The capacity and the context window are restored
+     * **before** the pages are written, so eviction strategies judge the restored pages by the
+     * restored window, not by the window the failed block left behind. The pages are written in
+     * the order of the save point, which is the order of the chain. LRU/FIFO order and TTL timers
+     * are not part of the save point: restored pages count as just inserted, in that order.
+     */
     private fun rollback(savepoint: CursorTransactionSavepoint<K, T>) {
         cache.clear()
         core.clearAllDirty()
+        core.capacity = savepoint.capacity
+        core.startContextCursor = savepoint.startContextCursor
+        core.endContextCursor = savepoint.endContextCursor
         savepoint.states.forEach { (cursor, state) ->
             cache.setState(cursor, state, silently = true)
         }
         savepoint.dirtyCursors.forEach { core.markDirty(it) }
-        core.capacity = savepoint.capacity
-        core.startContextCursor = savepoint.startContextCursor
-        core.endContextCursor = savepoint.endContextCursor
 
         initialCursor = savepoint.initialCursor
         bookmarks.clear()
