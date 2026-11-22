@@ -7,7 +7,9 @@ import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.load.Metadata
+import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
+import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.offset.PagingCore.Companion.DEFAULT_CAPACITY
 import com.jamal_aliev.paginator.offset.PagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
@@ -119,7 +121,9 @@ open class PagingCore<T>(
      * that are visible to the UI via the [snapshot] flow. A value of `0` means the
      * paginator has not been started yet.
      *
-     * Updated automatically during navigation operations.
+     * Updated automatically during navigation operations. When an eviction strategy removes a page
+     * of the window, the window narrows to the contiguous run of cached pages around the page
+     * navigation is on, so this value can move up even though no navigation call asked for it.
      */
     var startContextPage: Int
         get() = cache.startContextPage
@@ -134,7 +138,9 @@ open class PagingCore<T>(
      * that are visible to the UI via the [snapshot] flow. A value of `0` means the
      * paginator has not been started yet.
      *
-     * Updated automatically during navigation operations.
+     * Updated automatically during navigation operations. When an eviction strategy removes a page
+     * of the window, the window narrows to the contiguous run of cached pages around the page
+     * navigation is on, so this value can move down even though no navigation call asked for it.
      */
     var endContextPage: Int
         get() = cache.endContextPage
@@ -380,6 +386,86 @@ open class PagingCore<T>(
         if (!isStarted && cache.peekStateOf(startPoint) != null) {
             startContextPage = startPoint
             endContextPage = startPoint
+        }
+    }
+
+    /**
+     * Restores the context window invariant after a page of the window may have left the cache.
+     *
+     * **Invariant:** while the paginator is started, every page of
+     * [startContextPage]..[endContextPage] is cached, so both boundaries exist and the window has
+     * no holes. An eviction strategy that runs inside [PagingCache.setState] with
+     * `protectContextWindow = false` (or [removeFromCache] called directly) can break it, and
+     * [snapshot] would then either stay silent on a missing boundary or publish a list with a hole.
+     *
+     * **Rule ("the window follows the anchor"):** when a window page is missing, the window shrinks
+     * to the longest contiguous run of cached pages **inside the old window** that contains
+     * [anchor] - the page navigation currently holds (the boundary being walked past while loading,
+     * or the page just loaded). If [anchor] itself is not cached, the nearest run is taken (on equal
+     * distance the run on the side of [anchor]: the end side when `anchor >= endContextPage`, the
+     * start side otherwise). If no page of the window is cached any more, the window is re-anchored
+     * with [reanchorAfterRewrite] around the old boundaries. The window never moves to a foreign
+     * island of the cache while a page of the old window survives.
+     *
+     * Only the presence of a page is checked ([PagingCache.peekStateOf]), not whether it is filled;
+     * the rules about filled and non-filled boundaries stay in the navigation code. Reads are
+     * untracked: reconciling must not reorder an LRU strategy or restart a TTL timer.
+     *
+     * Call it under the navigation lock, before [snapshot], after anything that wrote to the cache
+     * ([PagingCache.setState]) or can have damaged the window. [Paginator.restart] does not need
+     * it: it clears the cache and sets the window to page `1..1`, so a hole cannot appear.
+     *
+     * @param anchor The page navigation is anchored on. It may lie outside the window.
+     */
+    internal fun reconcileContextWindow(anchor: Int) {
+        if (!isStarted) return
+        val oldStart: Int = startContextPage
+        val oldEnd: Int = endContextPage
+
+        // Fast path: nothing is missing (O(window size), no allocations)
+        var intact = true
+        for (page in oldStart..oldEnd) {
+            if (cache.peekStateOf(page) == null) {
+                intact = false
+                break
+            }
+        }
+        if (intact) return
+
+        fun runsOfCachedPages(): List<IntRange> {
+            val runs = mutableListOf<IntRange>()
+            var runStart = -1
+            for (page in oldStart..oldEnd) {
+                if (cache.peekStateOf(page) != null) {
+                    if (runStart == -1) runStart = page
+                } else if (runStart != -1) {
+                    runs += runStart..(page - 1)
+                    runStart = -1
+                }
+            }
+            if (runStart != -1) runs += runStart..oldEnd
+            return runs
+        }
+
+        val runs: List<IntRange> = runsOfCachedPages()
+        if (runs.isEmpty()) {
+            withUntrackedReads { reanchorAfterRewrite(startPoint = oldStart, endPoint = oldEnd) }
+        } else {
+            fun distanceToAnchor(run: IntRange): Int = when {
+                anchor < run.first -> run.first - anchor
+                anchor > run.last -> anchor - run.last
+                else -> 0
+            }
+            val minDistance: Int = runs.minOf(::distanceToAnchor)
+            val nearest: List<IntRange> = runs.filter { distanceToAnchor(it) == minDistance }
+            // `runs` is ascending, so on a tie the end side is the last one, the start side the first
+            val chosen: IntRange = if (anchor >= oldEnd) nearest.last() else nearest.first()
+            startContextPage = chosen.first
+            endContextPage = chosen.last
+        }
+        logger.debug(LogComponent.CACHE) {
+            "reconcileContextWindow: window $oldStart..$oldEnd -> $startContextPage..$endContextPage " +
+                    "(anchor=$anchor)"
         }
     }
 

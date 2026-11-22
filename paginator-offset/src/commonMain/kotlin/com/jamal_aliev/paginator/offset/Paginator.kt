@@ -524,6 +524,7 @@ open class Paginator<T>(
                     )
                     core.expandStartContextPage(progressState)
                     core.expandEndContextPage(progressState)
+                    core.reconcileContextWindow(anchor = bookmark.page)
 
                     if (enableCacheFlow) {
                         core.repeatCacheFlow()
@@ -557,6 +558,7 @@ open class Paginator<T>(
                     core.expandEndContextPage(cache.getStateOf(cache.endContextPage + 1))
                 }
             }
+            core.reconcileContextWindow(anchor = bookmark.page)
 
             if (enableCacheFlow) {
                 core.repeatCacheFlow()
@@ -583,6 +585,7 @@ open class Paginator<T>(
                     } else {
                         cache.removeFromCache(bookmark.page)
                     }
+                    core.reconcileContextWindow(anchor = savedEndContextPage)
                     core.snapshot()
                 }
             }
@@ -646,6 +649,16 @@ open class Paginator<T>(
 
         navigationMutex.lock()
         try {
+            // The window can have been damaged outside navigation (core.removeFromCache, a custom
+            // eviction strategy): repair it before the pivot is read from its boundary.
+            val windowEnd: Int = cache.endContextPage
+            core.reconcileContextWindow(anchor = windowEnd)
+            if (!cache.isStarted) {
+                // Not a single window page is cached any more: keep the old boundary, which is then
+                // reloaded in place like any non-filled end (never page 0).
+                core.startContextPage = windowEnd
+                core.endContextPage = windowEnd
+            }
             var pivotContextPage: Int = cache.endContextPage
             var pivotContextPageState: OffsetPageState<T>? = cache.getStateOf(pivotContextPage)
             val isPivotContextPageValid: Boolean = core.isFilledSuccessState(pivotContextPageState)
@@ -717,6 +730,9 @@ open class Paginator<T>(
                         state = progressState,
                         silently = true,
                     )
+                    // The progress state may have evicted a page of the window (strategies without
+                    // window protection): narrow the window before it is published.
+                    core.reconcileContextWindow(anchor = pivotContextPage)
                     if (enableCacheFlow) {
                         core.repeatCacheFlow()
                     }
@@ -732,12 +748,20 @@ open class Paginator<T>(
                     state = resultState,
                     silently = true
                 )
-                if (cache.endContextPage == pivotContextPage
-                    && core.isFilledSuccessState(resultState)
-                ) {
-                    core.endContextPage = nextPage
+                val isResultFilled: Boolean = core.isFilledSuccessState(resultState)
+                if (isResultFilled) {
+                    if (cache.endContextPage != pivotContextPage) {
+                        // The pivot was evicted while the page was loading, so the loaded page cannot
+                        // extend the window: the window follows the loaded page instead.
+                        core.startContextPage = nextPage
+                        core.endContextPage = nextPage
+                        core.expandStartContextPage(cache.getStateOf(nextPage - 1))
+                    } else {
+                        core.endContextPage = nextPage
+                    }
                     core.expandEndContextPage(cache.getStateOf(nextPage + 1))
                 }
+                core.reconcileContextWindow(anchor = if (isResultFilled) nextPage else pivotContextPage)
                 if (enableCacheFlow) {
                     core.repeatCacheFlow()
                 }
@@ -759,6 +783,7 @@ open class Paginator<T>(
                     } else {
                         cache.removeFromCache(savedNextPage)
                     }
+                    core.reconcileContextWindow(anchor = cache.endContextPage)
                     core.snapshot()
                 }
             }
@@ -808,6 +833,16 @@ open class Paginator<T>(
 
         navigationMutex.lock()
         try {
+            // The window can have been damaged outside navigation (core.removeFromCache, a custom
+            // eviction strategy): repair it before the pivot is read from its boundary.
+            val windowStart: Int = cache.startContextPage
+            core.reconcileContextWindow(anchor = windowStart)
+            if (!cache.isStarted) {
+                // Not a single window page is cached any more: keep the old boundary as the anchor
+                // (the page before it is loaded), never a window at page 0.
+                core.startContextPage = windowStart
+                core.endContextPage = windowStart
+            }
             var pivotContextPage: Int = cache.startContextPage
             if (core.isFilledSuccessState(cache.getStateOf(pivotContextPage))) {
                 core.expandStartContextPage(cache.getStateOf(pivotContextPage - 1))
@@ -861,6 +896,9 @@ open class Paginator<T>(
                         state = progressState,
                         silently = true
                     )
+                    // The progress state may have evicted a page of the window (strategies without
+                    // window protection): narrow the window before it is published.
+                    core.reconcileContextWindow(anchor = pivotContextPage)
                     if (enableCacheFlow) {
                         core.repeatCacheFlow()
                     }
@@ -876,12 +914,20 @@ open class Paginator<T>(
                     state = resultState,
                     silently = true
                 )
-                if (cache.startContextPage == pivotContextPage
-                    && core.isFilledSuccessState(resultState)
-                ) {
-                    core.startContextPage = previousPage
+                val isResultFilled: Boolean = core.isFilledSuccessState(resultState)
+                if (isResultFilled) {
+                    if (cache.startContextPage != pivotContextPage) {
+                        // The pivot was evicted while the page was loading, so the loaded page cannot
+                        // extend the window: the window follows the loaded page instead.
+                        core.startContextPage = previousPage
+                        core.endContextPage = previousPage
+                        core.expandEndContextPage(cache.getStateOf(previousPage + 1))
+                    } else {
+                        core.startContextPage = previousPage
+                    }
                     core.expandStartContextPage(cache.getStateOf(previousPage - 1))
                 }
+                core.reconcileContextWindow(anchor = if (isResultFilled) previousPage else pivotContextPage)
                 if (enableCacheFlow) {
                     core.repeatCacheFlow()
                 }
@@ -903,6 +949,7 @@ open class Paginator<T>(
                     } else {
                         cache.removeFromCache(savedPreviousPage)
                     }
+                    core.reconcileContextWindow(anchor = cache.startContextPage)
                     core.snapshot()
                 }
             }
@@ -1116,6 +1163,9 @@ open class Paginator<T>(
                     )
                     progressIds[page] = progressState.id
                 }
+                // The progress states may have evicted pages of the window (strategies without
+                // window protection): narrow the window before the loading snapshot is published.
+                core.reconcileContextWindow(anchor = cache.startContextPage)
                 dirtyAtStart = pages.filter { core.isDirty(it) }
                 core.clearDirty(pages)
             } finally {
@@ -1153,6 +1203,9 @@ open class Paginator<T>(
                             silently = true
                         )
                     }
+                    // Rewriting a page can evict window pages (TimeLimitedPagingCache without window
+                    // protection): narrow the window first, the re-anchoring below then works on it.
+                    core.reconcileContextWindow(anchor = cache.startContextPage)
                     if (committed.size < results.size) {
                         logger.debug(LogComponent.LIFECYCLE) {
                             "refresh: skipped pages changed during loading=" +
@@ -1215,6 +1268,7 @@ open class Paginator<T>(
                                 cache.removeFromCache(page)
                             }
                         }
+                        core.reconcileContextWindow(anchor = cache.startContextPage)
                         core.snapshot()
                     } finally {
                         unlockNavigation()
