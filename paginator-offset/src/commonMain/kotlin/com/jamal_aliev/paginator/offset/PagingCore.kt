@@ -544,6 +544,11 @@ open class PagingCore<T>(
      *
      * The page number is determined by [state]`.page`.
      *
+     * The write can make an eviction strategy drop a page of the context window, so the window is
+     * reconciled (see [reconcileContextWindow]) before the snapshot, also when [silently] is `true`.
+     * Code that rewrites the cache page by page and sets the window itself writes through
+     * [PagingCache.setState] instead.
+     *
      * @param state The page state to store.
      * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
      *   Set to `true` during batch operations to avoid redundant emissions.
@@ -553,6 +558,7 @@ open class PagingCore<T>(
         silently: Boolean = false
     ) {
         cache.setState(state, silently = true)
+        reconcileContextWindow(anchor = state.page)
         markCacheChanged()
         if (!silently) {
             snapshot()
@@ -1070,7 +1076,7 @@ open class PagingCore<T>(
                 val successData = items.subList(offset, end).toMutableList()
                 offset = end
 
-                setState(
+                cache.setState(
                     state = initSuccessState.invoke(pageIndex++, successData, null),
                     silently = true
                 )
@@ -1199,7 +1205,7 @@ open class PagingCore<T>(
                 entry.data.toMutableList(),
                 metadata,
             )
-            setState(state = pageState, silently = true)
+            cache.setState(state = pageState, silently = true)
             if (entry.wasDirty) {
                 _dirtyPages.add(entry.page)
             }

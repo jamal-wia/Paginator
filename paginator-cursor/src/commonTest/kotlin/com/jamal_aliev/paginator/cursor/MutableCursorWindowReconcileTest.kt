@@ -5,6 +5,7 @@ import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorQueuedPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorTimeLimitedPagingCache
+import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -156,6 +157,73 @@ class MutableCursorWindowReconcileTest {
         assertEquals(setOf("p1"), paginator.cachedSelves())
         assertEquals("p1" to "p1", paginator.window())
         assertEquals(listOf("p1"), paginator.snapshotSelves())
+        paginator.assertWindowIsCached()
+    }
+
+    /** `CursorQueuedPagingCache(maxSize = 3)` without protection: `p0..p2` loaded in order, window `p0..p2`. */
+    private suspend fun queuedWithThreePages(): MutableCursorPaginator<String, String> {
+        val paginator = newPaginator(CursorQueuedPagingCache(maxSize = 3, protectContextWindow = false))
+        paginator.jump(cb("p0"))
+        paginator.goNextPage()
+        paginator.goNextPage()
+        assertEquals("p0" to "p2", paginator.window())
+        return paginator
+    }
+
+    private fun filledPage(self: String, prev: String?): Pair<CursorBookmark<String>, CursorPageState<String, String>> {
+        val bookmark = CursorBookmark(prev = prev, self = self, next = null)
+        return bookmark to CursorPageState.Success(bookmark, MutableList(3) { "n$it" })
+    }
+
+    @Test
+    fun `plusAssign of a new page that evicts the window start narrows the window and publishes it`() = runTest {
+        val paginator = queuedWithThreePages()
+
+        paginator += filledPage(self = "p3", prev = "p2")
+
+        assertEquals(setOf("p1", "p2", "p3"), paginator.cachedSelves())
+        assertEquals("p1" to "p2", paginator.window())
+        // the snapshot covers the window and the cached page right behind it
+        assertEquals(listOf("p1", "p2", "p3"), paginator.snapshotSelves())
+        paginator.assertWindowIsCached()
+    }
+
+    @Test
+    fun `core setState of a new page that evicts the window start narrows the window silently`() = runTest {
+        val paginator = queuedWithThreePages()
+        val (bookmark, state) = filledPage(self = "p3", prev = "p2")
+
+        paginator.core.setState(bookmark, state, silently = true)
+
+        assertEquals(setOf("p1", "p2", "p3"), paginator.cachedSelves())
+        assertEquals("p1" to "p2", paginator.window())
+        paginator.assertWindowIsCached()
+    }
+
+    @Test
+    fun `setElement on a page outside the window keeps the window inside its old bounds`() = runTest {
+        val timeSource = TestTimeSource()
+        val paginator = newPaginator(
+            CursorTimeLimitedPagingCache(ttl = 1000.milliseconds, protectContextWindow = false, timeSource = timeSource)
+        )
+        // window p3..p5: p3 and p4 are loaded first, p5 600 ms later
+        paginator.jump(cb("p4"))
+        paginator.goPreviousPage()
+        timeSource += 600.milliseconds
+        paginator.goNextPage()
+        assertEquals("p3" to "p5", paginator.window())
+        // an island p0..p1 that is not part of the window, as old as p5
+        val p0 = CursorBookmark(prev = null, self = "p0", next = "p1")
+        val p1 = CursorBookmark(prev = "p0", self = "p1", next = "p2")
+        paginator.cache.setState(p0, CursorPageState.Success(p0, MutableList(3) { "a$it" }), silently = true)
+        paginator.cache.setState(p1, CursorPageState.Success(p1, MutableList(3) { "b$it" }), silently = true)
+        timeSource += 500.milliseconds // p3 and p4 are expired now, p5 and the island are not
+
+        // a reactive style edit of the island: the write expires p3 and p4 away
+        paginator.setElement(element = "x", self = "p0", index = 0, silently = true)
+
+        assertEquals(setOf("p0", "p1", "p5"), paginator.cachedSelves())
+        assertEquals("p5" to "p5", paginator.window())
         paginator.assertWindowIsCached()
     }
 }

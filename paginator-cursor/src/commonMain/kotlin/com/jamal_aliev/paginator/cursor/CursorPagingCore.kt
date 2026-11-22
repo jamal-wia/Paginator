@@ -410,6 +410,37 @@ open class CursorPagingCore<K : Any, T>(
         }
     }
 
+    /**
+     * [reconcileContextWindow] for a write to the page [touched] that is not navigation: a CRUD
+     * operation or [setState].
+     *
+     * A cached anchor is always found by [reconcileContextWindow], even outside the old window; that
+     * is what navigation needs after the whole window was removed. A write to a page **outside** the
+     * window (another island of the cache, a page next to the window) must not drag the window over
+     * to it, so such a page is replaced by the old start as the anchor. A page belongs to the window
+     * if it is reached by the links from the start forward or from the end backward before the other
+     * boundary: that finds both parts of a window a hole has split.
+     */
+    internal fun reconcileContextWindowAfterWrite(touched: K) {
+        if (!isStarted) return
+        val start: CursorBookmark<K> = startContextCursor ?: return
+        val end: CursorBookmark<K> = endContextCursor ?: return
+
+        fun reaches(from: CursorBookmark<K>, to: CursorBookmark<K>, isForward: Boolean): Boolean {
+            var current: CursorBookmark<K>? = from
+            var budget: Int = cache.size + 1 // guards against cyclic links
+            while (current != null && budget-- > 0) {
+                if (current.self == touched) return true
+                if (current.self == to.self) return false
+                current = if (isForward) cache.walkForward(current) else cache.walkBackward(current)
+            }
+            return false
+        }
+
+        val isInsideWindow: Boolean = reaches(start, end, isForward = true) || reaches(end, start, isForward = false)
+        reconcileContextWindow(anchor = if (isInsideWindow) touched else start.self)
+    }
+
     /** Retrieves the cached [PageState] by its `self` key. */
     fun getStateOf(self: K): CursorPageState<K, T>? = readState(self)
 
@@ -465,6 +496,11 @@ open class CursorPagingCore<K : Any, T>(
      * Stores a [state] under the [cursor] key. The [cursor] replaces any existing
      * bookmark for that `self` key, which is the mechanism used to update links
      * when the server returns new `prev`/`next` for an already-cached page.
+     *
+     * The write can make an eviction strategy drop a page of the context window, so the window is
+     * reconciled (see [reconcileContextWindow]) before the snapshot, also when [silently] is `true`.
+     * Code that rewrites the cache page by page and sets the window itself writes through
+     * [CursorPagingCache.setState] instead.
      */
     fun setState(
         cursor: CursorBookmark<K>,
@@ -472,6 +508,7 @@ open class CursorPagingCore<K : Any, T>(
         silently: Boolean = false
     ) {
         cache.setState(cursor, state, silently = true)
+        reconcileContextWindowAfterWrite(touched = cursor.self)
         if (!silently) snapshot()
     }
 

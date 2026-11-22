@@ -5,6 +5,7 @@ import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.QueuedPagingCache
 import com.jamal_aliev.paginator.offset.cache.eviction.TimeLimitedPagingCache
 import com.jamal_aliev.paginator.offset.load.LoadResult
+import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.math.abs
@@ -151,6 +152,43 @@ class MutableWindowReconcileTest {
         assertEquals(1, paginator.core.startContextPage)
         assertEquals(1, paginator.core.endContextPage)
         assertEquals(listOf(1), paginator.snapshotPages())
+        paginator.assertWindowIsCached()
+    }
+
+    /** `QueuedPagingCache(maxSize = 3)` without protection: pages `1..3` loaded in order, window `1..3`. */
+    private suspend fun queuedWithThreePages(): MutablePaginator<String> {
+        val paginator = newPaginator(QueuedPagingCache(maxSize = 3, protectContextWindow = false))
+        paginator.jump(BookmarkInt(1))
+        paginator.goNextPage()
+        paginator.goNextPage()
+        assertEquals(1, paginator.core.startContextPage)
+        assertEquals(3, paginator.core.endContextPage)
+        return paginator
+    }
+
+    @Test
+    fun `plusAssign of a new page that evicts the window start narrows the window and publishes it`() = runTest {
+        val paginator = queuedWithThreePages()
+
+        paginator += OffsetPageState.Success(page = 4, data = MutableList(capacity) { "n$it" })
+
+        assertEquals(listOf(2, 3, 4), paginator.cache.pages)
+        assertEquals(2, paginator.core.startContextPage)
+        assertEquals(3, paginator.core.endContextPage)
+        // the snapshot covers the window and the cached page right behind it
+        assertEquals(listOf(2, 3, 4), paginator.snapshotPages())
+        paginator.assertWindowIsCached()
+    }
+
+    @Test
+    fun `core setState of a new page that evicts the window start narrows the window silently`() = runTest {
+        val paginator = queuedWithThreePages()
+
+        paginator.core.setState(OffsetPageState.Success(page = 4, data = MutableList(capacity) { "n$it" }), silently = true)
+
+        assertEquals(listOf(2, 3, 4), paginator.cache.pages)
+        assertEquals(2, paginator.core.startContextPage)
+        assertEquals(3, paginator.core.endContextPage)
         paginator.assertWindowIsCached()
     }
 }

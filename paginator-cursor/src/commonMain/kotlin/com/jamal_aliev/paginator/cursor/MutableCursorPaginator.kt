@@ -494,7 +494,7 @@ open class MutableCursorPaginator<K : Any, T>(
     private fun reconcileWindow(anchor: K): Boolean {
         val startBefore: K? = core.startContextCursor?.self
         val endBefore: K? = core.endContextCursor?.self
-        core.reconcileContextWindow(anchor)
+        core.reconcileContextWindowAfterWrite(touched = anchor)
         core.startContextCursor?.takeIf { it.self != startBefore }?.let { syncBookmarkIndex(it) }
         return core.startContextCursor?.self != startBefore || core.endContextCursor?.self != endBefore
     }
