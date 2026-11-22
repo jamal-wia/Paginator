@@ -546,8 +546,8 @@ open class PagingCore<T>(
      *
      * The write can make an eviction strategy drop a page of the context window, so the window is
      * reconciled (see [reconcileContextWindow]) before the snapshot, also when [silently] is `true`.
-     * Code that rewrites the cache page by page and sets the window itself writes through
-     * [PagingCache.setState] instead.
+     * Code that rewrites the cache page by page writes through [PagingCache.setState] instead and
+     * reconciles once at the end ([resize]) or sets the window before the writes ([restoreState]).
      *
      * @param state The page state to store.
      * @param silently If `true`, the change will **not** trigger a [snapshot] emission.
@@ -1022,7 +1022,10 @@ open class PagingCore<T>(
      *
      * When [resize] is `true`, all success pages within the context window are collected,
      * their items are flattened into a single list, and then re-distributed into new pages
-     * of size [capacity]. The cache is rebuilt from scratch with the redistributed data.
+     * of size [capacity]. The cache is rebuilt from scratch with the redistributed data. The new
+     * pages can be fewer than the window had, or an eviction strategy can drop some of them while
+     * they are written, so the context window is reconciled (see [reconcileContextWindow]) at the
+     * end, before the snapshot.
      *
      * If the new [capacity] equals the current one, this is a no-op.
      *
@@ -1081,6 +1084,8 @@ open class PagingCore<T>(
                     silently = true
                 )
             }
+
+            reconcileContextWindow(anchor = startContextPage)
         }
 
         markCacheChanged()
