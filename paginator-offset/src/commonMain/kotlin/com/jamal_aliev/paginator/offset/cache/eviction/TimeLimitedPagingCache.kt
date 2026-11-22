@@ -14,9 +14,10 @@ import kotlin.time.TimeSource
 /**
  * A [PagingCache] decorator that enforces a **TTL (Time To Live)** eviction policy.
  *
- * Each page has a timestamp recorded when it is first added to the cache.
- * When a new page is added (via [setState]), any pages whose age exceeds [ttl]
- * are evicted.
+ * Each page has a timestamp that is restarted on every [setState] of that page (so a rewritten
+ * page starts a new TTL period, not only the first write), and, with [refreshOnAccess], on reads.
+ * [setStateUntracked] and [peekStateOf] never restart it. When a page is written (via [setState]),
+ * any pages whose age exceeds [ttl] are evicted.
  *
  * Pages within the current context window can optionally be protected from eviction
  * via [protectContextWindow].
