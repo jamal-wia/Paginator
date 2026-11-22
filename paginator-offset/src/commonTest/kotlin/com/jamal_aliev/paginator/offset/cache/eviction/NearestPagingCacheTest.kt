@@ -8,7 +8,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TestTimeSource
 
 class NearestPagingCacheTest {
@@ -38,6 +40,16 @@ class NearestPagingCacheTest {
         pages.forEach { setState(successPage(it), silently = true) }
     }
 
+    /** A page load: Progress is written first, then the settled [state] of the same page. */
+    private fun PagingCache<String>.settle(state: OffsetPageState<String>) {
+        setState(progressPage(state.page), silently = true)
+        setState(state, silently = true)
+    }
+
+    private fun PagingCache<String>.load(vararg pages: Int) {
+        pages.forEach { settle(successPage(it)) }
+    }
+
     private fun PagingCache<String>.setContext(start: Int, end: Int) {
         endContextPage = end
         startContextPage = start
@@ -57,7 +69,7 @@ class NearestPagingCacheTest {
     fun `forward add evicts the lowest page`() {
         val cache = cacheWith(1, 2, 3)
 
-        cache.setState(successPage(4), silently = true)
+        cache.settle(successPage(4))
 
         assertEquals(listOf(2, 3, 4), cache.pages)
         assertEquals(listOf(1), evicted)
@@ -67,7 +79,7 @@ class NearestPagingCacheTest {
     fun `backward add evicts the highest page`() {
         val cache = cacheWith(2, 3, 4)
 
-        cache.setState(successPage(1), silently = true)
+        cache.settle(successPage(1))
 
         assertEquals(listOf(1, 2, 3), cache.pages)
         assertEquals(listOf(4), evicted)
@@ -96,7 +108,7 @@ class NearestPagingCacheTest {
         assertEquals(listOf(1, 2, 3, 4), cache.pages)
         assertEquals(emptyList(), evicted)
 
-        cache.setState(successPage(4), silently = true)
+        cache.settle(successPage(4))
         assertEquals(listOf(2, 3, 4), cache.pages)
         assertEquals(listOf(1), evicted)
     }
@@ -109,7 +121,7 @@ class NearestPagingCacheTest {
         assertEquals(listOf(1, 2, 3, 4), cache.pages)
         assertEquals(emptyList(), evicted)
 
-        cache.setState(successPage(1), silently = true)
+        cache.settle(successPage(1))
         assertEquals(listOf(1, 2, 3), cache.pages)
         assertEquals(listOf(4), evicted)
     }
@@ -118,7 +130,7 @@ class NearestPagingCacheTest {
     fun `empty success page evicts like a success page`() {
         val cache = cacheWith(1, 2, 3)
 
-        cache.setState(emptyPage(4), silently = true)
+        cache.settle(emptyPage(4))
 
         assertEquals(listOf(2, 3, 4), cache.pages)
         assertEquals(listOf(1), evicted)
@@ -129,7 +141,7 @@ class NearestPagingCacheTest {
         val cache = cacheWith(1, 2, 3)
 
         // Fewer items than a full page: still a settled page.
-        cache.setState(successPage(4, data = listOf("only")), silently = true)
+        cache.settle(successPage(4, data = listOf("only")))
 
         assertEquals(listOf(2, 3, 4), cache.pages)
         assertEquals(listOf(1), evicted)
@@ -177,11 +189,62 @@ class NearestPagingCacheTest {
         cache.setState(progressPage(5), silently = true)
         assertEquals(listOf(2, 3, 4, 5), cache.pages)
 
-        cache.setState(successPage(1), silently = true)
+        cache.settle(successPage(1))
 
         assertEquals(listOf(1, 2, 3), cache.pages)
         // Farthest first: the pending page 5, then page 4.
         assertEquals(listOf(5, 4), evicted)
+    }
+
+    // -- 2b. Only the completion of a load evicts --
+
+    @Test
+    fun `success written without a preceding progress does not evict`() {
+        val cache = cacheWith(1, 2, 3)
+
+        // CRUD overflow, restore or L2 promotion: a new page appears without a load.
+        cache.setState(successPage(4), silently = true)
+
+        assertEquals(listOf(1, 2, 3, 4), cache.pages)
+        assertEquals(emptyList(), evicted)
+    }
+
+    @Test
+    fun `editing an already loaded page and its overflow page keeps the edited page`() {
+        val cache = cacheWith(1, 2, 3)
+
+        // A message is inserted into page 1; the overflow cascades and creates page 4.
+        cache.setState(successPage(1, data = listOf("new", "item_1")), silently = true)
+        cache.setState(successPage(2, data = listOf("item_1", "item_2")), silently = true)
+        cache.setState(successPage(3, data = listOf("item_2", "item_3")), silently = true)
+        cache.setState(successPage(4, data = listOf("item_3")), silently = true)
+
+        assertEquals(listOf(1, 2, 3, 4), cache.pages)
+        assertEquals(listOf("new", "item_1"), cache.getStateOf(1)!!.data)
+        assertEquals(emptyList(), evicted)
+    }
+
+    @Test
+    fun `next completed load trims crud overflow pages`() {
+        val cache = cacheWith(1, 2, 3)
+        cache.setState(successPage(4), silently = true)
+        assertEquals(listOf(1, 2, 3, 4), cache.pages)
+
+        cache.settle(successPage(5))
+
+        assertEquals(listOf(3, 4, 5), cache.pages)
+        assertEquals(listOf(1, 2), evicted)
+    }
+
+    @Test
+    fun `success over an error page without a new progress does not evict`() {
+        val cache = cacheWith(1, 2, 3)
+        cache.setState(errorPage(4), silently = true)
+
+        cache.setState(successPage(4), silently = true)
+
+        assertEquals(listOf(1, 2, 3, 4), cache.pages)
+        assertEquals(emptyList(), evicted)
     }
 
     // -- 3. Equal distance --
@@ -191,7 +254,7 @@ class NearestPagingCacheTest {
         val cache = cacheWith(1, 2, 4, 5, maxSize = 4)
         cache.setContext(4, 5)
 
-        cache.setState(successPage(3), silently = true)
+        cache.settle(successPage(3))
 
         // Pages 1 and 5 are both two steps from 3, but 5 is inside the window.
         assertEquals(listOf(2, 3, 4, 5), cache.pages)
@@ -203,7 +266,7 @@ class NearestPagingCacheTest {
         val cache = cacheWith(1, 2, 4, 5, maxSize = 4)
         cache.setContext(3, 3)
 
-        cache.setState(successPage(3), silently = true)
+        cache.settle(successPage(3))
 
         // Pages 1 and 5 are both two steps from 3 and both outside the window.
         assertEquals(listOf(1, 2, 3, 4), cache.pages)
@@ -214,7 +277,7 @@ class NearestPagingCacheTest {
     fun `equal distance without a started window evicts the higher page`() {
         val cache = cacheWith(1, 2, 4, 5, maxSize = 4)
 
-        cache.setState(successPage(3), silently = true)
+        cache.settle(successPage(3))
 
         assertEquals(listOf(1, 2, 3, 4), cache.pages)
         assertEquals(listOf(5), evicted)
@@ -224,7 +287,7 @@ class NearestPagingCacheTest {
     fun `just added page is never evicted even when far from the others`() {
         val cache = cacheWith(1, 2, 3)
 
-        cache.setState(successPage(10), silently = true)
+        cache.settle(successPage(10))
 
         assertEquals(listOf(2, 3, 10), cache.pages)
         assertEquals(listOf(1), evicted)
@@ -236,11 +299,11 @@ class NearestPagingCacheTest {
     fun `maxSize of one keeps only the added page`() {
         val cache = createCache(maxSize = 1)
 
-        cache.put(1)
-        cache.put(2)
+        cache.load(1)
+        cache.load(2)
         assertEquals(listOf(2), cache.pages)
 
-        cache.put(5)
+        cache.load(5)
         assertEquals(listOf(5), cache.pages)
         assertEquals(listOf(1, 2), evicted)
     }
@@ -260,7 +323,7 @@ class NearestPagingCacheTest {
 
         assertEquals(2, replaced.maxSize)
         assertSame(listener, replaced.evictionListener)
-        replaced.put(1, 2, 3)
+        replaced.load(1, 2, 3)
         assertEquals(listOf(2, 3), replaced.pages)
         assertEquals(listOf(1), evicted)
     }
@@ -274,16 +337,26 @@ class NearestPagingCacheTest {
 
     @Test
     fun `plus with TimeLimitedPagingCache keeps the nearest rule`() {
+        val time = TestTimeSource()
         val cache = NearestPagingCache<String>(maxSize = 3, evictionListener = listener) +
-                TimeLimitedPagingCache<String>(ttl = 1.hours, timeSource = TestTimeSource())
+                TimeLimitedPagingCache<String>(ttl = 1.hours, timeSource = time)
 
+        // t = 0: pages 1..3. t = 40 min: page 4 arrives, the nearest rule drops page 1.
         cache.put(1, 2, 3)
-        cache.setState(successPage(4), silently = true)
+        time += 40.minutes
+        cache.settle(successPage(4))
         assertEquals(listOf(2, 3, 4), cache.pages)
         assertEquals(listOf(1), evicted)
 
-        cache.setState(successPage(1), silently = true)
-        assertEquals(listOf(1, 2, 3), cache.pages)
+        // t = 70 min: pages 2 and 3 are older than the ttl and expire on the next write,
+        // page 4 is still fresh.
+        time += 30.minutes
+        cache.settle(successPage(5))
+        assertEquals(listOf(4, 5), cache.pages)
+
+        // The nearest rule still applies to the fresh pages.
+        cache.load(6, 7)
+        assertEquals(listOf(5, 6, 7), cache.pages)
         assertEquals(listOf(1, 4), evicted)
     }
 
@@ -293,11 +366,11 @@ class NearestPagingCacheTest {
                 QueuedPagingCache<String>(maxSize = 5, protectContextWindow = false)
 
         // Forward over five pages, then back to the start.
-        cache.put(1, 2, 3, 4, 5)
+        cache.load(1, 2, 3, 4, 5)
         assertEquals(listOf(3, 4, 5), cache.pages)
-        cache.put(2)
+        cache.load(2)
         assertEquals(listOf(2, 3, 4), cache.pages)
-        cache.put(1)
+        cache.load(1)
         assertEquals(listOf(1, 2, 3), cache.pages)
 
         assertEquals(listOf(1, 2, 5, 4), evicted)
@@ -314,18 +387,27 @@ class NearestPagingCacheTest {
         )
 
         // Six pages forward: the inner nearest strategy drops pages behind the FIFO decorator's back.
-        outer.put(1, 2, 3, 4, 5, 6)
+        outer.load(1, 2, 3, 4, 5, 6)
         assertEquals(listOf(4, 5, 6), outer.pages)
         assertEquals(listOf(1, 2, 3), evicted)
 
         // Two pages backward: only the farthest pages go, the neighbours of the added page stay.
-        outer.put(3)
+        outer.load(3)
         assertEquals(listOf(3, 4, 5), outer.pages)
-        outer.put(2)
+        outer.load(2)
         assertEquals(listOf(2, 3, 4), outer.pages)
 
         assertEquals(listOf(1, 2, 3, 6, 5), evicted)
         assertEquals(emptyList(), outerEvicted)
         assertEquals(3, outer.size)
+
+        // A long scroll forward: the decorator must not keep a history of the removed pages.
+        for (page in 5..60) outer.load(page)
+        assertEquals(listOf(58, 59, 60), outer.pages)
+        assertTrue(
+            outer.trackedEntryCount <= 2 * outer.size + 16,
+            "tracked ${outer.trackedEntryCount} entries for ${outer.size} pages"
+        )
+        assertEquals(emptyList(), outerEvicted)
     }
 }

@@ -2,6 +2,7 @@ package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
 import com.jamal_aliev.paginator.core.extension.isEmptyState
+import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.debug
@@ -15,14 +16,14 @@ import kotlin.math.abs
  * A [PagingCache] decorator that keeps a **bounded window of the pages nearest to the page that was
  * just loaded**, and evicts the farthest ones.
  *
- * When a page settles and the number of cached pages exceeds [maxSize], the page that was just
- * written (the *anchor*) is kept and the pages farthest from it (largest `abs(page - anchor)`) are
- * evicted first, until the cache fits [maxSize] again. This suits bidirectional scrolling over a
+ * When a page load completes and the number of cached pages exceeds [maxSize], the page that was
+ * just loaded (the *anchor*) is kept and the pages farthest from it (largest `abs(page - anchor)`)
+ * are evicted first, until the cache fits [maxSize] again. This suits bidirectional scrolling over a
  * fixed-size window, for example a chat history that keeps three pages around the user:
  *
  * ```
- * cached [1, 2, 3] + page 4 settles  ->  [2, 3, 4]   // scrolled forward: page 1 is farthest
- * cached [2, 3, 4] + page 1 settles  ->  [1, 2, 3]   // scrolled backward: page 4 is farthest
+ * cached [1, 2, 3] + page 4 loaded  ->  [2, 3, 4]   // scrolled forward: page 1 is farthest
+ * cached [2, 3, 4] + page 1 loaded  ->  [1, 2, 3]   // scrolled backward: page 4 is farthest
  * ```
  *
  * Unlike [QueuedPagingCache] (oldest insertion) and [MostRecentPagingCache] (least recently used),
@@ -32,21 +33,28 @@ import kotlin.math.abs
  *
  * ## Which writes evict
  *
- * Only a settled page evicts. Writes that are not a settled page of data leave the cache alone, so
- * a page that is about to be loaded is never evicted in advance and a failed load does not cost the
- * window its neighbours:
+ * Only the **completion of a page load** evicts: a Success (with or without data) written over a
+ * page whose current state is Progress. Navigation always writes Progress for a page before it
+ * loads it, so that is the one write that adds a freshly loaded page to the window. Every other
+ * write leaves the cache alone. In particular an in-place edit never evicts: when a message is
+ * inserted into the first page of a full window and the overflow creates a new page at the end,
+ * that new page was not loaded, and evicting the farthest page would throw away the page that was
+ * just edited.
  *
- * | Written state                                              | Evicts down to [maxSize]? |
- * |------------------------------------------------------------|---------------------------|
- * | Success with data (including an incomplete last page)      | yes                       |
- * | Success without data (empty page, end of the feed)         | yes                       |
- * | Progress                                                   | no                        |
- * | Error                                                      | no                        |
- * | Replacing a page that is already cached (`size` unchanged) | nothing to evict          |
- * | [setStateUntracked] / [peekStateOf]                        | no (see below)            |
+ * | Written state                                                                  | Evicts down to [maxSize]? |
+ * |--------------------------------------------------------------------------------|---------------------------|
+ * | Success (with or without data) over Progress: a load completes                 | yes                       |
+ * | Success over anything else: CRUD overflow page, L2 promotion                   | no                        |
+ * | Progress                                                                       | no                        |
+ * | Error                                                                          | no                        |
+ * | [setStateUntracked] / [peekStateOf]                                            | no (see below)            |
  *
- * Because Progress and Error pages do not evict, the cache can temporarily hold more than
- * [maxSize] pages: the window plus one unfinished page on each edge. The next settled page trims
+ * A cancelled load that restores the previous Success state over its Progress looks like a
+ * completion, but it only evicts if the cache is over [maxSize] at that moment, and then it trims
+ * the farthest pages around the restored page like any other completion.
+ *
+ * The cache can therefore temporarily hold more than [maxSize] pages: the window plus one
+ * unfinished page on each edge, plus pages created by CRUD overflow. The next completed load trims
  * the excess, including unfinished pages that are far away.
  *
  * ## Victim selection
@@ -124,8 +132,10 @@ class NearestPagingCache<T>(
     }
 
     override fun setState(state: OffsetPageState<T>, silently: Boolean) {
+        // peekStateOf: reading the previous state must not count as a use for inner strategies.
+        val completesLoad = cache.peekStateOf(state.page).isProgressState()
         cache.setState(state, silently)
-        if (!(state.isSuccessState() || state.isEmptyState())) return
+        if (!completesLoad || !(state.isSuccessState() || state.isEmptyState())) return
         if (cache.size <= maxSize) return
 
         val anchor = state.page
