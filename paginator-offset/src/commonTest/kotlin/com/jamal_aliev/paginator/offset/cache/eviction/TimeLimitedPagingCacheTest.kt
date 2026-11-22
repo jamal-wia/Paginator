@@ -1,6 +1,7 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
+import com.jamal_aliev.paginator.offset.extension.plus
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -352,5 +353,43 @@ class TimeLimitedPagingCacheTest {
         assertNull(core.getStateOf(1))
         assertNotNull(core.getStateOf(2))
         assertNotNull(core.getStateOf(3))
+    }
+
+    // -- 16. Composition with an inner evicting strategy --
+
+    @Test
+    fun `re-added page after inner eviction gets a fresh ttl`() {
+        val ts = TestTimeSource()
+        val core = TimeLimitedPagingCache<String>(
+            ttl = 1000.milliseconds,
+            protectContextWindow = false,
+            timeSource = ts,
+        ) + ContextWindowPagingCache<String>(margin = 0)
+
+        // Context 1..2 at t = 0: both pages cached.
+        core.startContextPage = 1
+        core.endContextPage = 2
+        core.setState(successPage(1), silently = true)
+        core.setState(successPage(2), silently = true)
+
+        // Context 2..2: the inner window strategy drops page 1 behind the TTL decorator's back.
+        core.startContextPage = 2
+        core.setState(successPage(2), silently = true)
+        assertNull(core.peekStateOf(1))
+
+        // Almost a full ttl later page 1 comes back with a fresh timer.
+        ts += 900.milliseconds
+        core.startContextPage = 1
+        core.setState(successPage(1), silently = true)
+
+        // Another 500 ms: the old timestamp of page 1 would be 1400 ms old, the fresh one is 500 ms.
+        ts += 500.milliseconds
+        core.endContextPage = 3
+        core.setState(successPage(3), silently = true)
+
+        assertNotNull(core.peekStateOf(1))
+        // Page 2 has been cached since t = 0 and really expired, so the expiry pass did run.
+        assertNull(core.peekStateOf(2))
+        assertNotNull(core.peekStateOf(3))
     }
 }
