@@ -1,3 +1,6 @@
+// Exercises the deprecated L2 persistent cache, which stays tested until it is removed.
+@file:Suppress("DEPRECATION")
+
 package com.jamal_aliev.paginator.cursor
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
@@ -9,7 +12,9 @@ import com.jamal_aliev.paginator.cursor.cache.eviction.CursorContextWindowPaging
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorMostRecentPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorQueuedPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorTimeLimitedPagingCache
+import com.jamal_aliev.paginator.cursor.cache.persistent.CursorPersistentPagingCache
 import com.jamal_aliev.paginator.cursor.extension.plus
+import com.jamal_aliev.paginator.cursor.load.CursorLoadResult
 import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -319,6 +324,70 @@ class CursorEvictionContextReconcileTest {
         assertEquals(setOf("p0", "p2"), paginator.cache.cursors.map { it.self }.toSet(), "the expired page is gone")
         assertEquals("p0" to "p0", paginator.window())
         assertEquals(listOf("p0"), paginator.snapshotSelves())
+        assertWindowInvariant(paginator)
+    }
+
+    // ── cache hits that promote a page from the L2 persistent cache ──────────
+
+    private class FakeCursorPersistentCache : CursorPersistentPagingCache<String, String> {
+        val store = mutableMapOf<String, Pair<CursorBookmark<String>, CursorPageState<String, String>>>()
+        override suspend fun save(cursor: CursorBookmark<String>, state: CursorPageState<String, String>) {
+            store[cursor.self] = cursor to state
+        }
+
+        override suspend fun load(self: String) = store[self]
+        override suspend fun loadAll() = store.values.toList()
+        override suspend fun remove(self: String) {
+            store.remove(self)
+        }
+
+        override suspend fun clear() {
+            store.clear()
+        }
+    }
+
+    /** `Queued(2, protect = false) + ContextWindow`, chain `p0..p7`, page [persistedSelf] only in L2. */
+    private fun createL2Paginator(persistedSelf: String): CursorPaginator<String, String> {
+        val backend = FakeCursorBackend(FakeCursorBackend.defaultPages(pageCount = 8, capacity = 3))
+        val persistedPage = backend.pages.first { it.self == persistedSelf }
+        val bookmark = CursorBookmark<String>(persistedPage.prev, persistedPage.self, persistedPage.next)
+        val persistent = FakeCursorPersistentCache()
+        persistent.store[persistedSelf] = bookmark to CursorPageState.Success(bookmark, persistedPage.items.toMutableList())
+        val cache = CursorQueuedPagingCache<String, String>(maxSize = 2, protectContextWindow = false) +
+                CursorContextWindowPagingCache()
+        val core = CursorPagingCore<String, String>(cache = cache, persistentCache = persistent, initialCapacity = 3)
+        return CursorPaginator<String, String>(core = core) { cursor -> backend.loadResult(cursor) }
+    }
+
+    @Test
+    fun `goNextPage cache hit from L2 that evicts the start publishes a valid window`() = runTest {
+        val paginator = createL2Paginator(persistedSelf = "p2")
+        paginator.jump(cb("p0"))
+        paginator.goNextPage() // pages p0, p1
+
+        // p2 is promoted from L2 and evicts p0, the oldest one
+        val loaded = paginator.goNextPage()
+
+        assertEquals("p2", loaded.bookmark.self)
+        assertEquals(setOf("p1", "p2"), paginator.cache.cursors.map { it.self }.toSet())
+        assertEquals("p1" to "p2", paginator.window())
+        assertEquals(listOf("p1", "p2"), paginator.snapshotSelves())
+        assertWindowInvariant(paginator)
+    }
+
+    @Test
+    fun `goPreviousPage cache hit from L2 that evicts a window page publishes a valid window`() = runTest {
+        val paginator = createL2Paginator(persistedSelf = "p2")
+        paginator.jump(cb("p3"))
+        paginator.goNextPage() // pages p3, p4
+
+        // p2 is promoted from L2 and evicts p3, the oldest one: a hole inside the window
+        val loaded = paginator.goPreviousPage()
+
+        assertEquals("p2", loaded.bookmark.self)
+        assertEquals(setOf("p2", "p4"), paginator.cache.cursors.map { it.self }.toSet())
+        assertEquals("p2" to "p2", paginator.window())
+        assertEquals(listOf("p2"), paginator.snapshotSelves())
         assertWindowInvariant(paginator)
     }
 

@@ -533,6 +533,8 @@ open class CursorPaginator<K : Any, T>(
                 if (maybeNext != null) {
                     core.expandEndContextCursor(cache.getStateOf(maybeNext.self), maybeNext)
                 }
+                // A page promoted from the L2 cache was written through the eviction strategy
+                core.reconcileContextWindow(anchor = resolvedCursor.self)
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyCursorsInContext()
@@ -708,6 +710,8 @@ open class CursorPaginator<K : Any, T>(
                 if (maybePrev != null) {
                     core.expandStartContextCursor(cache.getStateOf(maybePrev.self), maybePrev)
                 }
+                // A page promoted from the L2 cache was written through the eviction strategy
+                core.reconcileContextWindow(anchor = resolvedCursor.self)
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyCursorsInContext()
