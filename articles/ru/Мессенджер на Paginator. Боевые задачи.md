@@ -525,6 +525,17 @@ dirty-tracking, process death, warm-up, refresh. Разложим по слоя�
 > каждую страницу в кэше; см.
 > [Reactive Sources](https://github.com/jamal-wia/Paginator/blob/master/docs/15.%20reactive-sources.md).
 > Раздел ниже описывает старый подход и оставлен для существующих проектов.
+>
+> Чтобы число живых запросов оставалось ограниченным, пока пользователь листает чат в обе стороны,
+> возьмите в качестве кэша `NearestPagingCache(maxSize = 3)`. Он держит три страницы, ближайшие к
+> последней загруженной, и вытесняет самую дальнюю; вместе со страницей заканчивается и её запрос:
+>
+> ```kotlin
+> val paginator = mutablePaginator<Message>(capacity = 50) {
+>     cache = NearestPagingCache(maxSize = 3)
+>     livePages(viewModelScope) { page -> dao.observeMessages(limit = 50, offset = (page - 1) * 50) }
+> }
+> ```
 
 Библиотека сама ничего в БД не пишет — она предоставляет интерфейс `PersistentPagingCache<T>` с
 пятью методами: `save`, `load`, `loadAll`, `remove`, `clear`. Реализация — на вашей стороне.

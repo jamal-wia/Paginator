@@ -168,6 +168,9 @@ private val paginator = mutablePaginator<Item>(capacity = 20) {
   [Capacity & Incomplete Pages](https://github.com/jamal-wia/Paginator/blob/master/docs/1.%20core-concepts.md#capacity--incomplete-pages)).
 - **`maxSize`** → стратегия кэша. Самый прямой аналог —
   `MostRecentPagingCache(maxSize = N страниц)`.
+  Если список листают в обе стороны, по смыслу к `maxSize` из Paging 3 ближе `NearestPagingCache(maxSize = N)`:
+  он держит N страниц, ближайших к только что загруженной, и вытесняет самую дальнюю, а не ту,
+  к которой дольше всего не обращались.
   Стратегии композируются оператором `+`, можно добавить TTL (`TimeLimitedPagingCache`) или окно
   вокруг видимой области (`ContextWindowPagingCache`). Деталей — в
   [docs/6. caching.md](https://github.com/jamal-wia/Paginator/blob/master/docs/6.%20caching.md).
@@ -592,7 +595,8 @@ ViewModel, репозиторий или use-case.
 1. Заменить `PagingSource.load` → `load { page -> LoadResult(api.fetch(page)) }`.
 2. Удалить `getRefreshKey`, `prevKey`/`nextKey`, ручной `try/catch`.
 3. Заменить `Pager(PagingConfig(...))` → `mutablePaginator<T>(capacity = …) { load { … } }`.
-4. Маппинг `maxSize` → `cache = MostRecentPagingCache(maxSize = …)`. Если был TTL/окно —
+4. Маппинг `maxSize` → `cache = MostRecentPagingCache(maxSize = …)` (при прокрутке в обе стороны —
+   `NearestPagingCache(maxSize = …)`). Если был TTL/окно —
    композировать через `+`.
 5. `pagingData.cachedIn(scope)` → удалить. Поле `paginator` живёт само.
 6. Добавить `paginator.release()` в `onCleared` (или `DisposableEffect` в Compose).

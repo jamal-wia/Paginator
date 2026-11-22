@@ -525,6 +525,17 @@ L2 cache, dirty tracking, process death, warm-up, refresh. Let's break it down b
 > page; see
 > [Reactive Sources](https://github.com/jamal-wia/Paginator/blob/master/docs/15.%20reactive-sources.md).
 > The section below describes the old approach and is kept for existing projects.
+>
+> To keep the number of live queries bounded while the user scrolls the chat in both directions,
+> use `NearestPagingCache(maxSize = 3)` as the cache. It keeps the three pages nearest to the one
+> loaded last and evicts the farthest one, and the query of an evicted page ends with it:
+>
+> ```kotlin
+> val paginator = mutablePaginator<Message>(capacity = 50) {
+>     cache = NearestPagingCache(maxSize = 3)
+>     livePages(viewModelScope) { page -> dao.observeMessages(limit = 50, offset = (page - 1) * 50) }
+> }
+> ```
 
 The library doesn't write to the database itself — it provides the `PersistentPagingCache<T>`
 interface with five methods: `save`, `load`, `loadAll`, `remove`, `clear`. The implementation is on
