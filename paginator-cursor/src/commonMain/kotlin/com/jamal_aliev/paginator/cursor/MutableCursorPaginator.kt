@@ -254,6 +254,43 @@ open class MutableCursorPaginator<K : Any, T>(
             "removeElement: self=$self index=$index isDirty=$isDirty"
         }
 
+        // The removal and the refill from the next pages; no window, dirty or snapshot work.
+        fun removeElementCascade(pageSelf: K, elementIndex: Int): T {
+            val cursor = requireNotNull(cache.getCursorOf(pageSelf)) { "self=$pageSelf was not created" }
+            val pageState = requireNotNull(cache.getStateOf(pageSelf)) { "self=$pageSelf was not created" }
+            markAffected(pageSelf)
+            val removed: T
+
+            val updatedData = pageState.data
+                .let { it as MutableList }
+                .also { removed = it.removeAt(elementIndex) }
+
+            if (updatedData.size < core.capacity && !core.isCapacityUnlimited) {
+                val nextCursor = cache.walkForward(cursor)
+                val nextState = nextCursor?.self?.let { cache.getStateOf(it) }
+                if (nextCursor != null && nextState != null
+                    && nextState::class == pageState::class
+                ) {
+                    while (updatedData.size < core.capacity && nextState.data.isNotEmpty()) {
+                        updatedData.add(
+                            removeElementCascade(
+                                pageSelf = nextCursor.self,
+                                elementIndex = 0,
+                            )
+                        )
+                    }
+                }
+            }
+
+            if (updatedData.isEmpty()) {
+                removeState(selfToRemove = pageSelf, silently = true)
+            } else {
+                cache.setState(cursor, pageState.copy(data = updatedData), silently = true)
+            }
+
+            return removed
+        }
+
         // Snapshot the window before mutating: emptying the page may drop it and re-anchor
         // the window (via removeState), which we must detect to emit the new window.
         val startBeforeSelf: K? = core.startContextCursor?.self
@@ -278,43 +315,6 @@ open class MutableCursorPaginator<K : Any, T>(
                 snapshotIfSelfVisible(self)
             }
         }
-        return removed
-    }
-
-    /** The removal and the refill from the next pages of [removeElement]; no window, dirty or snapshot work. */
-    private fun removeElementCascade(self: K, index: Int): T {
-        val cursor = requireNotNull(cache.getCursorOf(self)) { "self=$self was not created" }
-        val pageState = requireNotNull(cache.getStateOf(self)) { "self=$self was not created" }
-        markAffected(self)
-        val removed: T
-
-        val updatedData = pageState.data
-            .let { it as MutableList }
-            .also { removed = it.removeAt(index) }
-
-        if (updatedData.size < core.capacity && !core.isCapacityUnlimited) {
-            val nextCursor = cache.walkForward(cursor)
-            val nextState = nextCursor?.self?.let { cache.getStateOf(it) }
-            if (nextCursor != null && nextState != null
-                && nextState::class == pageState::class
-            ) {
-                while (updatedData.size < core.capacity && nextState.data.isNotEmpty()) {
-                    updatedData.add(
-                        removeElementCascade(
-                            self = nextCursor.self,
-                            index = 0,
-                        )
-                    )
-                }
-            }
-        }
-
-        if (updatedData.isEmpty()) {
-            removeState(selfToRemove = self, silently = true)
-        } else {
-            cache.setState(cursor, pageState.copy(data = updatedData), silently = true)
-        }
-
         return removed
     }
 
