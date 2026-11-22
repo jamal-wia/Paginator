@@ -942,9 +942,15 @@ open class CursorPagingCore<K : Any, T>(
      * eviction strategy judges the restored pages by the restored window, not by the window the
      * paginator had before the call. Every entry is decoded once, the window boundaries are the
      * very bookmarks that are inserted afterwards; a boundary whose `self` has no entry in the
-     * snapshot is `null` (the paginator is then not started). The strategy's own bookkeeping is not
-     * restored: the LRU/FIFO order is the order of the snapshot's entries (every restored page
-     * counts as just inserted), and the timers of a TTL strategy start anew.
+     * snapshot is `null` (the paginator is then not started).
+     *
+     * The pages are written in the order of the chain (from every head along `next`, orphans and
+     * cycles last), whatever the order of the snapshot's entries: a window strategy reaches the
+     * pages of the window by walking the links that are already written, so a snapshot that is
+     * assembled by hand or reordered must not cost pages. A snapshot made by [saveState] already
+     * lists its main chain in that order. The strategy's own bookkeeping is not restored: the LRU/FIFO order is the
+     * write order (every restored page counts as just inserted), and the timers of a TTL strategy
+     * start anew.
      */
     fun restoreState(
         fromSnapshot: CursorPagingCoreSnapshot<T>,
@@ -978,13 +984,36 @@ open class CursorPagingCore<K : Any, T>(
             RestoredPage(bookmark, pageState, entry.wasDirty)
         }
 
+        // Entries in chain order: every head (no `prev`, or a `prev` that is not part of the snapshot)
+        // in order of appearance, followed along `next`; whatever no head reaches (cycles) goes last
+        // in the original order. A snapshot that is already in chain order stays as it is.
+        fun inChainOrder(pages: List<RestoredPage>): List<RestoredPage> {
+            val bySelf = HashMap<K, RestoredPage>(pages.size * 2)
+            for (page in pages) bySelf[page.bookmark.self] = page
+            val written = HashSet<K>(pages.size * 2)
+            val ordered = ArrayList<RestoredPage>(pages.size)
+            for (page in pages) {
+                val prev: K? = page.bookmark.prev
+                if (prev != null && prev in bySelf) continue // not a head
+                var current: RestoredPage? = page
+                while (current != null && written.add(current.bookmark.self)) {
+                    ordered.add(current)
+                    current = current.bookmark.next?.let { bySelf[it] }
+                }
+            }
+            for (page in pages) {
+                if (written.add(page.bookmark.self)) ordered.add(page)
+            }
+            return ordered
+        }
+
         val startSelf: K? = fromSnapshot.startContextSelf?.let(selfDecoder)
         val endSelf: K? = fromSnapshot.endContextSelf?.let(selfDecoder)
         capacity = fromSnapshot.capacity
         startContextCursor = startSelf?.let { self -> restored.firstOrNull { it.bookmark.self == self }?.bookmark }
         endContextCursor = endSelf?.let { self -> restored.firstOrNull { it.bookmark.self == self }?.bookmark }
 
-        restored.forEach { page ->
+        inChainOrder(restored).forEach { page ->
             cache.setState(page.bookmark, page.state, silently = true)
             if (page.wasDirty) _dirtyCursors.add(page.bookmark.self)
         }

@@ -2,9 +2,11 @@ package com.jamal_aliev.paginator.cursor
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
+import com.jamal_aliev.paginator.cursor.cache.CursorInMemoryPagingCache
 import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorContextWindowPagingCache
 import com.jamal_aliev.paginator.cursor.cache.eviction.CursorMostRecentPagingCache
+import com.jamal_aliev.paginator.cursor.cache.eviction.CursorQueuedPagingCache
 import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.serialization.CursorPageEntry
 import com.jamal_aliev.paginator.cursor.serialization.CursorPagingCoreSnapshot
@@ -259,6 +261,180 @@ class CursorRestoreContextOrderTest {
 
         assertEquals(setOf("p0", "p1", "p2"), paginator.cachedSelves())
         assertEquals(setOf("p1"), paginator.core.dirtyCursors)
+    }
+
+    // ── restoreState inserts the entries in the order of the chain ───────────
+
+    private fun rawEntry(self: String, prev: String?, next: String?) = CursorPageEntry(
+        selfKey = JsonPrimitive(self),
+        prevKey = prev?.let { JsonPrimitive(it) },
+        nextKey = next?.let { JsonPrimitive(it) },
+        data = List(capacity) { "${self}_item$it" },
+        wasDirty = false,
+    )
+
+    private fun fifoEnv(maxSize: Int): Env = createEnv { listener ->
+        CursorQueuedPagingCache(maxSize = maxSize, protectContextWindow = false, evictionListener = listener)
+    }
+
+    @Test
+    fun `restoreState of reversed snapshot keeps whole chain with strict context window`() = runTest {
+        val env = contextWindowEnv(margin = 0)
+        val paginator = env.paginator
+        // five entries, last page first: pages that sit behind a not yet inserted link are not
+        // reachable from the start and would be evicted by the window strategy
+        val snapshot = snapshotOf(
+            start = "p0", end = "p4",
+            entries = (4 downTo 0).map { entry(it, last = 4) },
+        )
+
+        paginator.jump(cb("p6"))
+        env.evicted.clear()
+
+        paginator.core.restoreState(snapshot, selfDecoder = decode)
+
+        assertEquals(setOf("p0", "p1", "p2", "p3", "p4"), paginator.cachedSelves())
+        assertEquals("p0" to "p4", paginator.window())
+        assertEquals(listOf("p0", "p1", "p2", "p3", "p4"), paginator.cache.cursors.map { it.self })
+        assertEquals(emptyList(), env.evicted)
+    }
+
+    @Test
+    fun `restoreState of shuffled snapshot keeps whole chain with strict context window`() = runTest {
+        val env = contextWindowEnv(margin = 0)
+        val paginator = env.paginator
+        // the end page is written first, the start page second: the walk from the start stops at the
+        // missing middle page, so the end page would be evicted
+        val snapshot = snapshotOf(
+            start = "p0", end = "p2",
+            entries = listOf(entry(2, last = 2), entry(0, last = 2), entry(1, last = 2)),
+        )
+
+        paginator.jump(cb("p6"))
+        env.evicted.clear()
+
+        paginator.core.restoreState(snapshot, selfDecoder = decode)
+
+        assertEquals(setOf("p0", "p1", "p2"), paginator.cachedSelves())
+        assertEquals("p0" to "p2", paginator.window())
+        assertEquals(emptyList(), env.evicted)
+    }
+
+    @Test
+    fun `restoreState of reversed snapshot with margin keeps margin links`() = runTest {
+        val env = contextWindowEnv(margin = 1)
+        val paginator = env.paginator
+        val snapshot = snapshotOf(
+            start = "p2", end = "p4",
+            entries = (5 downTo 0).map { entry(it, last = 5) },
+        )
+
+        paginator.jump(cb("p9"))
+        env.evicted.clear()
+
+        paginator.core.restoreState(snapshot, selfDecoder = decode)
+
+        // window p2..p4 plus one margin page on each side; only p0 lies outside and goes, as for any
+        // window strategy, but nothing of the window itself or its margin is lost
+        assertEquals(setOf("p1", "p2", "p3", "p4", "p5"), paginator.cachedSelves())
+        assertEquals("p2" to "p4", paginator.window())
+        assertEquals(listOf("p0"), env.evicted)
+    }
+
+    @Test
+    fun `restoreState writes the entries in chain order`() = runTest {
+        val env = fifoEnv(maxSize = 2)
+        val paginator = env.paginator
+        val snapshot = snapshotOf(
+            start = null, end = null,
+            entries = listOf(entry(2, last = 2), entry(0, last = 2), entry(1, last = 2)),
+        )
+
+        paginator.core.restoreState(snapshot, selfDecoder = decode)
+
+        // FIFO order is the write order: p0 was written first, so it is the one that goes
+        assertEquals(listOf("p0"), env.evicted)
+        assertEquals(setOf("p1", "p2"), paginator.cachedSelves())
+    }
+
+    @Test
+    fun `restoreState keeps the order of an already ordered snapshot`() = runTest {
+        val env = fifoEnv(maxSize = 2)
+        val paginator = env.paginator
+        val snapshot = snapshotOf(
+            start = null, end = null,
+            entries = (0..3).map { entry(it, last = 3) },
+        )
+
+        paginator.core.restoreState(snapshot, selfDecoder = decode)
+
+        assertEquals(listOf("p0", "p1"), env.evicted)
+        assertEquals(setOf("p2", "p3"), paginator.cachedSelves())
+    }
+
+    @Test
+    fun `restoreState starts a chain whose head link points outside the snapshot`() = runTest {
+        val env = fifoEnv(maxSize = 2)
+        val paginator = env.paginator
+        // a contextOnly style snapshot: p3 links back to p2, which is not part of the snapshot
+        val snapshot = snapshotOf(
+            start = null, end = null,
+            entries = listOf(
+                rawEntry("p5", prev = "p4", next = null),
+                rawEntry("p3", prev = "p2", next = "p4"),
+                rawEntry("p4", prev = "p3", next = "p5"),
+            ),
+        )
+
+        paginator.core.restoreState(snapshot, selfDecoder = decode)
+
+        assertEquals(listOf("p3"), env.evicted)
+        assertEquals(setOf("p4", "p5"), paginator.cachedSelves())
+    }
+
+    @Test
+    fun `restoreState keeps orphan entries order after main chain`() = runTest {
+        val env = fifoEnv(maxSize = 2)
+        val paginator = env.paginator
+        // main chain p0 -> p1 -> p2 and a cycle c0 <-> c1 that no head reaches
+        val snapshot = snapshotOf(
+            start = null, end = null,
+            entries = listOf(
+                rawEntry("c1", prev = "c0", next = "c0"),
+                rawEntry("p2", prev = "p1", next = null),
+                rawEntry("c0", prev = "c1", next = "c1"),
+                rawEntry("p1", prev = "p0", next = "p2"),
+                rawEntry("p0", prev = null, next = "p1"),
+            ),
+        )
+
+        paginator.core.restoreState(snapshot, selfDecoder = decode)
+
+        // written: p0, p1, p2 (the chain), then c1, c0 (the cycle in snapshot order)
+        assertEquals(listOf("p0", "p1", "p2"), env.evicted)
+        assertEquals(setOf("c0", "c1"), paginator.cachedSelves())
+    }
+
+    @Test
+    fun `restoreState with orphan chain in plain cache keeps all entries and main chain first`() = runTest {
+        val env = createEnv { _ -> CursorInMemoryPagingCache() }
+        val paginator = env.paginator
+        val snapshot = snapshotOf(
+            start = "p0", end = "p2",
+            entries = listOf(
+                rawEntry("x1", prev = "x0", next = null),
+                rawEntry("p2", prev = "p1", next = null),
+                rawEntry("x0", prev = "gone", next = "x1"),
+                rawEntry("p1", prev = "p0", next = "p2"),
+                rawEntry("p0", prev = null, next = "p1"),
+            ),
+        )
+
+        paginator.core.restoreState(snapshot, selfDecoder = decode)
+
+        assertEquals(setOf("p0", "p1", "p2", "x0", "x1"), paginator.cachedSelves())
+        assertEquals(listOf("p0", "p1", "p2"), paginator.cache.cursors.map { it.self }.take(3))
+        assertEquals("p0" to "p2", paginator.window())
     }
 
     // ── transaction rollback ─────────────────────────────────────────────────
