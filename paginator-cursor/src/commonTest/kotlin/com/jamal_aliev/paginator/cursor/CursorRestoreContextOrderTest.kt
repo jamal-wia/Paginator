@@ -10,6 +10,7 @@ import com.jamal_aliev.paginator.cursor.cache.eviction.CursorQueuedPagingCache
 import com.jamal_aliev.paginator.cursor.page.CursorPageState
 import com.jamal_aliev.paginator.cursor.serialization.CursorPageEntry
 import com.jamal_aliev.paginator.cursor.serialization.CursorPagingCoreSnapshot
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
@@ -435,6 +436,27 @@ class CursorRestoreContextOrderTest {
         assertEquals(setOf("p0", "p1", "p2", "x0", "x1"), paginator.cachedSelves())
         assertEquals(listOf("p0", "p1", "p2"), paginator.cache.cursors.map { it.self }.take(3))
         assertEquals("p0" to "p2", paginator.window())
+    }
+
+    @Test
+    fun `restoreState of a snapshot bigger than the cache narrows the window and publishes it`() = runTest {
+        val env = createEnv { listener ->
+            CursorMostRecentPagingCache(maxSize = 2, protectContextWindow = false, evictionListener = listener)
+        }
+        val paginator = env.paginator
+        // three pages into a cache of two without window protection: p0 is evicted while the pages
+        // are written, although it is the start of the restored window
+        val snapshot = snapshotOf(
+            start = "p0", end = "p2",
+            entries = (0..2).map { entry(it, last = 2) },
+        )
+
+        paginator.core.restoreState(snapshot, selfDecoder = decode)
+
+        assertEquals(listOf("p0"), env.evicted)
+        assertEquals(setOf("p1", "p2"), paginator.cachedSelves())
+        assertEquals("p1" to "p2", paginator.window())
+        assertEquals(listOf("p1", "p2"), paginator.core.snapshot.first().map { it.bookmark.self })
     }
 
     // ── transaction rollback ─────────────────────────────────────────────────

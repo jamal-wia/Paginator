@@ -1324,6 +1324,9 @@ open class CursorPaginator<K : Any, T>(
         lockGoPreviousPage = savepoint.lockGoPreviousPage
         lockRestart = savepoint.lockRestart
         lockRefresh = savepoint.lockRefresh
+        // Insurance: the save point was a valid state of this very cache, but a custom strategy may
+        // still evict while the pages are written back
+        savepoint.startContextCursor?.let { core.reconcileContextWindow(anchor = it.self) }
         core.markCacheReplaced()
 
         core.snapshot()

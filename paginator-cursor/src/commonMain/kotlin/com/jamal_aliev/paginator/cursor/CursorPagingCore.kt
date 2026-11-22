@@ -953,9 +953,11 @@ open class CursorPagingCore<K : Any, T>(
      * cycles last), whatever the order of the snapshot's entries: a window strategy reaches the
      * pages of the window by walking the links that are already written, so a snapshot that is
      * assembled by hand or reordered must not cost pages. A snapshot made by [saveState] already
-     * lists its main chain in that order. The strategy's own bookkeeping is not restored: the LRU/FIFO order is the
-     * write order (every restored page counts as just inserted), and the timers of a TTL strategy
-     * start anew.
+     * lists its main chain in that order. The strategy's own bookkeeping is not restored: the LRU/FIFO
+     * order is the write order (every restored page counts as just inserted), and the timers of a TTL
+     * strategy start anew. If the strategy evicts pages of the restored window while they are written
+     * (a snapshot bigger than its `maxSize` with `protectContextWindow = false`), the window narrows to
+     * the contiguous run that survived.
      */
     fun restoreState(
         fromSnapshot: CursorPagingCoreSnapshot<T>,
@@ -1023,6 +1025,8 @@ open class CursorPagingCore<K : Any, T>(
             if (page.wasDirty) _dirtyCursors.add(page.bookmark.self)
         }
 
+        // A snapshot bigger than the cache strategy allows can have evicted pages of the window
+        startContextCursor?.let { reconcileContextWindow(anchor = it.self) }
         markCacheReplaced()
 
         if (!silently) snapshot()
