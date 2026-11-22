@@ -7,7 +7,9 @@ import com.jamal_aliev.paginator.core.extension.isErrorState
 import com.jamal_aliev.paginator.core.extension.isProgressState
 import com.jamal_aliev.paginator.core.extension.isSuccessState
 import com.jamal_aliev.paginator.core.load.Metadata
+import com.jamal_aliev.paginator.core.logger.LogComponent
 import com.jamal_aliev.paginator.core.logger.PaginatorLogger
+import com.jamal_aliev.paginator.core.logger.debug
 import com.jamal_aliev.paginator.core.page.PageState
 import com.jamal_aliev.paginator.cursor.CursorPagingCore.Companion.UNLIMITED_CAPACITY
 import com.jamal_aliev.paginator.cursor.bookmark.CursorBookmark
@@ -106,14 +108,26 @@ open class CursorPagingCore<K : Any, T>(
     val isCapacityUnlimited: Boolean
         get() = capacity == UNLIMITED_CAPACITY
 
-    /** The left (head-side) boundary of the current context window. `null` = not started. */
+    /**
+     * The left (head-side) boundary of the current context window. `null` = not started.
+     *
+     * When an eviction strategy removes a page of the window, the window narrows to the contiguous
+     * chain of cached pages around the page navigation is on, so this boundary can move toward the
+     * tail even though no navigation call asked for it.
+     */
     var startContextCursor: CursorBookmark<K>?
         get() = cache.startContextCursor
         internal set(value) {
             cache.startContextCursor = value
         }
 
-    /** The right (tail-side) boundary of the current context window. `null` = not started. */
+    /**
+     * The right (tail-side) boundary of the current context window. `null` = not started.
+     *
+     * When an eviction strategy removes a page of the window, the window narrows to the contiguous
+     * chain of cached pages around the page navigation is on, so this boundary can move toward the
+     * head even though no navigation call asked for it.
+     */
     var endContextCursor: CursorBookmark<K>?
         get() = cache.endContextCursor
         internal set(value) {
@@ -296,6 +310,137 @@ open class CursorPagingCore<K : Any, T>(
         expandEndContextCursor(nearestState, nearestCursor)
     }
 
+    /**
+     * Restores the context window invariant after a page of the window may have left the cache.
+     *
+     * **Invariant:** while the paginator is started, every page on the chain of links from
+     * [startContextCursor] to [endContextCursor] is cached, so both boundaries exist and the chain
+     * is whole. An eviction strategy that runs inside [CursorPagingCache.setState] with
+     * `protectContextWindow = false` (or [removeFromCache] called directly) can break it. A removed
+     * page loses its bookmark too, so the walk from the start stops at the hole: [snapshot] would
+     * go silent on a missing boundary or publish only the part of the window before the hole.
+     *
+     * **Rule ("the window follows the anchor"):** when a window page is missing, the window shrinks
+     * to the contiguous run of cached pages **inside the old window** that contains the page with
+     * the key [anchor] - the page navigation currently holds (the boundary being walked past while
+     * loading, or the page just loaded). A run is found by walking `prev`/`next` links from a seed
+     * page while the pages are cached and the old boundaries are not passed. Seeds are the anchor
+     * and the two boundary pages (a missing boundary is replaced by its neighbour inside the
+     * window; the stale boundary object keeps its links even without a cache entry). If the anchor
+     * itself is not cached, the run on the side of the anchor is taken: the start side when the
+     * anchor is the old start, the end side otherwise. If no seed run exists, the window is
+     * re-anchored with [findNearContextCursor] around the old boundaries. Without bookmarks the
+     * middle of a chain cannot be walked, so a run that is reachable neither from the anchor nor
+     * from the boundary pages (or their neighbours inside the window) is not found: with several
+     * holes the re-anchoring can then pick another chain of the cache even though a page of the old
+     * window survives. A cached anchor is always found, even when it lies outside the old window
+     * (the page being loaded after the whole window was removed).
+     *
+     * Only the presence of a page is checked ([CursorPagingCache.peekStateOf]), not whether it is
+     * filled; the rules about filled and non-filled boundaries stay in the navigation code. Reads
+     * are untracked: reconciling must not reorder an LRU strategy or restart a TTL timer.
+     *
+     * Call it under the navigation lock, before [snapshot], after anything that wrote to the cache
+     * ([CursorPagingCache.setState]) or can have damaged the window. `restart` does not need it:
+     * it clears the cache and sets a fresh single-page window, so a hole cannot appear.
+     *
+     * @param anchor The `self` key of the page navigation is anchored on; it should be a page of
+     *   the old window (cached or already evicted).
+     */
+    internal fun reconcileContextWindow(anchor: K) {
+        if (!isStarted) return
+        val start: CursorBookmark<K> = startContextCursor ?: return
+        val end: CursorBookmark<K> = endContextCursor ?: return
+
+        fun isCached(self: K): Boolean = cache.peekStateOf(self) != null
+
+        // Fast path: the chain from start reaches end through cached pages only (no allocations;
+        // the budget guards against cyclic links)
+        fun isWindowIntact(): Boolean {
+            var current: CursorBookmark<K> = start
+            var budget: Int = cache.size
+            while (budget-- > 0 && isCached(current.self)) {
+                if (current.self == end.self) return true
+                current = cache.walkForward(current) ?: return false
+            }
+            return false
+        }
+        if (isWindowIntact()) return
+
+        // The contiguous run of cached pages around [seed], never past the old boundaries
+        fun runAround(seed: CursorBookmark<K>?): Pair<CursorBookmark<K>, CursorBookmark<K>>? {
+            if (seed == null || !isCached(seed.self)) return null
+            var first: CursorBookmark<K> = seed
+            var budget: Int = cache.size // guards against cyclic links
+            while (first.self != start.self && budget-- > 0) {
+                val previous: CursorBookmark<K> = cache.walkBackward(first) ?: break
+                if (!isCached(previous.self)) break
+                first = previous
+            }
+            var last: CursorBookmark<K> = seed
+            budget = cache.size
+            while (last.self != end.self && budget-- > 0) {
+                val next: CursorBookmark<K> = cache.walkForward(last) ?: break
+                if (!isCached(next.self)) break
+                last = next
+            }
+            return first to last
+        }
+
+        val isSinglePageWindow: Boolean = start.self == end.self
+        val startSeed: CursorBookmark<K>? = cache.getCursorOf(start.self)?.takeIf { isCached(it.self) }
+            ?: if (isSinglePageWindow) null else cache.walkForward(start)
+        val endSeed: CursorBookmark<K>? = cache.getCursorOf(end.self)?.takeIf { isCached(it.self) }
+            ?: if (isSinglePageWindow) null else cache.walkBackward(end)
+
+        val chosen: Pair<CursorBookmark<K>, CursorBookmark<K>>? =
+            runAround(cache.getCursorOf(anchor))
+                ?: if (anchor == start.self) runAround(startSeed) ?: runAround(endSeed)
+                else runAround(endSeed) ?: runAround(startSeed)
+
+        if (chosen == null) {
+            withUntrackedReads { findNearContextCursor(startCursor = start, endCursor = end) }
+        } else {
+            startContextCursor = chosen.first
+            endContextCursor = chosen.second
+        }
+        logger.debug(LogComponent.CACHE) {
+            "reconcileContextWindow: window ${start.self}..${end.self} -> " +
+                    "${startContextCursor?.self}..${endContextCursor?.self} (anchor=$anchor)"
+        }
+    }
+
+    /**
+     * [reconcileContextWindow] for a write to the page [touched] that is not navigation: a CRUD
+     * operation or [setState].
+     *
+     * A cached anchor is always found by [reconcileContextWindow], even outside the old window; that
+     * is what navigation needs after the whole window was removed. A write to a page **outside** the
+     * window (another island of the cache, a page next to the window) must not drag the window over
+     * to it, so such a page is replaced by the old start as the anchor. A page belongs to the window
+     * if it is reached by the links from the start forward or from the end backward before the other
+     * boundary: that finds both parts of a window a hole has split.
+     */
+    internal fun reconcileContextWindowAfterWrite(touched: K) {
+        if (!isStarted) return
+        val start: CursorBookmark<K> = startContextCursor ?: return
+        val end: CursorBookmark<K> = endContextCursor ?: return
+
+        fun reaches(from: CursorBookmark<K>, to: CursorBookmark<K>, isForward: Boolean): Boolean {
+            var current: CursorBookmark<K>? = from
+            var budget: Int = cache.size + 1 // guards against cyclic links
+            while (current != null && budget-- > 0) {
+                if (current.self == touched) return true
+                if (current.self == to.self) return false
+                current = if (isForward) cache.walkForward(current) else cache.walkBackward(current)
+            }
+            return false
+        }
+
+        val isInsideWindow: Boolean = reaches(start, end, isForward = true) || reaches(end, start, isForward = false)
+        reconcileContextWindow(anchor = if (isInsideWindow) touched else start.self)
+    }
+
     /** Retrieves the cached [PageState] by its `self` key. */
     fun getStateOf(self: K): CursorPageState<K, T>? = readState(self)
 
@@ -351,6 +496,11 @@ open class CursorPagingCore<K : Any, T>(
      * Stores a [state] under the [cursor] key. The [cursor] replaces any existing
      * bookmark for that `self` key, which is the mechanism used to update links
      * when the server returns new `prev`/`next` for an already-cached page.
+     *
+     * The write can make an eviction strategy drop a page of the context window, so the window is
+     * reconciled (see [reconcileContextWindow]) before the snapshot, also when [silently] is `true`.
+     * Code that rewrites the cache page by page and sets the window itself writes through
+     * [CursorPagingCache.setState] instead.
      */
     fun setState(
         cursor: CursorBookmark<K>,
@@ -358,6 +508,7 @@ open class CursorPagingCore<K : Any, T>(
         silently: Boolean = false
     ) {
         cache.setState(cursor, state, silently = true)
+        reconcileContextWindowAfterWrite(touched = cursor.self)
         if (!silently) snapshot()
     }
 
@@ -826,6 +977,25 @@ open class CursorPagingCore<K : Any, T>(
         )
     }
 
+    /**
+     * Restores this core's state from a previously saved [fromSnapshot].
+     *
+     * The capacity and the context window are restored **before** the pages are written, so an
+     * eviction strategy judges the restored pages by the restored window, not by the window the
+     * paginator had before the call. Every entry is decoded once, the window boundaries are the
+     * very bookmarks that are inserted afterwards; a boundary whose `self` has no entry in the
+     * snapshot is `null` (the paginator is then not started).
+     *
+     * The pages are written in the order of the chain (from every head along `next`, orphans and
+     * cycles last), whatever the order of the snapshot's entries: a window strategy reaches the
+     * pages of the window by walking the links that are already written, so a snapshot that is
+     * assembled by hand or reordered must not cost pages. A snapshot made by [saveState] already
+     * lists its main chain in that order. The strategy's own bookkeeping is not restored: the LRU/FIFO
+     * order is the write order (every restored page counts as just inserted), and the timers of a TTL
+     * strategy start anew. If the strategy evicts pages of the restored window while they are written
+     * (a snapshot bigger than its `maxSize` with `protectContextWindow = false`), the window narrows to
+     * the contiguous run that survived.
+     */
     fun restoreState(
         fromSnapshot: CursorPagingCoreSnapshot<T>,
         silently: Boolean = false,
@@ -838,7 +1008,13 @@ open class CursorPagingCore<K : Any, T>(
         _dirtyCursors.clear()
         _bootstrapState.value = null
 
-        fromSnapshot.entries.forEach { entry ->
+        class RestoredPage(
+            val bookmark: CursorBookmark<K>,
+            val state: CursorPageState<K, T>,
+            val wasDirty: Boolean,
+        )
+
+        val restored: List<RestoredPage> = fromSnapshot.entries.map { entry ->
             val selfKey: K = selfDecoder.invoke(entry.selfKey)
             val prevKey: K? = entry.prevKey?.let(selfDecoder)
             val nextKey: K? = entry.nextKey?.let(selfDecoder)
@@ -849,15 +1025,45 @@ open class CursorPagingCore<K : Any, T>(
                 entry.data.toMutableList(),
                 metadata,
             )
-            cache.setState(bookmark, pageState, silently = true)
-            if (entry.wasDirty) _dirtyCursors.add(selfKey)
+            RestoredPage(bookmark, pageState, entry.wasDirty)
         }
 
+        // Entries in chain order: every head (no `prev`, or a `prev` that is not part of the snapshot)
+        // in order of appearance, followed along `next`; whatever no head reaches (cycles) goes last
+        // in the original order. A snapshot that is already in chain order stays as it is.
+        fun inChainOrder(pages: List<RestoredPage>): List<RestoredPage> {
+            val bySelf = HashMap<K, RestoredPage>(pages.size * 2)
+            for (page in pages) bySelf[page.bookmark.self] = page
+            val written = HashSet<K>(pages.size * 2)
+            val ordered = ArrayList<RestoredPage>(pages.size)
+            for (page in pages) {
+                val prev: K? = page.bookmark.prev
+                if (prev != null && prev in bySelf) continue // not a head
+                var current: RestoredPage? = page
+                while (current != null && written.add(current.bookmark.self)) {
+                    ordered.add(current)
+                    current = current.bookmark.next?.let { bySelf[it] }
+                }
+            }
+            for (page in pages) {
+                if (written.add(page.bookmark.self)) ordered.add(page)
+            }
+            return ordered
+        }
+
+        val startSelf: K? = fromSnapshot.startContextSelf?.let(selfDecoder)
+        val endSelf: K? = fromSnapshot.endContextSelf?.let(selfDecoder)
         capacity = fromSnapshot.capacity
-        startContextCursor =
-            fromSnapshot.startContextSelf?.let(selfDecoder)?.let { cache.getCursorOf(it) }
-        endContextCursor =
-            fromSnapshot.endContextSelf?.let(selfDecoder)?.let { cache.getCursorOf(it) }
+        startContextCursor = startSelf?.let { self -> restored.firstOrNull { it.bookmark.self == self }?.bookmark }
+        endContextCursor = endSelf?.let { self -> restored.firstOrNull { it.bookmark.self == self }?.bookmark }
+
+        inChainOrder(restored).forEach { page ->
+            cache.setState(page.bookmark, page.state, silently = true)
+            if (page.wasDirty) _dirtyCursors.add(page.bookmark.self)
+        }
+
+        // A snapshot bigger than the cache strategy allows can have evicted pages of the window
+        startContextCursor?.let { reconcileContextWindow(anchor = it.self) }
         markCacheReplaced()
 
         if (!silently) snapshot()

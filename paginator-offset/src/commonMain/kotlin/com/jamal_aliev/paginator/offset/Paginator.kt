@@ -524,6 +524,7 @@ open class Paginator<T>(
                     )
                     core.expandStartContextPage(progressState)
                     core.expandEndContextPage(progressState)
+                    core.reconcileContextWindow(anchor = bookmark.page)
 
                     if (enableCacheFlow) {
                         core.repeatCacheFlow()
@@ -557,6 +558,7 @@ open class Paginator<T>(
                     core.expandEndContextPage(cache.getStateOf(cache.endContextPage + 1))
                 }
             }
+            core.reconcileContextWindow(anchor = bookmark.page)
 
             if (enableCacheFlow) {
                 core.repeatCacheFlow()
@@ -583,6 +585,7 @@ open class Paginator<T>(
                     } else {
                         cache.removeFromCache(bookmark.page)
                     }
+                    core.reconcileContextWindow(anchor = savedEndContextPage)
                     core.snapshot()
                 }
             }
@@ -646,6 +649,16 @@ open class Paginator<T>(
 
         navigationMutex.lock()
         try {
+            // The window can have been damaged outside navigation (core.removeFromCache, a custom
+            // eviction strategy): repair it before the pivot is read from its boundary.
+            val windowEnd: Int = cache.endContextPage
+            core.reconcileContextWindow(anchor = windowEnd)
+            if (!cache.isStarted) {
+                // Not a single window page is cached any more: keep the old boundary, which is then
+                // reloaded in place like any non-filled end (never page 0).
+                core.startContextPage = windowEnd
+                core.endContextPage = windowEnd
+            }
             var pivotContextPage: Int = cache.endContextPage
             var pivotContextPageState: OffsetPageState<T>? = cache.getStateOf(pivotContextPage)
             val isPivotContextPageValid: Boolean = core.isFilledSuccessState(pivotContextPageState)
@@ -691,6 +704,8 @@ open class Paginator<T>(
             if (core.isFilledSuccessState(nextPageState)) {
                 core.endContextPage = nextPage
                 core.expandEndContextPage(cache.getStateOf(nextPage + 1))
+                // A page promoted from the L2 cache was written through the eviction strategy
+                core.reconcileContextWindow(anchor = nextPage)
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyPagesInContext()
@@ -717,6 +732,9 @@ open class Paginator<T>(
                         state = progressState,
                         silently = true,
                     )
+                    // The progress state may have evicted a page of the window (strategies without
+                    // window protection): narrow the window before it is published.
+                    core.reconcileContextWindow(anchor = pivotContextPage)
                     if (enableCacheFlow) {
                         core.repeatCacheFlow()
                     }
@@ -732,12 +750,20 @@ open class Paginator<T>(
                     state = resultState,
                     silently = true
                 )
-                if (cache.endContextPage == pivotContextPage
-                    && core.isFilledSuccessState(resultState)
-                ) {
-                    core.endContextPage = nextPage
+                val isResultFilled: Boolean = core.isFilledSuccessState(resultState)
+                if (isResultFilled) {
+                    if (cache.endContextPage != pivotContextPage) {
+                        // The pivot was evicted while the page was loading, so the loaded page cannot
+                        // extend the window: the window follows the loaded page instead.
+                        core.startContextPage = nextPage
+                        core.endContextPage = nextPage
+                        core.expandStartContextPage(cache.getStateOf(nextPage - 1))
+                    } else {
+                        core.endContextPage = nextPage
+                    }
                     core.expandEndContextPage(cache.getStateOf(nextPage + 1))
                 }
+                core.reconcileContextWindow(anchor = if (isResultFilled) nextPage else pivotContextPage)
                 if (enableCacheFlow) {
                     core.repeatCacheFlow()
                 }
@@ -759,6 +785,7 @@ open class Paginator<T>(
                     } else {
                         cache.removeFromCache(savedNextPage)
                     }
+                    core.reconcileContextWindow(anchor = cache.endContextPage)
                     core.snapshot()
                 }
             }
@@ -808,6 +835,17 @@ open class Paginator<T>(
 
         navigationMutex.lock()
         try {
+            // The window can have been damaged outside navigation (core.removeFromCache, a custom
+            // eviction strategy): repair it before the pivot is read from its boundary.
+            val windowStart: Int = cache.startContextPage
+            core.reconcileContextWindow(anchor = windowStart)
+            val isWindowGone: Boolean = !cache.isStarted
+            if (isWindowGone) {
+                // Not a single window page is cached any more: keep the old boundary as the anchor
+                // (the page before it is loaded), never a window at page 0.
+                core.startContextPage = windowStart
+                core.endContextPage = windowStart
+            }
             var pivotContextPage: Int = cache.startContextPage
             if (core.isFilledSuccessState(cache.getStateOf(pivotContextPage))) {
                 core.expandStartContextPage(cache.getStateOf(pivotContextPage - 1))
@@ -835,6 +873,8 @@ open class Paginator<T>(
             if (core.isFilledSuccessState(previousPageState)) {
                 core.startContextPage = previousPage
                 core.expandStartContextPage(cache.getStateOf(previousPage - 1))
+                // A page promoted from the L2 cache was written through the eviction strategy
+                core.reconcileContextWindow(anchor = previousPage)
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyPagesInContext()
@@ -861,6 +901,10 @@ open class Paginator<T>(
                         state = progressState,
                         silently = true
                     )
+                    // The progress state may have evicted a page of the window (strategies without
+                    // window protection): narrow the window before it is published. When the whole
+                    // window was gone, the page being loaded becomes the window, like a jump target.
+                    core.reconcileContextWindow(anchor = if (isWindowGone) page else pivotContextPage)
                     if (enableCacheFlow) {
                         core.repeatCacheFlow()
                     }
@@ -876,12 +920,20 @@ open class Paginator<T>(
                     state = resultState,
                     silently = true
                 )
-                if (cache.startContextPage == pivotContextPage
-                    && core.isFilledSuccessState(resultState)
-                ) {
-                    core.startContextPage = previousPage
+                val isResultFilled: Boolean = core.isFilledSuccessState(resultState)
+                if (isResultFilled) {
+                    if (cache.startContextPage != pivotContextPage) {
+                        // The pivot was evicted while the page was loading, so the loaded page cannot
+                        // extend the window: the window follows the loaded page instead.
+                        core.startContextPage = previousPage
+                        core.endContextPage = previousPage
+                        core.expandEndContextPage(cache.getStateOf(previousPage + 1))
+                    } else {
+                        core.startContextPage = previousPage
+                    }
                     core.expandStartContextPage(cache.getStateOf(previousPage - 1))
                 }
+                core.reconcileContextWindow(anchor = if (isResultFilled) previousPage else pivotContextPage)
                 if (enableCacheFlow) {
                     core.repeatCacheFlow()
                 }
@@ -903,6 +955,7 @@ open class Paginator<T>(
                     } else {
                         cache.removeFromCache(savedPreviousPage)
                     }
+                    core.reconcileContextWindow(anchor = cache.startContextPage)
                     core.snapshot()
                 }
             }
@@ -917,6 +970,9 @@ open class Paginator<T>(
      *
      * Clears all cached pages except page 1's structure, resets the context window
      * to page 1, and reloads it from the [load]. Ideal for swipe-to-refresh scenarios.
+     *
+     * If the reload is cancelled, the paginator is put back as it was before the call: the context
+     * window, **all** the pages the call cleared and the dirty marks.
      *
      * @param silentlyLoading If `true`, the snapshot will **not** be emitted during loading.
      * @param silentlyResult If `true`, the snapshot will **not** be emitted after loading.
@@ -943,12 +999,17 @@ open class Paginator<T>(
         var savedStartContextPage: Int = cache.startContextPage
         var savedEndContextPage: Int = cache.endContextPage
         var savedFirstPageState: OffsetPageState<T>? = null
+        var savedStates: List<OffsetPageState<T>> = emptyList()
+        var savedDirtyPages: Set<Int> = emptySet()
         var shouldCleanup = false
 
         navigationMutex.lock()
         try {
             savedStartContextPage = cache.startContextPage
             savedEndContextPage = cache.endContextPage
+            // kept for the cancellation path: the pages erased below come back with the window
+            savedStates = core.states
+            savedDirtyPages = core.dirtyPages
 
             val firstPage: OffsetPageState<T>? = cache.getStateOf(1)
             cache.clear()
@@ -1011,13 +1072,15 @@ open class Paginator<T>(
         } catch (e: CancellationException) {
             if (shouldCleanup) {
                 withContext(NonCancellable) {
+                    // the window first, then the pages: an eviction strategy judges them by it
                     core.startContextPage = savedStartContextPage
                     core.endContextPage = savedEndContextPage
-                    if (savedFirstPageState != null) {
-                        cache.setState(savedFirstPageState, silently = true)
-                    } else {
-                        cache.removeFromCache(1)
-                    }
+                    savedStates.forEach { cache.setState(it, silently = true) }
+                    if (savedFirstPageState == null) cache.removeFromCache(1)
+                    savedDirtyPages.forEach { core.markDirty(it) }
+                    // Insurance: a strategy may still evict while the pages are written back
+                    core.reconcileContextWindow(anchor = savedStartContextPage)
+                    core.markCacheReplaced()
                     core.snapshot()
                 }
             }
@@ -1116,6 +1179,9 @@ open class Paginator<T>(
                     )
                     progressIds[page] = progressState.id
                 }
+                // The progress states may have evicted pages of the window (strategies without
+                // window protection): narrow the window before the loading snapshot is published.
+                core.reconcileContextWindow(anchor = cache.startContextPage)
                 dirtyAtStart = pages.filter { core.isDirty(it) }
                 core.clearDirty(pages)
             } finally {
@@ -1153,6 +1219,9 @@ open class Paginator<T>(
                             silently = true
                         )
                     }
+                    // Rewriting a page can evict window pages (TimeLimitedPagingCache without window
+                    // protection): narrow the window first, the re-anchoring below then works on it.
+                    core.reconcileContextWindow(anchor = cache.startContextPage)
                     if (committed.size < results.size) {
                         logger.debug(LogComponent.LIFECYCLE) {
                             "refresh: skipped pages changed during loading=" +
@@ -1215,6 +1284,7 @@ open class Paginator<T>(
                                 cache.removeFromCache(page)
                             }
                         }
+                        core.reconcileContextWindow(anchor = cache.startContextPage)
                         core.snapshot()
                     } finally {
                         unlockNavigation()
@@ -1467,6 +1537,11 @@ open class Paginator<T>(
      * serialization and convert [OffsetPageState.Error]/[OffsetPageState.Progress] to success entries),
      * this method preserves exact [OffsetPageState] types through an in-memory deep copy.
      *
+     * **Rollback order:** the context window is restored **before** the pages are written back, so
+     * an eviction strategy judges the restored pages by the restored window, not by the window the
+     * block left behind. The strategy's own bookkeeping is not restored: the LRU/FIFO order is the
+     * order of the save point and the timers of a TTL strategy start anew.
+     *
      * **Concurrency:** the [navigationMutex] is **not** held during [block] execution,
      * so navigation operations inside the block work without deadlock. This matches the
      * concurrency model of CRUD operations.
@@ -1493,16 +1568,23 @@ open class Paginator<T>(
         }
     }
 
+    /**
+     * Puts the paginator back to [savepoint]. The capacity and the context window are restored
+     * **before** the pages are written, so eviction strategies judge the restored pages by the
+     * restored window, not by the window the failed block left behind. LRU/FIFO order and TTL
+     * timers are not part of the save point: restored pages count as just inserted, in save point
+     * order.
+     */
     private fun rollback(savepoint: TransactionSavepoint<T>) {
         cache.clear()
         core.clearAllDirty()
 
-        savepoint.states.forEach { cache.setState(it, silently = true) }
-        savepoint.dirtyPages.forEach { core.markDirty(it) }
-
         core.capacity = savepoint.capacity
         core.startContextPage = savepoint.startContextPage
         core.endContextPage = savepoint.endContextPage
+
+        savepoint.states.forEach { cache.setState(it, silently = true) }
+        savepoint.dirtyPages.forEach { core.markDirty(it) }
 
         finalPage = savepoint.finalPage
         bookmarks.clear()
@@ -1514,6 +1596,9 @@ open class Paginator<T>(
         lockGoPreviousPage = savepoint.lockGoPreviousPage
         lockRestart = savepoint.lockRestart
         lockRefresh = savepoint.lockRefresh
+        // Insurance: the save point was a valid state of this very cache, but a custom strategy may
+        // still evict while the pages are written back
+        core.reconcileContextWindow(anchor = savepoint.startContextPage)
         core.markCacheReplaced()
 
         core.snapshot()

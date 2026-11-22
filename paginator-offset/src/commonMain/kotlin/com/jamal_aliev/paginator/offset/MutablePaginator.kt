@@ -234,6 +234,9 @@ open class MutablePaginator<T>(
                     if (cache.isStarted) syncBookmarkIndex(cache.startContextPage)
                 }
             }
+
+            // The re-labelling above writes pages, which can make a strategy evict one of the window
+            reconcileWindow(anchor = cache.startContextPage)
         }
 
         // Pages at or above the removed one are exactly the ones whose L2 representation
@@ -287,6 +290,7 @@ open class MutablePaginator<T>(
 
         markAffected(page)
 
+        reconcileWindow(anchor = page)
         if (isDirty) core.markDirty(page)
         core.markCacheChanged()
 
@@ -318,54 +322,65 @@ open class MutablePaginator<T>(
         isDirty: Boolean = false,
     ): T {
         logger.debug(LogComponent.MUTATION) { "removeElement: page=$page index=$index isDirty=$isDirty" }
-        val pageState: OffsetPageState<T> = requireNotNull(
-            value = cache.getStateOf(page)
-        ) { "page-$page was not created" }
-        markAffected(page)
-        val removed: T
+
+        // The removal and the refill from the next pages; no window, dirty or snapshot work.
+        fun removeElementCascade(pageNumber: Int, elementIndex: Int): T {
+            val pageState: OffsetPageState<T> = requireNotNull(
+                value = cache.getStateOf(pageNumber)
+            ) { "page-$pageNumber was not created" }
+            markAffected(pageNumber)
+            val removed: T
+
+            val updatedData = pageState.data
+                .let { it as MutableList }
+                .also { removed = it.removeAt(elementIndex) }
+
+            if (updatedData.size < core.capacity && !core.isCapacityUnlimited) {
+                val nextPageState = cache.getStateOf(pageNumber + 1)
+                if (nextPageState != null
+                    &&
+                    nextPageState::class == pageState::class
+                ) {
+                    while (updatedData.size < core.capacity
+                        &&
+                        nextPageState.data.isNotEmpty()
+                    ) {
+                        updatedData.add(
+                            removeElementCascade(
+                                pageNumber = pageNumber + 1,
+                                elementIndex = 0
+                            )
+                        )
+                    }
+                }
+            }
+
+            if (updatedData.isEmpty()) {
+                removeState(
+                    pageToRemove = pageNumber,
+                    silently = true
+                )
+            } else {
+                cache.setState(
+                    state = pageState.copy(data = updatedData),
+                    silently = true
+                )
+            }
+
+            return removed
+        }
 
         // Snapshot the context window before mutating: emptying the page may drop it and
         // re-anchor the window (via removeState), which we must detect to emit correctly.
         val startBefore: Int = cache.startContextPage
         val endBefore: Int = cache.endContextPage
 
-        val updatedData = pageState.data
-            .let { it as MutableList }
-            .also { removed = it.removeAt(index) }
+        val removed: T = removeElementCascade(page, index)
 
-        if (updatedData.size < core.capacity && !core.isCapacityUnlimited) {
-            val nextPageState = cache.getStateOf(page + 1)
-            if (nextPageState != null
-                &&
-                nextPageState::class == pageState::class
-            ) {
-                while (updatedData.size < core.capacity
-                    &&
-                    nextPageState.data.isNotEmpty()
-                ) {
-                    updatedData.add(
-                        removeElement(
-                            page = page + 1,
-                            index = 0,
-                            silently = true
-                        )
-                    )
-                }
-            }
-        }
-
-        if (updatedData.isEmpty()) {
-            removeState(
-                pageToRemove = page,
-                silently = true
-            )
-        } else {
-            cache.setState(
-                state = pageState.copy(data = updatedData),
-                silently = true
-            )
-        }
-
+        // A write can make a strategy evict a page of the window; the check precedes the
+        // comparison below, so a narrowed window is emitted as a whole. Once per call, not per
+        // cascade level: the refill reaches every cached page after the removed element
+        reconcileWindow(anchor = page)
         if (isDirty) core.markDirty(page)
         core.markCacheChanged()
 
@@ -419,131 +434,142 @@ open class MutablePaginator<T>(
         logger.debug(LogComponent.MUTATION) {
             "addAllElements: targetPage=$targetPage index=$index count=${elements.size} isDirty=$isDirty"
         }
-        markAffected(targetPage)
-        val targetState: OffsetPageState<T> =
-            (cache.getStateOf(targetPage)
-                ?: initPageState?.invoke(targetPage, mutableListOf())
-                    ?.also { cache.setState(state = it, silently = true) })
-                ?: throw IndexOutOfBoundsException(
-                    "page-$targetPage was not created"
-                )
 
-        val dataOfTargetState: MutableList<T> = requireNotNull(
-            value = targetState.data as? MutableList
-        ) { "data of target page state is not mutable" }
-        dataOfTargetState.addAll(index, elements)
-        val extraElements: MutableList<T>? =
-            if (dataOfTargetState.size > core.capacity && !core.isCapacityUnlimited) {
-                MutableList(size = dataOfTargetState.size - core.capacity) {
-                    dataOfTargetState.removeAt(dataOfTargetState.lastIndex)
-                }.apply(MutableList<T>::reverse)
-            } else {
-                null
+        // The insert and its overflow cascade; no window, dirty or snapshot work.
+        fun addAllElementsCascade(
+            chunk: List<T>,
+            pageNumber: Int,
+            insertIndex: Int,
+            pageFactory: ((page: Int, data: List<T>) -> OffsetPageState<T>)?,
+        ) {
+            markAffected(pageNumber)
+            val targetState: OffsetPageState<T> =
+                (cache.getStateOf(pageNumber)
+                    ?: pageFactory?.invoke(pageNumber, mutableListOf())
+                        ?.also { cache.setState(state = it, silently = true) })
+                    ?: throw IndexOutOfBoundsException(
+                        "page-$pageNumber was not created"
+                    )
+
+            val dataOfTargetState: MutableList<T> = requireNotNull(
+                value = targetState.data as? MutableList
+            ) { "data of target page state is not mutable" }
+            dataOfTargetState.addAll(insertIndex, chunk)
+            val extraElements: MutableList<T>? =
+                if (dataOfTargetState.size > core.capacity && !core.isCapacityUnlimited) {
+                    MutableList(size = dataOfTargetState.size - core.capacity) {
+                        dataOfTargetState.removeAt(dataOfTargetState.lastIndex)
+                    }.apply(MutableList<T>::reverse)
+                } else {
+                    null
+                }
+
+            if (dataOfTargetState is ArrayList) {
+                dataOfTargetState.trimToSize()
             }
 
-        if (dataOfTargetState is ArrayList) {
-            dataOfTargetState.trimToSize()
-        }
-
-        if (!extraElements.isNullOrEmpty()) {
-            val nextPageState: OffsetPageState<T>? = cache.getStateOf(targetPage + 1)
-            if (nextPageState != null && nextPageState::class == targetState::class) {
-                addAllElements(
-                    elements = extraElements,
-                    targetPage = targetPage + 1,
-                    index = 0,
-                    silently = true,
-                    initPageState = initPageState
-                )
-            } else {
-                // Cascade blocked at targetPage+1 (a gap, the true end, or a foreign-class page).
-                // Two independent things happen here:
-                //   (1) Rebalance: the insert shifts every later position forward by
-                //       N = extraElements.size. If a cached chunk exists beyond the gap, peel N
-                //       items off its first page and cascade them through it (its first page becomes
-                //       partial, to be refilled later) so it stays consistent with that shift.
-                //   (2) Preserve the overflow: if targetPage+1 is empty (gap or true end) and a
-                //       factory is available (initPageState, default = same-class), create a new
-                //       page to hold extraElements instead of dropping them — covers "addElement
-                //       appends to a full last page" and "fill toward the gap". A null initPageState
-                //       opts out (overflow dropped).
-                // nextChunkStart is captured BEFORE (2) so the peel targets the far chunk, not a
-                // page that (2) may have just created.
-                //
-                // Example: `1=[a,b,c] 2=[d,e,f] 3=[g,h,i] gap 10=[p,q,r] 11=[s,t,u]`,
-                // insert ["X","Y"] at page 1 ->
-                //   1=[X,Y,a] 2=[b,c,d] 3=[e,f,g] 4=[h,i] gap 10=[p] 11=[q,r,s] 12=[t,u]
-                //   (page 4 created with the overflow — (2); far chunk rebalanced by N=2 — (1)).
-                val shiftSize = extraElements.size
-                val nextChunkStart: Int? = cache.pages
-                    .asSequence()
-                    .filter { it > targetPage + 1 }
-                    .firstOrNull { p ->
-                        cache.getStateOf(p)?.let { it::class == targetState::class } == true
-                    }
-
-                if (nextChunkStart != null) {
-                    val nextChunkState: OffsetPageState<T> =
-                        checkNotNull(cache.getStateOf(nextChunkStart))
-                    val nextChunkData: MutableList<T> = requireNotNull(
-                        value = nextChunkState.data as? MutableList
-                    ) { "data of next-chunk page state is not mutable" }
-
-                    val peel = minOf(shiftSize, nextChunkData.size)
-                    if (peel > 0) {
-                        val displaced = MutableList(peel) {
-                            nextChunkData.removeAt(nextChunkData.lastIndex)
-                        }.apply(MutableList<T>::reverse)
-
-                        markAffected(nextChunkStart)
-                        if (nextChunkData.isEmpty()) {
-                            // The shift emptied the first page of the chunk entirely —
-                            // drop it from the cache so we don't keep a zero-size state
-                            // around (a large batch can legitimately wipe a whole page).
-                            cache.removeFromCache(nextChunkStart)
-                        } else {
-                            if (nextChunkData is ArrayList) nextChunkData.trimToSize()
-                            cache.setState(
-                                state = nextChunkState.copy(data = nextChunkData),
-                                silently = true,
-                            )
+            if (!extraElements.isNullOrEmpty()) {
+                val nextPageState: OffsetPageState<T>? = cache.getStateOf(pageNumber + 1)
+                if (nextPageState != null && nextPageState::class == targetState::class) {
+                    addAllElementsCascade(
+                        chunk = extraElements,
+                        pageNumber = pageNumber + 1,
+                        insertIndex = 0,
+                        pageFactory = pageFactory
+                    )
+                } else {
+                    // Cascade blocked at pageNumber+1 (a gap, the true end, or a foreign-class page).
+                    // Two independent things happen here:
+                    //   (1) Rebalance: the insert shifts every later position forward by
+                    //       N = extraElements.size. If a cached chunk exists beyond the gap, peel N
+                    //       items off its first page and cascade them through it (its first page becomes
+                    //       partial, to be refilled later) so it stays consistent with that shift.
+                    //   (2) Preserve the overflow: if pageNumber+1 is empty (gap or true end) and a
+                    //       factory is available (pageFactory, default = same-class), create a new
+                    //       page to hold extraElements instead of dropping them — covers "addElement
+                    //       appends to a full last page" and "fill toward the gap". A null pageFactory
+                    //       opts out (overflow dropped).
+                    // nextChunkStart is captured BEFORE (2) so the peel targets the far chunk, not a
+                    // page that (2) may have just created.
+                    //
+                    // Example: `1=[a,b,c] 2=[d,e,f] 3=[g,h,i] gap 10=[p,q,r] 11=[s,t,u]`,
+                    // insert ["X","Y"] at page 1 ->
+                    //   1=[X,Y,a] 2=[b,c,d] 3=[e,f,g] 4=[h,i] gap 10=[p] 11=[q,r,s] 12=[t,u]
+                    //   (page 4 created with the overflow — (2); far chunk rebalanced by N=2 — (1)).
+                    val shiftSize = extraElements.size
+                    val nextChunkStart: Int? = cache.pages
+                        .asSequence()
+                        .filter { it > pageNumber + 1 }
+                        .firstOrNull { p ->
+                            cache.getStateOf(p)?.let { it::class == targetState::class } == true
                         }
 
-                        addAllElements(
-                            elements = displaced,
-                            targetPage = nextChunkStart + 1,
-                            index = 0,
-                            silently = true,
-                            initPageState = { pageNum, pageData ->
-                                // Synthesize a page of the same class as targetState.
-                                // addAllElements's prologue registers it in the cache and
-                                // then mutates its data list in place.
-                                targetState.copy(page = pageNum, data = pageData.toMutableList())
-                            },
+                    if (nextChunkStart != null) {
+                        val nextChunkState: OffsetPageState<T> =
+                            checkNotNull(cache.getStateOf(nextChunkStart))
+                        val nextChunkData: MutableList<T> = requireNotNull(
+                            value = nextChunkState.data as? MutableList
+                        ) { "data of next-chunk page state is not mutable" }
+
+                        val peel = minOf(shiftSize, nextChunkData.size)
+                        if (peel > 0) {
+                            val displaced = MutableList(peel) {
+                                nextChunkData.removeAt(nextChunkData.lastIndex)
+                            }.apply(MutableList<T>::reverse)
+
+                            markAffected(nextChunkStart)
+                            if (nextChunkData.isEmpty()) {
+                                // The shift emptied the first page of the chunk entirely —
+                                // drop it from the cache so we don't keep a zero-size state
+                                // around (a large batch can legitimately wipe a whole page).
+                                cache.removeFromCache(nextChunkStart)
+                            } else {
+                                if (nextChunkData is ArrayList) nextChunkData.trimToSize()
+                                cache.setState(
+                                    state = nextChunkState.copy(data = nextChunkData),
+                                    silently = true,
+                                )
+                            }
+
+                            addAllElementsCascade(
+                                chunk = displaced,
+                                pageNumber = nextChunkStart + 1,
+                                insertIndex = 0,
+                                pageFactory = { pageNum, pageData ->
+                                    // Synthesize a page of the same class as targetState.
+                                    // addAllElements's prologue registers it in the cache and
+                                    // then mutates its data list in place.
+                                    targetState.copy(page = pageNum, data = pageData.toMutableList())
+                                },
+                            )
+                        }
+                    }
+
+                    // (2) Preserve the front overflow: when pageNumber+1 is empty (gap or true end) and
+                    // a factory is available (the default same-class factory, or a custom one), create a
+                    // new page to hold it instead of dropping. Passing pageFactory = null opts out, so
+                    // the overflow is dropped (the pre-overflow-algorithm behavior).
+                    // This runs ALONGSIDE the rebalance above, so a cross-gap insert both fills toward
+                    // the gap and keeps the far chunk consistent.
+                    if (nextPageState == null && pageFactory != null) {
+                        addAllElementsCascade(
+                            chunk = extraElements,
+                            pageNumber = pageNumber + 1,
+                            insertIndex = 0,
+                            pageFactory = pageFactory,
                         )
                     }
+                    // (If a foreign-class page occupies pageNumber+1 and there is no far chunk to
+                    //  rebalance, the overflow has no valid home and is dropped — unchanged edge case.)
                 }
-
-                // (2) Preserve the front overflow: when targetPage+1 is empty (gap or true end) and
-                // a factory is available (the default same-class factory, or a custom one), create a
-                // new page to hold it instead of dropping. Passing initPageState = null opts out, so
-                // the overflow is dropped (the pre-overflow-algorithm behavior).
-                // This runs ALONGSIDE the rebalance above, so a cross-gap insert both fills toward
-                // the gap and keeps the far chunk consistent.
-                if (nextPageState == null && initPageState != null) {
-                    addAllElements(
-                        elements = extraElements,
-                        targetPage = targetPage + 1,
-                        index = 0,
-                        silently = true,
-                        initPageState = initPageState,
-                    )
-                }
-                // (If a foreign-class page occupies targetPage+1 and there is no far chunk to
-                //  rebalance, the overflow has no valid home and is dropped — unchanged edge case.)
             }
         }
 
+        addAllElementsCascade(elements, targetPage, index, initPageState)
+
+        // A page created by the overflow can make a strategy evict a page of the window. Once per
+        // call, not per cascade level: the cascade reaches every cached page after the target
+        reconcileWindow(anchor = targetPage)
         if (isDirty) core.markDirty(targetPage)
         core.markCacheChanged()
 
@@ -599,6 +625,20 @@ open class MutablePaginator<T>(
         }
         if (!silently) {
             core.snapshot()
+        }
+    }
+
+    /**
+     * Restores the context window invariant after a write that can have made an eviction strategy
+     * drop a page of the window (see [PagingCore.reconcileContextWindow]) and realigns the bookmark
+     * cursor when the window start moved. Runs even for `silently` operations: the window is state,
+     * the snapshot is only its publication.
+     */
+    private fun reconcileWindow(anchor: Int) {
+        val startBefore: Int = cache.startContextPage
+        core.reconcileContextWindow(anchor)
+        if (cache.isStarted && cache.startContextPage != startBefore) {
+            syncBookmarkIndex(cache.startContextPage)
         }
     }
 

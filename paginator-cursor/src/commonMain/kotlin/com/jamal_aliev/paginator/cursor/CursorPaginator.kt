@@ -357,6 +357,7 @@ open class CursorPaginator<K : Any, T>(
                     cache.setState(cursor, progressState, silently = true)
                     core.expandStartContextCursor(progressState, cursor)
                     core.expandEndContextCursor(progressState, cursor)
+                    core.reconcileContextWindow(anchor = cursor.self)
                     if (enableCacheFlow) core.repeatCacheFlow()
                     if (!silentlyLoading) core.snapshot()
                 },
@@ -386,6 +387,7 @@ open class CursorPaginator<K : Any, T>(
                     core.expandEndContextCursor(aboveCursor?.let { cache.getStateOf(it.self) }, aboveCursor)
                 }
             }
+            core.reconcileContextWindow(anchor = resultCursor.self)
 
             if (enableCacheFlow) core.repeatCacheFlow()
             if (!silentlyResult) core.snapshot()
@@ -410,6 +412,7 @@ open class CursorPaginator<K : Any, T>(
                     } else {
                         cache.removeFromCache(bookmark.self)
                     }
+                    savedEnd?.let { core.reconcileContextWindow(anchor = it.self) }
                     core.snapshot()
                 }
             }
@@ -472,6 +475,16 @@ open class CursorPaginator<K : Any, T>(
 
         navigationMutex.lock()
         try {
+            // The window can have been damaged outside navigation (core.removeFromCache, a custom
+            // eviction strategy): repair it before the pivot is read from its boundary.
+            val windowEnd: CursorBookmark<K>? = cache.endContextCursor
+            windowEnd?.let { core.reconcileContextWindow(anchor = it.self) }
+            if (!cache.isStarted && windowEnd != null) {
+                // Not a single window page is cached any more: keep the old boundary, which is then
+                // reloaded in place like any non-filled end.
+                core.startContextCursor = windowEnd
+                core.endContextCursor = windowEnd
+            }
             var pivotCursor: CursorBookmark<K> = cache.endContextCursor
                 ?: throw IllegalStateException("endContextCursor is null but cache.isStarted is true")
             var pivotState: CursorPageState<K, T>? = cache.getStateOf(pivotCursor.self)
@@ -520,6 +533,8 @@ open class CursorPaginator<K : Any, T>(
                 if (maybeNext != null) {
                     core.expandEndContextCursor(cache.getStateOf(maybeNext.self), maybeNext)
                 }
+                // A page promoted from the L2 cache was written through the eviction strategy
+                core.reconcileContextWindow(anchor = resolvedCursor.self)
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyCursorsInContext()
@@ -544,6 +559,9 @@ open class CursorPaginator<K : Any, T>(
                         state = initProgressState.invoke(cursor, data, cached?.metadata)
                     ) as CursorPageState.Progress<K, T>
                     cache.setState(cursor, progressState, silently = true)
+                    // The progress state may have evicted a page of the window (strategies without
+                    // window protection): narrow the window before it is published.
+                    core.reconcileContextWindow(anchor = pivotCursor.self)
                     if (enableCacheFlow) core.repeatCacheFlow()
                     if (!silentlyLoading) core.snapshot()
                 },
@@ -552,16 +570,26 @@ open class CursorPaginator<K : Any, T>(
             )
             shouldCleanup = false
             cache.setState(resultCursor, resultState, silently = true)
-            if (core.endContextCursor?.self == pivotCursor.self && core.isFilledSuccessState(
-                    resultState
-                )
-            ) {
-                core.endContextCursor = resultCursor
+            val isResultFilled: Boolean = core.isFilledSuccessState(resultState)
+            if (isResultFilled) {
+                if (core.endContextCursor?.self != pivotCursor.self) {
+                    // The pivot was evicted while the page was loading, so the loaded page cannot
+                    // extend the window: the window follows the loaded page instead.
+                    core.startContextCursor = resultCursor
+                    core.endContextCursor = resultCursor
+                    val maybePrev = cache.walkBackward(resultCursor)
+                    if (maybePrev != null) {
+                        core.expandStartContextCursor(cache.getStateOf(maybePrev.self), maybePrev)
+                    }
+                } else {
+                    core.endContextCursor = resultCursor
+                }
                 val maybeNext = cache.walkForward(resultCursor)
                 if (maybeNext != null) {
                     core.expandEndContextCursor(cache.getStateOf(maybeNext.self), maybeNext)
                 }
             }
+            core.reconcileContextWindow(anchor = if (isResultFilled) resultCursor.self else pivotCursor.self)
             if (enableCacheFlow) core.repeatCacheFlow()
             if (!silentlyResult) core.snapshot()
 
@@ -581,6 +609,7 @@ open class CursorPaginator<K : Any, T>(
                     } else if (originalCursor != null) {
                         cache.removeFromCache(originalCursor.self)
                     }
+                    cache.endContextCursor?.let { core.reconcileContextWindow(anchor = it.self) }
                     core.snapshot()
                 }
             }
@@ -619,6 +648,17 @@ open class CursorPaginator<K : Any, T>(
 
         navigationMutex.lock()
         try {
+            // The window can have been damaged outside navigation (core.removeFromCache, a custom
+            // eviction strategy): repair it before the pivot is read from its boundary.
+            val windowStart: CursorBookmark<K>? = cache.startContextCursor
+            windowStart?.let { core.reconcileContextWindow(anchor = it.self) }
+            val isWindowGone: Boolean = !cache.isStarted && windowStart != null
+            if (isWindowGone) {
+                // Not a single window page is cached any more: keep the old boundary as the anchor
+                // (the page before it is loaded).
+                core.startContextCursor = windowStart
+                core.endContextCursor = windowStart
+            }
             var pivotCursor: CursorBookmark<K> = cache.startContextCursor
                 ?: throw IllegalStateException("startContextCursor is null but cache.isStarted is true")
             var pivotState: CursorPageState<K, T>? = cache.getStateOf(pivotCursor.self)
@@ -670,6 +710,8 @@ open class CursorPaginator<K : Any, T>(
                 if (maybePrev != null) {
                     core.expandStartContextCursor(cache.getStateOf(maybePrev.self), maybePrev)
                 }
+                // A page promoted from the L2 cache was written through the eviction strategy
+                core.reconcileContextWindow(anchor = resolvedCursor.self)
                 if (enableCacheFlow) core.repeatCacheFlow()
                 if (!silentlyResult) core.snapshot()
                 refreshDirtyCursorsInContext()
@@ -694,6 +736,10 @@ open class CursorPaginator<K : Any, T>(
                         state = initProgressState.invoke(cursor, data, cached?.metadata)
                     ) as CursorPageState.Progress<K, T>
                     cache.setState(cursor, progressState, silently = true)
+                    // The progress state may have evicted a page of the window (strategies without
+                    // window protection): narrow the window before it is published. When the whole
+                    // window was gone, the page being loaded becomes the window, like a jump target.
+                    core.reconcileContextWindow(anchor = if (isWindowGone) cursor.self else pivotCursor.self)
                     if (enableCacheFlow) core.repeatCacheFlow()
                     if (!silentlyLoading) core.snapshot()
                 },
@@ -702,16 +748,26 @@ open class CursorPaginator<K : Any, T>(
             )
             shouldCleanup = false
             cache.setState(resultCursor, resultState, silently = true)
-            if (core.startContextCursor?.self == pivotCursor.self && core.isFilledSuccessState(
-                    resultState
-                )
-            ) {
-                core.startContextCursor = resultCursor
+            val isResultFilled: Boolean = core.isFilledSuccessState(resultState)
+            if (isResultFilled) {
+                if (core.startContextCursor?.self != pivotCursor.self) {
+                    // The pivot was evicted while the page was loading, so the loaded page cannot
+                    // extend the window: the window follows the loaded page instead.
+                    core.startContextCursor = resultCursor
+                    core.endContextCursor = resultCursor
+                    val maybeNext = cache.walkForward(resultCursor)
+                    if (maybeNext != null) {
+                        core.expandEndContextCursor(cache.getStateOf(maybeNext.self), maybeNext)
+                    }
+                } else {
+                    core.startContextCursor = resultCursor
+                }
                 val maybePrev = cache.walkBackward(resultCursor)
                 if (maybePrev != null) {
                     core.expandStartContextCursor(cache.getStateOf(maybePrev.self), maybePrev)
                 }
             }
+            core.reconcileContextWindow(anchor = if (isResultFilled) resultCursor.self else pivotCursor.self)
             if (enableCacheFlow) core.repeatCacheFlow()
             if (!silentlyResult) core.snapshot()
 
@@ -731,6 +787,7 @@ open class CursorPaginator<K : Any, T>(
                     } else if (originalCursor != null) {
                         cache.removeFromCache(originalCursor.self)
                     }
+                    cache.startContextCursor?.let { core.reconcileContextWindow(anchor = it.self) }
                     core.snapshot()
                 }
             }
@@ -976,6 +1033,9 @@ open class CursorPaginator<K : Any, T>(
                     cache.setState(cachedCursor, progressState, silently = true)
                     progressIds[cachedCursor.self] = progressState.id
                 }
+                // The progress states may have evicted pages of the window (strategies without
+                // window protection): narrow the window before the loading snapshot is published.
+                cache.startContextCursor?.let { core.reconcileContextWindow(anchor = it.self) }
                 dirtyAtStart = cursors.map { it.self }.filter { core.isDirty(it) }
                 core.clearDirty(cursors.map { it.self })
             } finally {
@@ -1006,6 +1066,9 @@ open class CursorPaginator<K : Any, T>(
                 committed.forEach { (cursor, state) ->
                     cache.setState(cursor, state, silently = true)
                 }
+                // Rewriting a page can evict window pages (CursorTimeLimitedPagingCache without
+                // window protection): narrow the window first, the re-anchoring below then works on it.
+                cache.startContextCursor?.let { core.reconcileContextWindow(anchor = it.self) }
                 if (committed.size < results.size) {
                     logger.debug(LogComponent.LIFECYCLE) {
                         "refresh: skipped cursors changed during loading=" +
@@ -1060,6 +1123,7 @@ open class CursorPaginator<K : Any, T>(
                                 cache.removeFromCache(self)
                             }
                         }
+                        cache.startContextCursor?.let { core.reconcileContextWindow(anchor = it.self) }
                         core.snapshot()
                     } finally {
                         navigationMutex.unlock()
@@ -1232,16 +1296,23 @@ open class CursorPaginator<K : Any, T>(
         }
     }
 
+    /**
+     * Puts the paginator back to [savepoint]. The capacity and the context window are restored
+     * **before** the pages are written, so eviction strategies judge the restored pages by the
+     * restored window, not by the window the failed block left behind. The pages are written in
+     * the order of the save point, which is the order of the chain. LRU/FIFO order and TTL timers
+     * are not part of the save point: restored pages count as just inserted, in that order.
+     */
     private fun rollback(savepoint: CursorTransactionSavepoint<K, T>) {
         cache.clear()
         core.clearAllDirty()
+        core.capacity = savepoint.capacity
+        core.startContextCursor = savepoint.startContextCursor
+        core.endContextCursor = savepoint.endContextCursor
         savepoint.states.forEach { (cursor, state) ->
             cache.setState(cursor, state, silently = true)
         }
         savepoint.dirtyCursors.forEach { core.markDirty(it) }
-        core.capacity = savepoint.capacity
-        core.startContextCursor = savepoint.startContextCursor
-        core.endContextCursor = savepoint.endContextCursor
 
         initialCursor = savepoint.initialCursor
         bookmarks.clear()
@@ -1253,6 +1324,9 @@ open class CursorPaginator<K : Any, T>(
         lockGoPreviousPage = savepoint.lockGoPreviousPage
         lockRestart = savepoint.lockRestart
         lockRefresh = savepoint.lockRefresh
+        // Insurance: the save point was a valid state of this very cache, but a custom strategy may
+        // still evict while the pages are written back
+        savepoint.startContextCursor?.let { core.reconcileContextWindow(anchor = it.self) }
         core.markCacheReplaced()
 
         core.snapshot()
