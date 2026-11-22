@@ -9,6 +9,12 @@ import com.jamal_aliev.paginator.offset.extension.withLeaf
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 
 /**
+ * Slack added to `2 * cache.size` before [QueuedPagingCache] compacts its insertion order, so tiny
+ * caches are not compacted on every insert.
+ */
+private const val STALE_ENTRY_SLACK = 16
+
+/**
  * A [PagingCache] decorator that enforces a **FIFO (First In, First Out)** eviction policy.
  *
  * When the number of cached pages exceeds [maxSize], the oldest page (first inserted)
@@ -52,14 +58,29 @@ class QueuedPagingCache<T>(
         require(maxSize > 0) { "maxSize must be greater than 0, was $maxSize" }
     }
 
-    /** Tracks page insertion order: head = oldest, tail = newest. */
-    private val insertionOrder = mutableListOf<Int>()
+    /**
+     * Tracks page insertion order: head = oldest, tail = newest.
+     *
+     * A set, so a page has at most one entry. An inner strategy can remove pages without telling
+     * this decorator; such stale entries are skipped and dropped lazily by [performEviction] and
+     * compacted in [setState], so they never decide which page is evicted.
+     */
+    private val insertionOrder = LinkedHashSet<Int>()
+
+    /** Number of entries in the insertion order, stale ones included. For tests, not API. */
+    internal val trackedEntryCount: Int get() = insertionOrder.size
 
     override fun setState(state: OffsetPageState<T>, silently: Boolean) {
         val isNew = cache.getStateOf(state.page) == null
         cache.setState(state, silently)
         if (isNew) {
+            // A page re-added after an inner strategy removed it is a fresh insertion: one entry, at the tail.
+            insertionOrder.remove(state.page)
             insertionOrder.add(state.page)
+        }
+        // Amortised O(1): the pass runs only after the order has outgrown the cache by a wide margin.
+        if (insertionOrder.size > 2 * cache.size + STALE_ENTRY_SLACK) {
+            insertionOrder.retainAll(cache.pages.toHashSet())
         }
         performEviction(justAddedPage = state.page)
     }
@@ -91,11 +112,20 @@ class QueuedPagingCache<T>(
             val protectedRange = if (protectContextWindow && cache.isStarted)
                 cache.startContextPage..cache.endContextPage else null
 
-            val victim = insertionOrder.firstOrNull { page ->
-                page != justAddedPage &&
-                        cache.peekStateOf(page) != null &&
-                        (protectedRange == null || page !in protectedRange)
-            } ?: break
+            // Oldest live, unprotected page. Entries of pages that are no longer cached are stale
+            // (removed by an inner strategy): they are dropped on the way, never chosen.
+            var victim: Int? = null
+            val iterator = insertionOrder.iterator()
+            while (iterator.hasNext()) {
+                val page = iterator.next()
+                if (cache.peekStateOf(page) == null) {
+                    iterator.remove()
+                } else if (page != justAddedPage && (protectedRange == null || page !in protectedRange)) {
+                    victim = page
+                    break
+                }
+            }
+            if (victim == null) break
 
             val evicted = cache.removeFromCache(victim)
             insertionOrder.remove(victim)
