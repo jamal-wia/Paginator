@@ -5,9 +5,9 @@ import com.jamal_aliev.paginator.offset.cache.PagingCache
 /**
  * A [PagingCache] that can participate in strategy composition via the [com.jamal_aliev.paginator.extension.plus] operator.
  *
- * All four built-in eviction strategies ([MostRecentPagingCache], [QueuedPagingCache],
- * [TimeLimitedPagingCache], [ContextWindowPagingCache]) implement this interface, enabling
- * left-to-right strategy composition:
+ * All five built-in eviction strategies ([MostRecentPagingCache], [QueuedPagingCache],
+ * [TimeLimitedPagingCache], [ContextWindowPagingCache], [NearestPagingCache]) implement this
+ * interface, enabling left-to-right strategy composition:
  *
  * ```kotlin
  * val cache = MostRecentPagingCache(maxSize = 50) + TimeLimitedPagingCache(ttl = 5.minutes) + ContextWindowPagingCache()
