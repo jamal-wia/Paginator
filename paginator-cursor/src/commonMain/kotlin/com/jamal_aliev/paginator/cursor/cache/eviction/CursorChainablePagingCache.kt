@@ -8,7 +8,7 @@ import com.jamal_aliev.paginator.cursor.cache.CursorPagingCache
  *
  * Built-in eviction strategies for cursor-based pagination
  * ([CursorMostRecentPagingCache], [CursorQueuedPagingCache], [CursorTimeLimitedPagingCache],
- * [CursorContextWindowPagingCache]) implement this interface, enabling
+ * [CursorContextWindowPagingCache], [CursorNearestPagingCache]) implement this interface, enabling
  * left-to-right strategy composition:
  *
  * ```kotlin
