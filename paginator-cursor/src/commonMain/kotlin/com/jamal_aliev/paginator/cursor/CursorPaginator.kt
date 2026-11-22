@@ -650,7 +650,8 @@ open class CursorPaginator<K : Any, T>(
             // eviction strategy): repair it before the pivot is read from its boundary.
             val windowStart: CursorBookmark<K>? = cache.startContextCursor
             windowStart?.let { core.reconcileContextWindow(anchor = it.self) }
-            if (!cache.isStarted && windowStart != null) {
+            val isWindowGone: Boolean = !cache.isStarted && windowStart != null
+            if (isWindowGone) {
                 // Not a single window page is cached any more: keep the old boundary as the anchor
                 // (the page before it is loaded).
                 core.startContextCursor = windowStart
@@ -732,8 +733,9 @@ open class CursorPaginator<K : Any, T>(
                     ) as CursorPageState.Progress<K, T>
                     cache.setState(cursor, progressState, silently = true)
                     // The progress state may have evicted a page of the window (strategies without
-                    // window protection): narrow the window before it is published.
-                    core.reconcileContextWindow(anchor = pivotCursor.self)
+                    // window protection): narrow the window before it is published. When the whole
+                    // window was gone, the page being loaded becomes the window, like a jump target.
+                    core.reconcileContextWindow(anchor = if (isWindowGone) cursor.self else pivotCursor.self)
                     if (enableCacheFlow) core.repeatCacheFlow()
                     if (!silentlyLoading) core.snapshot()
                 },

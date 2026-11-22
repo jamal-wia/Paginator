@@ -329,8 +329,12 @@ open class CursorPagingCore<K : Any, T>(
      * window; the stale boundary object keeps its links even without a cache entry). If the anchor
      * itself is not cached, the run on the side of the anchor is taken: the start side when the
      * anchor is the old start, the end side otherwise. If no seed run exists, the window is
-     * re-anchored with [findNearContextCursor] around the old boundaries. The window never moves to
-     * a foreign chain of the cache while a page of the old window survives.
+     * re-anchored with [findNearContextCursor] around the old boundaries. Without bookmarks the
+     * middle of a chain cannot be walked, so a run that is reachable neither from the anchor nor
+     * from the boundary pages (or their neighbours inside the window) is not found: with several
+     * holes the re-anchoring can then pick another chain of the cache even though a page of the old
+     * window survives. A cached anchor is always found, even when it lies outside the old window
+     * (the page being loaded after the whole window was removed).
      *
      * Only the presence of a page is checked ([CursorPagingCache.peekStateOf]), not whether it is
      * filled; the rules about filled and non-filled boundaries stay in the navigation code. Reads
@@ -350,11 +354,12 @@ open class CursorPagingCore<K : Any, T>(
 
         fun isCached(self: K): Boolean = cache.peekStateOf(self) != null
 
-        // Fast path: the chain from start reaches end through cached pages only
+        // Fast path: the chain from start reaches end through cached pages only (no allocations;
+        // the budget guards against cyclic links)
         fun isWindowIntact(): Boolean {
-            val visited = HashSet<K>()
             var current: CursorBookmark<K> = start
-            while (visited.add(current.self) && isCached(current.self)) {
+            var budget: Int = cache.size
+            while (budget-- > 0 && isCached(current.self)) {
                 if (current.self == end.self) return true
                 current = cache.walkForward(current) ?: return false
             }

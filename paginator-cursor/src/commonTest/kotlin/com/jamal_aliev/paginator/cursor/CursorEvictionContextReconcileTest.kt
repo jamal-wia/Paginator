@@ -37,6 +37,7 @@ class CursorEvictionContextReconcileTest {
     private class Env(
         val paginator: CursorPaginator<String, String>,
         val gates: MutableMap<String, CompletableDeferred<Unit>>,
+        val failing: MutableSet<String>,
     )
 
     private fun cb(self: String) = CursorBookmark<String>(prev = null, self = self, next = null)
@@ -52,6 +53,7 @@ class CursorEvictionContextReconcileTest {
     ): Env {
         val backend = FakeCursorBackend(FakeCursorBackend.defaultPages(pageCount = 8, capacity = 3))
         val gates = mutableMapOf<String, CompletableDeferred<Unit>>()
+        val failing = mutableSetOf<String>()
         val cache = CursorQueuedPagingCache<String, String>(
             maxSize = maxSize,
             protectContextWindow = protectContextWindow,
@@ -59,9 +61,10 @@ class CursorEvictionContextReconcileTest {
         val core = CursorPagingCore<String, String>(cache = cache, initialCapacity = 3)
         val paginator = CursorPaginator<String, String>(core = core) { cursor ->
             cursor?.self?.let { gates[it] }?.await()
+            if (cursor?.self in failing) error("load of ${cursor?.self} failed")
             backend.loadResult(cursor)
         }
-        return Env(paginator, gates)
+        return Env(paginator, gates, failing)
     }
 
     private suspend fun CursorPaginator<String, String>.snapshotSelves(): List<String> =
@@ -227,6 +230,29 @@ class CursorEvictionContextReconcileTest {
 
         assertEquals("p0", loaded.bookmark.self)
         assertEquals("p0" to "p1", paginator.window())
+        assertWindowInvariant(paginator)
+    }
+
+    @Test
+    fun `goPreviousPage with a fully removed window and a failing load keeps the paginator started`() = runTest {
+        val env = createEnv(maxSize = 10)
+        val paginator = env.paginator
+
+        paginator.jump(cb("p3"))
+        paginator.goNextPage()
+        // every page of the window is gone and nothing is cached
+        paginator.core.removeFromCache("p3")
+        paginator.core.removeFromCache("p4")
+        assertEquals(emptySet(), paginator.cache.cursors.map { it.self }.toSet())
+        env.failing += "p2"
+
+        val loaded = paginator.goPreviousPage()
+
+        assertEquals("p2", loaded.bookmark.self)
+        assertTrue(loaded is CursorPageState.Error)
+        assertTrue(paginator.core.isStarted, "the paginator must stay started")
+        assertEquals("p2" to "p2", paginator.window())
+        assertEquals(listOf("p2"), paginator.snapshotSelves())
         assertWindowInvariant(paginator)
     }
 
@@ -516,6 +542,18 @@ class CursorEvictionContextReconcileTest {
         assertTrue(start != null && end != null, "a filled page is cached, the window must be re-anchored")
         assertTrue(core.cache.peekStateOf(start) != null)
         assertTrue(core.cache.peekStateOf(end) != null)
+    }
+
+    @Test
+    fun `reconcileContextWindow takes a cached anchor outside the window when the whole window is gone`() {
+        val core = coreOf()
+        core.putChain(5, 6)
+        core.window(5, 6)
+        core.removeFromCache("p5")
+        core.removeFromCache("p6")
+        core.putChain(2, 2)
+        core.reconcileContextWindow(anchor = "p2")
+        assertEquals("p2" to "p2", core.bounds())
     }
 
     @Test
