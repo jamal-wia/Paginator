@@ -19,7 +19,8 @@ import kotlinx.coroutines.flow.Flow
  *    identifies an item across mutations — typically a primary key. Returning
  *    `equals`-based identity for items whose fields change (and therefore
  *    whose `equals` result changes) makes [ReactiveEvent.Updated],
- *    [ReactiveEvent.Patched] and [ReactiveEvent.Removed] silently fail to locate the cached item.
+ *    [ReactiveEvent.Patched] and [ReactiveEvent.Removed] silently fail to locate the cached
+ *    item.
  *
  * 2. **Hot subscription.** [changes] is collected by the paginator from the
  *    moment [com.jamal_aliev.paginator.extension.observe] is called until the

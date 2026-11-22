@@ -52,8 +52,12 @@ sealed interface ReactiveEvent<out T, out ID : Any> {
      * critical section. It may run more than once if several cached items share the identity,
      * and its result is thrown away if a surrounding [Batch] rolls back. It must not change the
      * item's identity: a transform that does is reported to `onError` and the item is left
-     * unchanged. A throwing transform is reported to `onError` too; inside a [Batch] it rolls
-     * back the whole batch.
+     * unchanged. An [Exception] thrown by [transform] is reported to `onError` too and leaves
+     * the item unchanged; inside a [Batch] it rolls back the whole batch. An [Error] (for
+     * example `NotImplementedError` from `TODO()`) is not caught and ends the subscription.
+     * The one exception to "left unchanged": when the same identity is cached more than once
+     * (possible only with `deduplicateInserts = false`), copies written before the failing one
+     * stay patched, and no snapshot is emitted until the next change.
      *
      * If no cached item matches, the active `UnknownItemPolicy` decides whether the event is
      * dropped or escalated. Works inside [Batch] like any other event.
@@ -61,7 +65,9 @@ sealed interface ReactiveEvent<out T, out ID : Any> {
      * **Variance:** unlike the parent interface, `Patched` is invariant in [T] because
      * [transform] reads an item. Emit it typed with exactly the paginator's item type: a
      * `Patched<Dog, ID>` upcast into a `ReactiveEvent<Animal, ID>` flow would call [transform]
-     * on items that are not `Dog`s, which fails at runtime (the error goes to `onError`).
+     * on items that are not `Dog`s. On JVM, Android, Native and Wasm that fails with a
+     * `ClassCastException` reported to `onError`; on Kotlin/JS there is no cast, so the outcome
+     * is undefined (a silently wrong item, or an uncatchable `TypeError`).
      *
      * Being a data class, two `Patched` events are equal only if they hold the same lambda
      * instance.

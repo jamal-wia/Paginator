@@ -214,10 +214,12 @@ fun <K : Any, T, ID : Any> MutableCursorPaginator<K, T>.observe(
  *   multi-threaded dispatcher. A `Batch` / `Moved` is applied atomically in one critical section —
  *   its rollback can only undo its own changes. `refreshAll` (an `Invalidate`, or
  *   [UnknownItemPolicy.RefreshAll]) is requested during the critical section and run once after it.
+ *   The `transform` of a `Patched` runs inside this critical section, so it composes with other
+ *   events without losing updates — and must stay pure, fast and non-suspending.
  * - **Untracked.** The CRUD runs with the core in untracked mode: searching the pages for an
  *   identity and writing the result are not a use of the pages for LRU / TTL caches.
- * - **Refresh in flight.** An event that changes a page a `refresh` is still loading gives that
- *   page a fresh Success state, so the refresh's older result does not overwrite the event; the
+ * - **Refresh in flight.** An event (`Updated`, `Patched`, ...) that changes a page a `refresh` is
+ *   still loading gives that page a fresh Success state, so the refresh's older result does not overwrite the event; the
  *   page is marked dirty, so the refreshed data still arrives on the next navigation.
  * - **Resilient source.** A failing source (including a `CancellationException` of its own, e.g.
  *   `withTimeout`) is reported and re-subscribed with exponential backoff, followed by a

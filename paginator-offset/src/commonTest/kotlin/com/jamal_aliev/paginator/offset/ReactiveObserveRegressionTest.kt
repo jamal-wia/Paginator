@@ -197,6 +197,7 @@ class ReactiveObserveRegressionTest {
         d.gate!!.complete(Unit)
         refresh.join()
         assertEquals(d.db.value.map { it.label }, labels(p), "live patch lost to the older refresh result")
+        assertTrue(p.core.isDirty(2), "the patched page must be marked dirty")
         job.cancel()
     }
 

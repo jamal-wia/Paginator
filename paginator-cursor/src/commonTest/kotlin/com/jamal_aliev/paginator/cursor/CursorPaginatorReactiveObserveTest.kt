@@ -237,7 +237,7 @@ class CursorPaginatorReactiveObserveTest {
     }
 
     @Test
-    fun `Batch with Patched children applies them atomically`() = runTest {
+    fun `Batch with Patched children applies all of them in order`() = runTest {
         val paginator = populatedPaginator()
         val source = FakeReactiveCache()
         val job = paginator.observe(this, source, initialSync = InitialSyncPolicy.None)

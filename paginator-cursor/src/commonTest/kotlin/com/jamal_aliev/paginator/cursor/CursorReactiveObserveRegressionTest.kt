@@ -200,6 +200,7 @@ class CursorReactiveObserveRegressionTest {
         d.patch(5, "patched")
         bus.events.emit(CursorReactiveEvent.Updated(Item(5, "patched")))
         runCurrent()
+        assertEquals("patched", p.cache.peekStateOf("p1")!!.data[1].label) // applied into the Progress page
         d.gate!!.complete(Unit)
         refresh.join()
         assertEquals(d.db.value.map { it.label }, labels(p), "live update lost to the older refresh result")
@@ -220,9 +221,11 @@ class CursorReactiveObserveRegressionTest {
         d.patch(5, "patched")
         bus.events.emit(CursorReactiveEvent.Patched(5) { it.copy(label = "patched") })
         runCurrent()
+        assertEquals("patched", p.cache.peekStateOf("p1")!!.data[1].label) // applied into the Progress page
         d.gate!!.complete(Unit)
         refresh.join()
         assertEquals(d.db.value.map { it.label }, labels(p), "live patch lost to the older refresh result")
+        assertTrue(p.core.isDirty("p1"), "the patched page must be marked dirty")
         job.cancel()
     }
 

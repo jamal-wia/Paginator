@@ -14,9 +14,9 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -129,7 +129,7 @@ class CursorReactiveObserveThreadingTest {
         }
         withTimeout(60_000) {
             // Navigate to the cached page while the bridge writes on another thread.
-            while (counter() < producers * perProducer) {
+            while (errors.isEmpty() && counter() < producers * perProducer) {
                 try {
                     paginator.jump(head, silentlyLoading = true, silentlyResult = true)
                 } catch (e: CancellationException) {
@@ -142,7 +142,7 @@ class CursorReactiveObserveThreadingTest {
         }
         jobs.forEach { it.join() }
         scope.cancel()
-        assertEquals(producers * perProducer, counter())
         assertTrue(errors.isEmpty(), "errors (${errors.size}): ${errors.firstOrNull()?.stackTraceToString()}")
+        assertEquals(producers * perProducer, counter())
     }
 }
