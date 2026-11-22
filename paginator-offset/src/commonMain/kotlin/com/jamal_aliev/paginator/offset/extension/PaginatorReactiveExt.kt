@@ -188,8 +188,9 @@ fun <T, ID : Any> MutablePaginator<T>.observe(
  * - **Untracked.** The CRUD runs with the core in untracked mode: searching the pages for an
  *   identity and writing the result are not a use of the pages for LRU / TTL caches.
  * - **Refresh in flight.** An event (`Updated`, `Patched`, ...) that changes a page a `refresh` is
- *   still loading gives that page a fresh Success state, so the refresh's older result does not overwrite the event; the
- *   page is marked dirty, so the refreshed data still arrives on the next navigation.
+ *   still loading gives that page a fresh Success state, so the refresh's older result does not
+ *   overwrite the event; the page is marked dirty, so the refreshed data still arrives on the
+ *   next navigation.
  * - **Resilient source.** A failing source (including a `CancellationException` of its own, e.g.
  *   `withTimeout`) is reported and re-subscribed with exponential backoff, followed by a
  *   `refreshAll` to reconcile what was missed. Only a source that completes normally ends the Job.

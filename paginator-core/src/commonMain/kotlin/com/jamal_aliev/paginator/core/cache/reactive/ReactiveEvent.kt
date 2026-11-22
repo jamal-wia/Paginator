@@ -55,9 +55,10 @@ sealed interface ReactiveEvent<out T, out ID : Any> {
      * unchanged. An [Exception] thrown by [transform] is reported to `onError` too and leaves
      * the item unchanged; inside a [Batch] it rolls back the whole batch. An [Error] (for
      * example `NotImplementedError` from `TODO()`) is not caught and ends the subscription.
-     * The one exception to "left unchanged": when the same identity is cached more than once
-     * (possible only with `deduplicateInserts = false`), copies written before the failing one
-     * stay patched, and no snapshot is emitted until the next change.
+     * The one exception to "left unchanged", outside a [Batch]: when the same identity is
+     * cached more than once (for example with `deduplicateInserts = false`, or when `load`
+     * returned overlapping pages), copies written before the failing one stay patched, and no
+     * snapshot is emitted until the next change. Inside a [Batch] the rollback restores them.
      *
      * If no cached item matches, the active `UnknownItemPolicy` decides whether the event is
      * dropped or escalated. Works inside [Batch] like any other event.
@@ -67,7 +68,8 @@ sealed interface ReactiveEvent<out T, out ID : Any> {
      * `Patched<Dog, ID>` upcast into a `ReactiveEvent<Animal, ID>` flow would call [transform]
      * on items that are not `Dog`s. On JVM, Android, Native and Wasm that fails with a
      * `ClassCastException` reported to `onError`; on Kotlin/JS there is no cast, so the outcome
-     * is undefined (a silently wrong item, or an uncatchable `TypeError`).
+     * is undefined (a silently wrong item, or a `TypeError` the bridge does not catch, which
+     * ends the subscription).
      *
      * Being a data class, two `Patched` events are equal only if they hold the same lambda
      * instance.
