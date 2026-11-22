@@ -9,6 +9,7 @@ import com.jamal_aliev.paginator.offset.load.LoadResult
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import com.jamal_aliev.paginator.offset.serialization.PageEntry
 import com.jamal_aliev.paginator.offset.serialization.PagingCoreSnapshot
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -215,6 +216,28 @@ class RestoreContextOrderTest {
 
         assertEquals(listOf(1, 2, 3), paginator.cache.pages)
         assertEquals(setOf(2), paginator.core.dirtyPages)
+    }
+
+    @Test
+    fun `restoreState of a snapshot bigger than the cache narrows the window and publishes it`() = runTest {
+        val env = createEnv { listener ->
+            MostRecentPagingCache(maxSize = 2, protectContextWindow = false, evictionListener = listener)
+        }
+        val paginator = env.paginator
+        // three pages into a cache of two without window protection: page 1 is evicted while the
+        // pages are written, although it is the start of the restored window
+        val snapshot = snapshotOf(
+            start = 1, end = 3,
+            entries = (1..3).map { entry(it) },
+        )
+
+        paginator.core.restoreState(snapshot)
+
+        assertEquals(listOf(1), env.evicted)
+        assertEquals(listOf(2, 3), paginator.cache.pages)
+        assertEquals(2, paginator.core.startContextPage)
+        assertEquals(3, paginator.core.endContextPage)
+        assertEquals(listOf(2, 3), paginator.core.snapshot.first().map { it.page })
     }
 
     // ── transaction rollback ─────────────────────────────────────────────────

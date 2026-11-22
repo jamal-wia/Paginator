@@ -414,9 +414,8 @@ open class PagingCore<T>(
      * untracked: reconciling must not reorder an LRU strategy or restart a TTL timer.
      *
      * Call it under the navigation lock, before [snapshot], after anything that wrote to the cache
-     * ([PagingCache.setState]) or can have damaged the window. The main path of [Paginator.restart]
-     * does not need it: it clears the cache and sets the window to page `1..1`, so a hole cannot
-     * appear. Its cancellation path does: it puts the saved window back over a cleared cache.
+     * ([PagingCache.setState]) or can have damaged the window. [Paginator.restart] does not need
+     * it: it clears the cache and sets the window to page `1..1`, so a hole cannot appear.
      *
      * @param anchor The page navigation is anchored on. It may lie outside the window.
      */
@@ -1167,7 +1166,9 @@ open class PagingCore<T>(
      * eviction strategy judges the restored pages by the restored window, not by the window the
      * paginator had before the call. The strategy's own bookkeeping is not restored: the LRU/FIFO
      * order is the order of the snapshot's entries (every restored page counts as just inserted),
-     * and the timers of a TTL strategy start anew.
+     * and the timers of a TTL strategy start anew. If the strategy evicts pages of the restored window
+     * while they are written (a snapshot bigger than its `maxSize` with `protectContextWindow = false`),
+     * the window narrows to the contiguous run that survived.
      *
      * Uses [initializerSuccessPage] for every entry, so custom PageState subclasses are
      * honored on restore.
@@ -1203,6 +1204,8 @@ open class PagingCore<T>(
             }
         }
 
+        // A snapshot bigger than the cache strategy allows can have evicted pages of the window
+        reconcileContextWindow(anchor = startContextPage)
         markCacheReplaced()
 
         if (!silently) {
