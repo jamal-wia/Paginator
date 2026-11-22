@@ -1,6 +1,7 @@
 package com.jamal_aliev.paginator.offset.cache.eviction
 
 import com.jamal_aliev.paginator.core.cache.eviction.CacheEvictionListener
+import com.jamal_aliev.paginator.offset.cache.InMemoryPagingCache
 import com.jamal_aliev.paginator.offset.cache.PagingCache
 import com.jamal_aliev.paginator.offset.page.OffsetPageState
 import kotlin.test.Test
@@ -372,5 +373,39 @@ class QueuedPagingCacheTest {
         assertNotNull(core.removeFromCache(1))
         assertEquals(1, core.size)
         assertEquals(core.size, core.trackedEntryCount)
+    }
+
+    @Test
+    fun `compaction keeps the insertion order of surviving pages`() {
+        val evicted = mutableListOf<Int>()
+        val leaf = InMemoryPagingCache<String>()
+        val core = QueuedPagingCache(
+            cache = leaf,
+            maxSize = 4,
+            protectContextWindow = false,
+            evictionListener = CacheEvictionListener { evicted.add((it as OffsetPageState).page) },
+        )
+
+        // The survivors 3, 2, 1 are inserted in this order, not in ascending order.
+        core.setState(successPage(3), silently = true)
+        core.setState(successPage(2), silently = true)
+        core.setState(successPage(1), silently = true)
+
+        // Churn pages are removed behind the decorator's back and leave stale entries: far more
+        // than the compaction limit, so the compaction runs while the survivors are queued.
+        for (i in 100 until 140) {
+            core.setState(successPage(i), silently = true)
+            leaf.removeFromCache(i)
+        }
+        assertEquals(listOf(1, 2, 3), core.pages)
+        assertTrue(core.trackedEntryCount < 50, "tracked ${core.trackedEntryCount} entries")
+        assertEquals(emptyList(), evicted)
+
+        // Overflow: the oldest insertion is page 3, not the lowest page 1.
+        core.setState(successPage(4), silently = true)
+        core.setState(successPage(5), silently = true)
+
+        assertEquals(listOf(3), evicted)
+        assertEquals(listOf(1, 2, 4, 5), core.pages)
     }
 }

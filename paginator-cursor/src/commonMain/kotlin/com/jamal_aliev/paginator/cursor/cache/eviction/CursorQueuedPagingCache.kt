@@ -21,6 +21,11 @@ private const val STALE_ENTRY_SLACK = 16
  * When the number of cached pages exceeds [maxSize], the page that was added
  * first is evicted. Unlike [CursorMostRecentPagingCache], reads do not affect the
  * eviction priority.
+ *
+ * When composed over a strategy that removes pages itself (for example
+ * [CursorContextWindowPagingCache]), a page removed by the inner strategy and inserted again counts
+ * as a new insertion and goes to the tail of the queue; the queue never evicts a page it no longer
+ * holds and does not keep a history of removed pages.
  */
 class CursorQueuedPagingCache<K : Any, T>(
     private val cache: CursorPagingCache<K, T> = CursorInMemoryPagingCache<K, T>(),

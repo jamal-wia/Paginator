@@ -24,6 +24,11 @@ private const val STALE_ENTRY_SLACK = 16
  * Pages within the current context window can optionally be protected from eviction
  * via [protectContextWindow].
  *
+ * When composed over a strategy that removes pages itself (for example [ContextWindowPagingCache]),
+ * a page removed by the inner strategy and inserted again counts as a new insertion and goes to the
+ * tail of the queue; the queue never evicts a page it no longer holds and does not keep a history
+ * of removed pages.
+ *
  * ## Usage
  * ```kotlin
  * val paginator = MutablePaginator(

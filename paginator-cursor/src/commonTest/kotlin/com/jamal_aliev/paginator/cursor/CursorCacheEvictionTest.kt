@@ -313,11 +313,7 @@ class CursorCacheEvictionTest {
 
     @Test
     fun fifo_insertion_order_stays_bounded_when_inner_strategy_evicts() {
-        val c = CursorQueuedPagingCache<String, String>(
-            cache = CursorContextWindowPagingCache(margin = 0),
-            maxSize = 5,
-            protectContextWindow = false,
-        )
+        val c = fifoOverWindow(maxSize = 5)
 
         for (i in 0 until 1000) {
             val bookmark = bookmarkAt(i, 1000)
@@ -350,6 +346,42 @@ class CursorCacheEvictionTest {
         assertNotNull(c.removeFromCache("p0"))
         assertEquals(1, c.size)
         assertEquals(c.size, c.trackedEntryCount)
+    }
+
+    @Test
+    fun fifo_compaction_keeps_the_insertion_order_of_surviving_pages() {
+        val evicted = mutableListOf<Any>()
+        val leaf = CursorInMemoryPagingCache<String, String>()
+        val c = CursorQueuedPagingCache(
+            cache = leaf,
+            maxSize = 4,
+            protectContextWindow = false,
+            evictionListener = CacheEvictionListener<String> {
+                evicted.add((it as CursorPageState<*, *>).bookmark.self)
+            },
+        )
+
+        // The survivors p2, p1, p0 are inserted in this order, not in ascending order.
+        c.put(2)
+        c.put(1)
+        c.put(0)
+
+        // Churn pages are removed behind the decorator's back and leave stale entries: far more
+        // than the compaction limit, so the compaction runs while the survivors are queued.
+        for (i in 0 until 40) {
+            c.setState(CursorBookmark(null, "churn$i", null), successPage(i, "churn"))
+            leaf.removeFromCache("churn$i")
+        }
+        assertEquals(listOf("p0", "p1", "p2"), c.cursors.map { it.self })
+        assertTrue(c.trackedEntryCount < 50, "tracked ${c.trackedEntryCount} entries")
+        assertEquals(emptyList<Any>(), evicted)
+
+        // Overflow: the oldest insertion is p2, not the head page p0.
+        c.put(3)
+        c.put(4)
+
+        assertEquals(listOf<Any>("p2"), evicted)
+        assertEquals(listOf("p0", "p1", "p3", "p4"), c.cursors.map { it.self })
     }
 
     @Test
