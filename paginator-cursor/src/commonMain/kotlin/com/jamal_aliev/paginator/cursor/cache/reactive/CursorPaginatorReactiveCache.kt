@@ -22,8 +22,8 @@ import kotlinx.coroutines.flow.Flow
  * 1. **Stable identity.** [identity] must return a value that uniquely
  *    identifies an item across mutations — typically a primary key. Returning
  *    `equals`-based identity for items whose fields change (and therefore
- *    whose `equals` result changes) makes [CursorReactiveEvent.Updated] and
- *    [CursorReactiveEvent.Removed] silently fail to locate the cached item.
+ *    whose `equals` result changes) makes [CursorReactiveEvent.Updated],
+ *    [CursorReactiveEvent.Patched] and [CursorReactiveEvent.Removed] silently fail to locate the cached item.
  *
  * 2. **Hot subscription.** [changes] is collected by the paginator from the
  *    moment `observe()` is called until the returned `Job` is cancelled.
@@ -74,7 +74,8 @@ interface CursorPaginatorReactiveCache<T, ID : Any> {
      * Returns a stable domain identity for [item].
      *
      * Used by the paginator to locate cached items when applying
-     * [CursorReactiveEvent.Updated], [CursorReactiveEvent.Removed],
+     * [CursorReactiveEvent.Updated], [CursorReactiveEvent.Patched],
+     * [CursorReactiveEvent.Removed],
      * [CursorReactiveEvent.Moved], and the `*Identity` variants of
      * [CursorInsertPosition]. The returned value must:
      * - have a meaningful `equals`/`hashCode` implementation (typically a

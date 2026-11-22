@@ -206,6 +206,26 @@ class CursorReactiveObserveRegressionTest {
         job.cancel()
     }
 
+    /** A Patched applied while refresh loads that page is not overwritten by the older refresh result. */
+    @Test
+    fun a_patch_during_refresh_survives_the_refresh_result() = runTest {
+        val d = Db(6)
+        val p = d.paginator(); p.start(2)
+        val bus = Bus()
+        val job = p.observe(this, bus, initialSync = InitialSyncPolicy.None)
+        runCurrent()
+        d.gate = CompletableDeferred(); d.gatedSelf = "p1"
+        val refresh = launch { p.refresh(listOf(p.cache.cursors[1])) }
+        runCurrent() // refresh read the db (old label) and waits
+        d.patch(5, "patched")
+        bus.events.emit(CursorReactiveEvent.Patched(5) { it.copy(label = "patched") })
+        runCurrent()
+        d.gate!!.complete(Unit)
+        refresh.join()
+        assertEquals(d.db.value.map { it.label }, labels(p), "live patch lost to the older refresh result")
+        job.cancel()
+    }
+
     // ── Initial sync ─────────────────────────────────────────────────────────────────────────────
 
     /** A write that lands while the initial RefreshAll loads still reaches the cache (subscribe first). */

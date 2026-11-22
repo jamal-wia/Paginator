@@ -130,6 +130,215 @@ class CursorPaginatorReactiveObserveTest {
         job.cancel()
     }
 
+    private fun MutableCursorPaginator<String, Item>.labels(): List<String> =
+        cache.cursors.flatMap { cache.getStateOf(it.self)!!.data.map { i -> i.label } }
+
+    private fun MutableCursorPaginator<String, Item>.ids(): List<List<Int>> =
+        cache.cursors.map { cache.getStateOf(it.self)!!.data.map { i -> i.id } }
+
+    @Test
+    fun `Patched event transforms matching item in place by identity`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(this, source, initialSync = InitialSyncPolicy.None)
+        val idsBefore = paginator.ids()
+
+        source.emit(CursorReactiveEvent.Patched(identity = 5) { it.copy(label = "patched") })
+        runCurrent()
+
+        assertEquals(idsBefore, paginator.ids())
+        assertEquals(
+            listOf("v0-1", "v0-2", "v0-3", "v0-4", "patched", "v0-6"),
+            paginator.labels(),
+        )
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Patched sees the item as it is currently cached`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(this, source, initialSync = InitialSyncPolicy.None)
+
+        source.emit(CursorReactiveEvent.Updated(Item(5, "x")))
+        source.emit(CursorReactiveEvent.Patched(identity = 5) { it.copy(label = it.label + "!") })
+        source.emit(CursorReactiveEvent.Patched(identity = 5) { it.copy(label = it.label + "?") })
+        runCurrent()
+
+        assertEquals("x!?", paginator.cache.getStateOf("p1")!!.data.first { it.id == 5 }.label)
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Patched with unknown identity and Drop policy is a no-op`() = runTest {
+        val paginator = populatedPaginator()
+        val before = paginator.labels()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            unknownItem = UnknownItemPolicy.Drop,
+        )
+
+        source.emit(CursorReactiveEvent.Patched(identity = 9999) { it.copy(label = "ghost") })
+        runCurrent()
+
+        assertEquals(before, paginator.labels())
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Patched with unknown identity and RefreshAll policy reloads pages`() = runTest {
+        val backend = IntBackend(pageCount = 3)
+        val paginator = populatedPaginator(backend)
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            unknownItem = UnknownItemPolicy.RefreshAll,
+        )
+
+        backend.reloadVersion = 7
+        source.emit(CursorReactiveEvent.Patched(identity = 9999) { it.copy(label = "ghost") })
+        runCurrent()
+
+        assertEquals("v7-1", paginator.cache.getStateOf("p0")!!.data.first().label)
+        assertEquals("v7-4", paginator.cache.getStateOf("p1")!!.data.first().label)
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Patched transforms every duplicate when dedup is disabled`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            deduplicateInserts = false,
+        )
+
+        source.emit(CursorReactiveEvent.Inserted(Item(2, "dup"), CursorInsertPosition.Head))
+        source.emit(CursorReactiveEvent.Patched(identity = 2) { it.copy(label = it.label + "!") })
+        runCurrent()
+
+        val twos = paginator.cache.cursors
+            .flatMap { paginator.cache.getStateOf(it.self)!!.data }
+            .filter { it.id == 2 }
+        assertEquals(listOf("dup!", "v0-2!"), twos.map { it.label }.sorted())
+
+        job.cancel()
+    }
+
+    @Test
+    fun `Batch with Patched children applies them atomically`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val job = paginator.observe(this, source, initialSync = InitialSyncPolicy.None)
+
+        source.emit(
+            CursorReactiveEvent.Batch<Item, Int>(
+                events = listOf(
+                    CursorReactiveEvent.Patched(identity = 1) { it.copy(label = "one!") },
+                    CursorReactiveEvent.Updated(Item(4, "four!")),
+                    CursorReactiveEvent.Patched(identity = 4) { it.copy(label = it.label + "?") },
+                    CursorReactiveEvent.Removed(identity = 2),
+                ),
+            ),
+        )
+        runCurrent()
+
+        // p0 [1,2,3] loses 2 and pulls 4 from p1 -> [1,3,4].
+        assertEquals(listOf("one!", "v0-3", "four!?", "v0-5", "v0-6"), paginator.labels())
+
+        job.cancel()
+    }
+
+    @Test
+    fun `a throwing Patched transform is reported and the next event still applies`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val errors = mutableListOf<Throwable>()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            onError = { errors += it },
+        )
+        val before = paginator.labels()
+
+        source.emit(CursorReactiveEvent.Patched(identity = 5) { error("boom") })
+        runCurrent()
+        assertEquals(1, errors.size)
+        assertEquals(before, paginator.labels())
+
+        source.emit(CursorReactiveEvent.Updated(Item(5, "after")))
+        runCurrent()
+        assertEquals("after", paginator.cache.getStateOf("p1")!!.data.first { it.id == 5 }.label)
+
+        job.cancel()
+    }
+
+    @Test
+    fun `a Patched transform that changes the identity is reported and ignored`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val errors = mutableListOf<Throwable>()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            onError = { errors += it },
+        )
+        val before = paginator.labels()
+        val idsBefore = paginator.ids()
+
+        source.emit(CursorReactiveEvent.Patched(identity = 5) { it.copy(id = 500, label = "moved identity") })
+        runCurrent()
+
+        assertEquals(1, errors.size)
+        assertTrue(errors.single() is IllegalStateException)
+        assertEquals(before, paginator.labels())
+        assertEquals(idsBefore, paginator.ids())
+
+        job.cancel()
+    }
+
+    @Test
+    fun `a throwing Patched transform rolls back its whole Batch`() = runTest {
+        val paginator = populatedPaginator()
+        val source = FakeReactiveCache()
+        val errors = mutableListOf<Throwable>()
+        val job = paginator.observe(
+            scope = this,
+            source = source,
+            initialSync = InitialSyncPolicy.None,
+            onError = { errors += it },
+        )
+        val before = paginator.labels()
+
+        source.emit(
+            CursorReactiveEvent.Batch<Item, Int>(
+                events = listOf(
+                    CursorReactiveEvent.Updated(Item(1, "changed")),
+                    CursorReactiveEvent.Patched(identity = 5) { error("boom") },
+                ),
+            ),
+        )
+        runCurrent()
+
+        assertEquals(1, errors.size)
+        assertEquals(before, paginator.labels())
+
+        job.cancel()
+    }
+
     @Test
     fun `Removed event removes matching item and rebalances`() = runTest {
         val paginator = populatedPaginator()
